@@ -1,0 +1,22 @@
+:root {
+  --guide-width: 0px;
+}
+
+path {
+  fill: none;
+}
+
+.route {
+  stroke: black;
+  stroke-width: 25px;
+}
+
+.ideal {
+  stroke: red;
+  stroke-width: var(--guide-width);
+}
+
+.guide {
+  stroke: lime;
+  stroke-width: var(--guide-width);
+}
