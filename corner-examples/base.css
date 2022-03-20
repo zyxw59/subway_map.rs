@@ -1,5 +1,5 @@
 :root {
-  --guide-width: 0px;
+  --guide-width: 1px;
 }
 
 path {
@@ -7,8 +7,13 @@ path {
 }
 
 .route {
-  stroke: black;
+  stroke: attr(stroke color black);
   stroke-width: 25px;
+}
+
+.route-bg {
+  stroke: white;
+  stroke-width: 30px;
 }
 
 .ideal {

@@ -1,0 +1,13 @@
+[package]
+name = "corner-examples"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.56"
+fixed = { version = "1.13.1", features = ["serde", "num-traits"] }
+num-traits = "0.2.14"
+serde = { version = "1.0.136", features = ["derive"] }
+serde_yaml = "0.8.23"
