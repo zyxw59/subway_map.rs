@@ -1,0 +1,66 @@
+# right angles
+---
+x: 550
+y: 100
+in_theta: 0
+out_theta: 90
+radius: 50
+---
+x: 550
+y: 300
+in_theta: 0
+out_theta: 90
+radius: 50
+---
+x: 550
+y: 500
+in_theta: 0
+out_theta: 90
+radius: 50
+...
+# fixed radius
+---
+x: 250
+y: 100
+in_theta: 0
+out_theta: 45
+radius: 0
+radius_adjust: 50
+---
+x: 850
+y: 100
+in_theta: 0
+out_theta: 135
+radius: 0
+radius_adjust: 50
+...
+# compromise
+---
+x: 250
+y: 300
+in_theta: 0
+out_theta: 45
+radius: 50
+---
+x: 850
+y: 300
+in_theta: 0
+out_theta: 135
+radius: 50
+...
+# fixed width
+---
+x: 250
+y: 500
+in_theta: 0
+out_theta: 45
+radius: 0
+radius_adjust: 120.710678
+---
+x: 850
+y: 500
+in_theta: 0
+out_theta: 135
+radius: 0
+radius_adjust: 20.710678
+...
