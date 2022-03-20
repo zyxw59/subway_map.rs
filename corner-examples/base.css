@@ -7,7 +7,6 @@ path {
 }
 
 .route {
-  stroke: attr(stroke color black);
   stroke-width: 25px;
 }
 

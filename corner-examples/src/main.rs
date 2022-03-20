@@ -1,6 +1,5 @@
 use std::f64::consts::FRAC_1_SQRT_2;
-use std::fmt;
-use std::ops;
+use std::{cmp, fmt, ops};
 
 use fixed::{
     types::extra::{Unsigned, U22 as AngleFrac},
@@ -13,6 +12,7 @@ type AngleFixed = FixedI32<AngleFrac>;
 const FRAC_SQRT_3_2: f64 = 0.8660254037844386467637231707529361834714026269051903;
 const FRAC_1_SQRT_3: f64 = 0.5773502691896257645091487805019574556476017512701268;
 const SQRT_3: f64 = 1.7320508075688772935274463415058723669428052538103806;
+const ONE_EIGHTY: AngleFixed = AngleFixed::from_bits(180i32 << AngleFrac::USIZE);
 const THREE_SIXTY: AngleFixed = AngleFixed::from_bits(360i32 << AngleFrac::USIZE);
 
 const LINE_EXTENT: f64 = 150.0;
@@ -22,7 +22,9 @@ const HEADER: &str = r#"<?xml version="1.0" encoding="utf-8" ?>
 <style>
 @import url(base.css);
 </style>
-<rect height="100%" width="100%" fill="white" />"#;
+<rect height="100%" width="100%" fill="white" />
+<g stroke="black">
+"#;
 
 fn main() -> anyhow::Result<()> {
     println!("{}", HEADER);
@@ -39,6 +41,7 @@ fn main() -> anyhow::Result<()> {
         }
         println!("/>");
     }
+    println!("</g>");
     for corner in &corners {
         if corner.guides {
             println!(r#"<path class="ideal" d="{}" />"#, corner.ideal_path());
@@ -75,39 +78,50 @@ fn default_true() -> bool {
 
 impl Corner {
     pub fn calculate_points(self, extent: f64) -> CornerPoints {
-        let angle = self.in_theta - self.out_theta;
+        let angle = self.in_theta.supplementary() - self.out_theta;
         let half_angle = angle / 2;
-        let tan = half_angle.tan().abs();
-        let radius = self.radius * tan.sqrt() + self.radius_adjust;
-        let width = radius / tan;
-        let sweep = angle.is_positive();
 
         let orig_corner = Point(self.x, self.y);
         let in_vec = self.in_theta.unit();
         let out_vec = self.out_theta.unit();
 
-        let start = orig_corner + in_vec.basis(extent, self.in_offset);
+        let start = orig_corner + in_vec.basis(-extent, self.in_offset);
         let end = orig_corner + out_vec.basis(extent, self.out_offset);
 
-        let corner = orig_corner
-            + in_vec.basis(
-                self.in_offset.mul_add(in_vec.dot(out_vec), self.out_offset)
-                    / in_vec.cross(out_vec),
-                self.in_offset,
-            );
-        let arc_start = in_vec.mul_add(width, corner);
-        let arc_end = out_vec.mul_add(width, corner);
-        let center = arc_start + in_vec.basis(0.0, radius);
+        let (arc, corner) = if self.in_theta != self.out_theta {
+            let tan = half_angle.tan().abs();
+            let radius = self.radius * tan.sqrt() + self.radius_adjust;
+            let width = radius / tan;
+            let sweep = angle.is_positive();
+
+            let corner = orig_corner
+                + in_vec.basis(
+                    self.in_offset.mul_add(in_vec.dot(out_vec), self.out_offset)
+                        / in_vec.cross(out_vec),
+                    self.in_offset,
+                );
+            let start = in_vec.mul_add(-width, corner);
+            let end = out_vec.mul_add(width, corner);
+            let center = start + in_vec.basis(0.0, -radius);
+            (
+                Some(ArcPoints {
+                    start,
+                    end,
+                    radius,
+                    sweep,
+                    center,
+                }),
+                corner,
+            )
+        } else {
+            (None, orig_corner + in_vec.basis(0.0, self.in_offset))
+        };
 
         CornerPoints {
             start,
-            arc_start,
             corner,
-            arc_end,
             end,
-            center,
-            radius,
-            sweep,
+            arc,
             color: self.color,
             guides: self.guides,
         }
@@ -116,16 +130,35 @@ impl Corner {
 
 #[derive(Clone, Debug)]
 pub struct CornerPoints {
-    pub start: Point,
-    pub arc_start: Point,
-    pub corner: Point,
-    pub arc_end: Point,
-    pub end: Point,
-    pub center: Point,
-    pub radius: f64,
-    pub sweep: bool,
-    pub color: Option<String>,
-    pub guides: bool,
+    start: Point,
+    corner: Point,
+    end: Point,
+    arc: Option<ArcPoints>,
+    color: Option<String>,
+    guides: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ArcPoints {
+    start: Point,
+    end: Point,
+    center: Point,
+    radius: f64,
+    sweep: bool,
+}
+
+impl fmt::Display for ArcPoints {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ArcPoints {
+            start,
+            end,
+            radius,
+            sweep,
+            ..
+        } = self;
+        let sweep = *sweep as u8;
+        write!(f, "{start} A {radius},{radius} 0 0 {sweep} {end}")
+    }
 }
 
 struct ArcPath<'a>(&'a CornerPoints);
@@ -133,19 +166,13 @@ struct ArcPath<'a>(&'a CornerPoints);
 impl fmt::Display for ArcPath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let CornerPoints {
-            start,
-            arc_start,
-            arc_end,
-            end,
-            radius,
-            sweep,
-            ..
+            start, end, arc, ..
         } = self.0;
-        let sweep = *sweep as u8;
-        write!(
-            f,
-            "M {start} L {arc_start} A {radius},{radius} 0 0 {sweep} {arc_end} L {end}"
-        )
+        if let Some(arc) = arc {
+            write!(f, "M {start} L {arc} L {end}")
+        } else {
+            write!(f, "M {start} {end}")
+        }
     }
 }
 
@@ -164,10 +191,14 @@ struct GuidePath<'a>(&'a CornerPoints);
 
 impl fmt::Display for GuidePath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let CornerPoints {
-            arc_start, center, arc_end, ..
-        } = self.0;
-        write!(f, "M {arc_start} L {center} {arc_end}")
+        if let Some(ArcPoints {
+            start, center, end, ..
+        }) = self.0.arc
+        {
+            write!(f, "M {start} L {center} {end}")
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -266,6 +297,10 @@ impl Angle {
         self.to_fixed().tan()
     }
 
+    pub fn supplementary(self) -> Self {
+        Angle(ONE_EIGHTY) - self
+    }
+
     pub fn unit(self) -> Point {
         Point(self.cos(), self.sin())
     }
@@ -274,6 +309,12 @@ impl Angle {
 impl fmt::Debug for Angle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl cmp::PartialEq for Angle {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.rem_euclid(THREE_SIXTY) == other.0.rem_euclid(THREE_SIXTY)
     }
 }
 
