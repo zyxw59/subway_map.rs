@@ -17,22 +17,31 @@ const THREE_SIXTY: AngleFixed = AngleFixed::from_bits(360i32 << AngleFrac::USIZE
 
 const LINE_EXTENT: f64 = 150.0;
 
-const HEADER: &str = r#"<?xml version="1.0" encoding="utf-8" ?>
-<svg height="1000" width="1000" xmlns="http://www.w3.org/2000/svg">
-<style>
-@import url(base.css);
-</style>
-<rect height="100%" width="100%" fill="white" />
-<g stroke="black">
-"#;
-
 fn main() -> anyhow::Result<()> {
-    println!("{}", HEADER);
     let mut corners = Vec::new();
+    let mut bounds = None;
     for document in serde_yaml::Deserializer::from_reader(std::io::stdin()) {
         let corner = Corner::deserialize(document)?;
+        Bounds::update_option(&mut bounds, &corner);
         corners.push(corner.calculate_points(LINE_EXTENT));
     }
+    let (x, y, width, height) = bounds
+        .map(|bounds| {
+            (
+                bounds.min_x - 2.0 * LINE_EXTENT,
+                bounds.min_y - 2.0 * LINE_EXTENT,
+                bounds.max_x - bounds.min_x + 4.0 * LINE_EXTENT,
+                bounds.max_y - bounds.min_y + 4.0 * LINE_EXTENT,
+            )
+        })
+        .expect("No points");
+    println!(r#"<?xml version="1.0" encoding="utf-8" ?>"#);
+    println!(
+        r#"<svg width="{width}" height="{height}" viewBox="{x} {y} {width} {height}" xmlns="http://www.w3.org/2000/svg">"#
+    );
+    println!(r#"<style>@import url(base.css);</style>"#);
+    println!(r#"<rect x="{x}" y="{y}" height="100%" width="100%" fill="white" />"#);
+    println!(r#"<g stroke="black">"#);
     for corner in &corners {
         println!(r#"<path class="route-bg" d="{}" />"#, corner.arc_path());
         print!(r#"<path class="route" d="{}" "#, corner.arc_path());
@@ -96,7 +105,7 @@ impl Corner {
 
             let corner = orig_corner
                 + in_vec.basis(
-                    self.in_offset.mul_add(in_vec.dot(out_vec), self.out_offset)
+                    self.in_offset.mul_add(-in_vec.dot(out_vec), self.out_offset)
                         / in_vec.cross(out_vec),
                     self.in_offset,
                 );
@@ -456,4 +465,35 @@ enum Quadrant {
     NegPos,
     NegNeg,
     PosNeg,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Bounds {
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+}
+
+impl Bounds {
+    fn update_option(this: &mut Option<Self>, corner: &Corner) {
+        match this {
+            Some(ref mut this) => this.update(corner),
+            None => {
+                *this = Some(Bounds {
+                    min_x: corner.x,
+                    min_y: corner.y,
+                    max_x: corner.x,
+                    max_y: corner.y,
+                })
+            }
+        }
+    }
+
+    fn update(&mut self, corner: &Corner) {
+        self.min_x = self.min_x.min(corner.x);
+        self.min_y = self.min_y.min(corner.y);
+        self.max_x = self.max_x.max(corner.x);
+        self.max_y = self.max_y.max(corner.y);
+    }
 }

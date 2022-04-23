@@ -6,7 +6,6 @@ in_theta: 0
 out_theta: 90
 radius: 50
 color: blue
-guides: false
 ---
 x: 250
 y: 100
@@ -16,85 +15,148 @@ in_offset: 30
 out_offset: 30
 radius: 50
 radius_adjust: 30
-color: red
-guides: false
+color: violet
 ...
 # crossing over straight
 ---
-x: 550
-y: 100
+x: 250
+y: 400
 in_theta: 0
 out_theta: 0
 radius: 50
 color: blue
-guides: false
 ---
-x: 550
-y: 100
+x: 250
+y: 400
 in_theta: 0
 out_theta: 90
 in_offset: 30
 out_offset: 30
 radius: 50
 radius_adjust: 30
-color: red
-guides: false
+color: violet
 ---
-x: 850
-y: 100
+x: 550
+y: 400
 in_theta: 0
 out_theta: 0
 radius: 50
 color: blue
-guides: false
 ---
-x: 850
-y: 100
+x: 550
+y: 400
 in_theta: 0
 out_theta: 90
 in_offset: 30
 out_offset: 30
 radius: 50
-color: red
-guides: false
+color: violet
 ...
-# crossing over turns
+# crossing over turns (135°)
+---
+x: 250
+y: 700
+in_theta: 0
+out_theta: 45
+out_offset: 30
+radius: 50
+radius_adjust: 30
+color: blue
+---
+x: 250
+y: 700
+in_theta: 0
+out_theta: 45
+in_offset: 30
+radius: 50
+radius_adjust: 30
+color: violet
 ---
 x: 550
-y: 400
+y: 700
+in_theta: 0
+out_theta: 45
+out_offset: 30
+radius: 50
+color: blue
+---
+x: 550
+y: 700
+in_theta: 0
+out_theta: 45
+in_offset: 30
+radius: 50
+color: violet
+...
+# crossing over turns (90°)
+---
+x: 250
+y: 1000
 in_theta: 0
 out_theta: 90
 out_offset: 30
 radius: 50
 radius_adjust: 30
 color: blue
-guides: false
 ---
-x: 550
-y: 400
+x: 250
+y: 1000
 in_theta: 0
 out_theta: 90
 in_offset: 30
 radius: 50
 radius_adjust: 30
-color: red
-guides: false
+color: violet
 ---
-x: 850
-y: 400
+x: 550
+y: 1000
 in_theta: 0
 out_theta: 90
 out_offset: 30
 radius: 50
 color: blue
-guides: false
 ---
-x: 850
-y: 400
+x: 550
+y: 1000
 in_theta: 0
 out_theta: 90
 in_offset: 30
 radius: 50
-color: red
-guides: false
+color: violet
+...
+# crossing over turns (45°)
+---
+x: 250
+y: 1300
+in_theta: 0
+out_theta: 135
+out_offset: 30
+radius: 50
+radius_adjust: 30
+color: blue
+---
+x: 250
+y: 1300
+in_theta: 0
+out_theta: 135
+in_offset: 30
+radius: 50
+radius_adjust: 30
+color: violet
+---
+x: 550
+y: 1300
+in_theta: 0
+out_theta: 135
+out_offset: 30
+radius: 50
+color: blue
+---
+x: 550
+y: 1300
+in_theta: 0
+out_theta: 135
+in_offset: 30
+radius: 50
+color: violet
 ...
