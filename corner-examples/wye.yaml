@@ -1,0 +1,180 @@
+---
+x: 0
+y: 0
+in_theta: 0
+out_theta: 90
+radius: 50
+radius_adjust: 30
+---
+x: 0
+y: 0
+in_theta: 0
+out_theta: 90
+in_offset: -30
+out_offset: -30
+radius: 50
+---
+x: 0
+y: 0
+in_theta: 0
+out_theta: -90
+in_offset: 30
+out_offset: 0
+radius: 50
+---
+x: 0
+y: 0
+in_theta: 90
+out_theta: 90
+in_offset: 30
+out_offset: 30
+...
+---
+x: 300
+y: 0
+in_theta: 0
+out_theta: 90
+radius: 50
+radius_adjust: 30
+---
+x: 300
+y: 0
+in_theta: 0
+out_theta: 90
+in_offset: -30
+out_offset: -30
+radius: 50
+---
+x: 300
+y: 0
+in_theta: 0
+out_theta: -90
+in_offset: 30
+out_offset: 0
+radius: 50
+radius_adjust: 30
+---
+x: 300
+y: 0
+in_theta: 90
+out_theta: 90
+in_offset: 30
+out_offset: 30
+...
+---
+x: 0
+y: 300
+in_theta: -90
+out_theta: 180
+in_offset: 15
+out_offset: 15
+radius: 50
+---
+x: 0
+y: 300
+in_theta: 0
+out_theta: -45
+in_offset: 15
+out_offset: 15
+radius: 50
+---
+x: 0
+y: 300
+in_theta: 135
+out_theta: 90
+in_offset: 15
+out_offset: 15
+radius: 50
+...
+---
+x: 300
+y: 300
+in_theta: -90
+out_theta: 180
+in_offset: 15
+out_offset: 15
+radius: 50
+---
+x: 300
+y: 300
+in_theta: 0
+out_theta: -45
+in_offset: 15
+out_offset: 15
+radius_adjust: 141.92388155425118
+---
+x: 300
+y: 300
+in_theta: 135
+out_theta: 90
+in_offset: 15
+out_offset: 15
+radius_adjust: 141.92388155425118
+...
+---
+x: 0
+y: 600
+in_theta: -90
+out_theta: 180
+in_offset: 15
+out_offset: 15
+radius: 50
+---
+x: 0
+y: 600
+in_theta: 0
+out_theta: -45
+in_offset: 15
+out_offset: 15
+radius: 50
+---
+x: 0
+y: 600
+in_theta: 135
+out_theta: 90
+in_offset: 15
+out_offset: 15
+radius: 50
+radius_adjust: 30
+---
+x: 0
+y: 600
+in_theta: 135
+out_theta: 90
+in_offset: 45
+out_offset: 45
+radius: 50
+...
+---
+x: 300
+y: 600
+in_theta: -90
+out_theta: 180
+in_offset: 15
+out_offset: 15
+radius: 50
+---
+x: 300
+y: 600
+in_theta: 0
+out_theta: -45
+in_offset: 15
+out_offset: 15
+radius_adjust: 141.92388155425118
+---
+x: 300
+y: 600
+in_theta: 135
+out_theta: 90
+in_offset: 15
+out_offset: 15
+radius_adjust: 141.92388155425118
+---
+x: 300
+y: 600
+in_theta: 135
+out_theta: 90
+in_offset: 45
+out_offset: 45
+radius_adjust: 111.92388155425118
+...
