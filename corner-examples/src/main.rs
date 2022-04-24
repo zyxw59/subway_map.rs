@@ -1,5 +1,5 @@
 use std::f64::consts::FRAC_1_SQRT_2;
-use std::{cmp, fmt, ops};
+use std::{cmp, env, fmt, fs::File, io, ops, path::Path};
 
 use fixed::{
     types::extra::{Unsigned, U22 as AngleFrac},
@@ -18,46 +18,94 @@ const THREE_SIXTY: AngleFixed = AngleFixed::from_bits(360i32 << AngleFrac::USIZE
 const LINE_EXTENT: f64 = 150.0;
 
 fn main() -> anyhow::Result<()> {
+    let mut args = env::args();
+    let in_file = {
+        args.next();
+        args.next()
+    }
+    .filter(|s| *s != "-")
+    .map(|s| Path::new(&s).with_extension("yaml"));
+    let out_file = match args.next().as_deref() {
+        Some(s) if s == "-" => None,
+        Some(s) => Some(Path::new(s)),
+        None => in_file.as_deref(),
+    }
+    .map(|p| p.with_extension("svg"));
+
+    let (bounds, corners) = if let Some(f) = in_file {
+        read_corners(File::open(f)?)?
+    } else {
+        read_corners(io::stdin())?
+    };
+
+    if let Some(f) = out_file {
+        write_corners(bounds, corners, File::create(f)?)
+    } else {
+        write_corners(bounds, corners, io::stdout())
+    }
+}
+
+fn read_corners(reader: impl io::Read) -> anyhow::Result<(Bounds, Vec<CornerPoints>)> {
     let mut corners = Vec::new();
     let mut bounds = None;
-    for document in serde_yaml::Deserializer::from_reader(std::io::stdin()) {
+    for document in serde_yaml::Deserializer::from_reader(reader) {
         let corner = Corner::deserialize(document)?;
         Bounds::update_option(&mut bounds, &corner);
         corners.push(corner.calculate_points(LINE_EXTENT));
     }
-    let (x, y, width, height) = bounds
-        .map(|bounds| {
-            (
-                bounds.min_x - 2.0 * LINE_EXTENT,
-                bounds.min_y - 2.0 * LINE_EXTENT,
-                bounds.max_x - bounds.min_x + 4.0 * LINE_EXTENT,
-                bounds.max_y - bounds.min_y + 4.0 * LINE_EXTENT,
-            )
-        })
-        .expect("No points");
-    println!(r#"<?xml version="1.0" encoding="utf-8" ?>"#);
-    println!(
+    let bounds = bounds.ok_or_else(|| anyhow::anyhow!("No points"))?;
+    Ok((bounds, corners))
+}
+
+fn write_corners(
+    bounds: Bounds,
+    corners: Vec<CornerPoints>,
+    mut writer: impl io::Write,
+) -> anyhow::Result<()> {
+    let x = bounds.min_x - 2.0 * LINE_EXTENT;
+    let y = bounds.min_y - 2.0 * LINE_EXTENT;
+    let width = bounds.max_x - bounds.min_x + 4.0 * LINE_EXTENT;
+    let height = bounds.max_y - bounds.min_y + 4.0 * LINE_EXTENT;
+
+    writeln!(writer, r#"<?xml version="1.0" encoding="utf-8" ?>"#)?;
+    writeln!(
+        writer,
         r#"<svg width="{width}" height="{height}" viewBox="{x} {y} {width} {height}" xmlns="http://www.w3.org/2000/svg">"#
-    );
-    println!(r#"<style>@import url(base.css);</style>"#);
-    println!(r#"<rect x="{x}" y="{y}" height="100%" width="100%" fill="white" />"#);
-    println!(r#"<g stroke="black">"#);
+    )?;
+    writeln!(writer, r#"<style>@import url(base.css);</style>"#)?;
+    writeln!(
+        writer,
+        r#"<rect x="{x}" y="{y}" height="100%" width="100%" fill="white" />"#
+    )?;
+    writeln!(writer, r#"<g stroke="black">"#)?;
     for corner in &corners {
-        println!(r#"<path class="route-bg" d="{}" />"#, corner.arc_path());
-        print!(r#"<path class="route" d="{}" "#, corner.arc_path());
+        writeln!(
+            writer,
+            r#"<path class="route-bg" d="{}" />"#,
+            corner.arc_path()
+        )?;
+        write!(writer, r#"<path class="route" d="{}" "#, corner.arc_path())?;
         if let Some(ref color) = corner.color {
-            print!(r#"stroke="{}" "#, color);
+            write!(writer, r#"stroke="{}" "#, color)?;
         }
-        println!("/>");
+        writeln!(writer, "/>")?;
     }
-    println!("</g>");
+    writeln!(writer, "</g>")?;
     for corner in &corners {
         if corner.guides {
-            println!(r#"<path class="ideal" d="{}" />"#, corner.ideal_path());
-            println!(r#"<path class="guide" d="{}" />"#, corner.guide_path());
+            writeln!(
+                writer,
+                r#"<path class="ideal" d="{}" />"#,
+                corner.ideal_path()
+            )?;
+            writeln!(
+                writer,
+                r#"<path class="guide" d="{}" />"#,
+                corner.guide_path()
+            )?;
         }
     }
-    println!("</svg>");
+    writeln!(writer, "</svg>")?;
     Ok(())
 }
 
@@ -105,7 +153,8 @@ impl Corner {
 
             let corner = orig_corner
                 + in_vec.basis(
-                    self.in_offset.mul_add(-in_vec.dot(out_vec), self.out_offset)
+                    self.in_offset
+                        .mul_add(-in_vec.dot(out_vec), self.out_offset)
                         / in_vec.cross(out_vec),
                     self.in_offset,
                 );
