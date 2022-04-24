@@ -151,16 +151,16 @@ impl Corner {
             let width = radius / tan;
             let sweep = angle.is_positive();
 
+            let dot = (self.in_theta - self.out_theta).cos();
+            let cross = (self.in_theta - self.out_theta).sin();
             let corner = orig_corner
                 + in_vec.basis(
-                    self.in_offset
-                        .mul_add(-in_vec.dot(out_vec), self.out_offset)
-                        / in_vec.cross(out_vec),
+                    self.in_offset.mul_add(dot, -self.out_offset) / cross,
                     self.in_offset,
                 );
             let start = in_vec.mul_add(-width, corner);
             let end = out_vec.mul_add(width, corner);
-            let center = start + in_vec.basis(0.0, -radius);
+            let center = start + in_vec.basis(0.0, if sweep { -radius } else { radius });
             (
                 Some(ArcPoints {
                     start,
@@ -297,15 +297,6 @@ impl Point {
     pub fn mul_add(self, a: f64, b: Point) -> Point {
         Point(self.0.mul_add(a, b.0), self.1.mul_add(a, b.1))
     }
-
-    pub fn dot(self, other: Self) -> f64 {
-        self.0 * other.0 + self.1 * other.1
-    }
-
-    /// Positive if `other` is clockwise of `self`.
-    pub fn cross(self, other: Self) -> f64 {
-        self.0 * other.1 - self.1 * other.0
-    }
 }
 
 impl ops::Add for Point {
@@ -325,7 +316,7 @@ impl Angle {
     }
 
     fn to_fixed(self) -> FixedAngle {
-        let x = self.0.to_num::<i16>();
+        let x = self.0.rem_euclid(THREE_SIXTY).to_num::<i16>();
         if self.0.frac() != 0 {
             return FixedAngle::Other(self.0.to_num());
         }
@@ -356,7 +347,7 @@ impl Angle {
     }
 
     pub fn supplementary(self) -> Self {
-        Angle(ONE_EIGHTY) - self
+        self - Angle(ONE_EIGHTY)
     }
 
     pub fn unit(self) -> Point {
@@ -380,8 +371,12 @@ impl ops::Add for Angle {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
-        let s = self.0.rem_euclid(THREE_SIXTY);
-        let o = other.0.rem_euclid(THREE_SIXTY);
+        let mut s = self.0.rem_euclid(THREE_SIXTY);
+        let mut o = other.0.rem_euclid(THREE_SIXTY);
+        if s > ONE_EIGHTY || o > ONE_EIGHTY {
+            s = s - ONE_EIGHTY;
+            o = o - ONE_EIGHTY;
+        }
         Angle((s + o).rem_euclid(THREE_SIXTY))
     }
 }
@@ -418,7 +413,7 @@ impl<'de> Deserialize<'de> for Angle {
         use serde::de::Error;
         AngleFixed::checked_from_num(f64::deserialize(de)?)
             .ok_or_else(|| D::Error::custom("Invalid number"))
-            .map(Angle)
+            .map(|angle| Angle(angle.rem_euclid(THREE_SIXTY)))
     }
 }
 
