@@ -1,2 +1,6 @@
 **/target
 **/*.rs.bk
+
+corner-examples/*.svg
+corner-examples/*.png
+corner-examples/Cargo.lock
