@@ -1,0 +1,60 @@
+---
+x: 0
+y: 0
+in_theta: 0
+out_theta: 0
+---
+x: 0
+y: 0
+in_theta: 90
+out_theta: 90
+---
+x: 0
+y: 0
+in_theta: 0
+out_theta: 90
+in_offset: 30
+out_offset: 30
+radius: 50
+radius_adjust: 30
+...
+---
+x: 300
+y: 0
+in_theta: 0
+out_theta: 0
+---
+x: 300
+y: 0
+in_theta: 90
+out_theta: 90
+---
+x: 300
+y: 0
+in_theta: 0
+out_theta: 90
+in_offset: 30
+out_offset: 30
+radius: 50
+...
+---
+x: 0
+y: 300
+in_theta: 0
+out_theta: 90
+in_offset: -30
+out_offset: -30
+radius: 50
+---
+x: 0
+y: 300
+in_theta: 0
+out_theta: 0
+---
+x: 0
+y: 300
+in_theta: 0
+out_theta: 90
+in_offset: 30
+radius: 50
+radius_adjust: 30
