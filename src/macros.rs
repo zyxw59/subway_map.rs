@@ -9,18 +9,6 @@ macro_rules! itry {
     };
 }
 
-/// `try!` macro, but it unwraps `Option<Result<T, E>>` to `Option<T>`, early-returning
-/// `Err(_)` values.
-macro_rules! try_opt {
-    ($expr:expr) => {
-        match $expr {
-            Some(Ok(val)) => Some(val),
-            Some(Err(err)) => return Err(err.into()),
-            None => None,
-        }
-    };
-}
-
 #[cfg(test)]
 macro_rules! token {
     (.) => {
