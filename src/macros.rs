@@ -1,14 +1,3 @@
-/// `try!` macro, but it returns `Some(Err(err))` instead of `Err(err)` for compatibility with
-/// iterators.
-macro_rules! itry {
-    ($expr:expr) => {
-        match $expr {
-            Ok(val) => val,
-            Err(err) => return Some(Err(err.into())),
-        }
-    };
-}
-
 #[cfg(test)]
 macro_rules! token {
     (.) => {

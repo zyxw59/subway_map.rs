@@ -34,19 +34,24 @@ impl<R: BufRead> Lexer<R> {
         self.vec_buffer.get(self.pos + 1).cloned()
     }
 
-    fn get_next_token(&mut self) -> Option<EResult<Token>> {
-        itry!(self.skip_whitespace_and_comments());
-        itry!(self.get()).map(|c| match c.into() {
-            CharCat::Letter | CharCat::Underscore => self.parse_word(),
-            CharCat::Number => self.parse_number(),
-            CharCat::Dot => self.parse_dot(),
-            CharCat::Quote => self.parse_string(),
-            CharCat::Singleton => {
-                self.pos += 1;
-                Ok(Token::singleton(c).unwrap())
+    fn get_next_token(&mut self) -> EResult<Option<Token>> {
+        self.skip_whitespace_and_comments()?;
+        if let Some(c) = self.get()? {
+            match c.into() {
+                CharCat::Letter | CharCat::Underscore => self.parse_word(),
+                CharCat::Number => self.parse_number(),
+                CharCat::Dot => self.parse_dot(),
+                CharCat::Quote => self.parse_string(),
+                CharCat::Singleton => {
+                    self.pos += 1;
+                    Ok(Token::singleton(c).unwrap())
+                }
+                cat => self.parse_other(cat),
             }
-            cat => self.parse_other(cat),
-        })
+            .map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     fn fill_buffer(&mut self) -> EResult<usize> {
@@ -257,7 +262,7 @@ impl<R: BufRead> Iterator for Lexer<R> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.put_back.take() {
             Some(item) => Some(Ok(item)),
-            None => self.get_next_token(),
+            None => self.get_next_token().transpose(),
         }
     }
 }
