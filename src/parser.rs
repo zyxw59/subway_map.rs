@@ -76,7 +76,7 @@ where
         while let Some(tok) = try_opt!(self.next()) {
             if let Some(op) = tok
                 .as_tag()
-                .and_then(|tag| BinaryBuiltins.get(&tag))
+                .and_then(|tag| BinaryBuiltins.get(tag))
                 .filter(|op| op.precedence >= min_precedence)
             {
                 // we have an operator; now to get the right hand side, accumulating operators with

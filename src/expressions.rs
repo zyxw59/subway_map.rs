@@ -80,11 +80,11 @@ impl Expression {
                 op.apply(lhs.evaluate(context)?, rhs.evaluate(context)?)?
             }
             Expression::UnaryOperator(op, arg) => op.apply(arg.evaluate(context)?)?,
-            Expression::Function(func_name, args) => match context.get_function(&func_name) {
+            Expression::Function(func_name, args) => match context.get_function(func_name) {
                 None => return Err(MathError::Function(func_name.clone())),
                 Some(func) => func.apply(args, context)?,
             },
-            Expression::Variable(var) => match context.get_variable(&var) {
+            Expression::Variable(var) => match context.get_variable(var) {
                 None => return Err(MathError::Variable(var.clone())),
                 Some(val) => val,
             },
