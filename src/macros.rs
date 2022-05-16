@@ -1,26 +1,3 @@
-/// `try!` macro, but it returns `Some(Err(err))` instead of `Err(err)` for compatibility with
-/// iterators.
-macro_rules! itry {
-    ($expr:expr) => {
-        match $expr {
-            Ok(val) => val,
-            Err(err) => return Some(Err(err.into())),
-        }
-    };
-}
-
-/// `try!` macro, but it unwraps `Option<Result<T, E>>` to `Option<T>`, early-returning
-/// `Err(_)` values.
-macro_rules! try_opt {
-    ($expr:expr) => {
-        match $expr {
-            Some(Ok(val)) => Some(val),
-            Some(Err(err)) => return Err(err.into()),
-            None => None,
-        }
-    };
-}
-
 #[cfg(test)]
 macro_rules! token {
     (.) => {

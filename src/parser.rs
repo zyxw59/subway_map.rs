@@ -39,7 +39,7 @@ macro_rules! expect {
         expect!($self, $token $(if $guard)? => ())
     };
     ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {
-        match try_opt!($self.next()) {
+        match $self.next().transpose()? {
             $(Some($token) $(if $guard)? => $capture),*,
             #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
             Some(tok) => return Err(ParserError::Token(tok, $self.line()).into()),
@@ -73,7 +73,7 @@ where
         let mut lhs = self.parse_primary()?;
         // as long as we encounter operators with precedence >= min_precedence, we can accumulate
         // them into `lhs`.
-        while let Some(tok) = try_opt!(self.next()) {
+        while let Some(tok) = self.next().transpose()? {
             if let Some(op) = tok
                 .as_tag()
                 .and_then(|tag| BinaryBuiltins.get(tag))
@@ -93,7 +93,7 @@ where
     }
 
     fn parse_primary(&mut self) -> EResult<Expression> {
-        match try_opt!(self.next()) {
+        match self.next().transpose()? {
             None => Err(ParserError::EndOfInput(self.line()).into()),
             Some(Token::LeftParen) => self.parse_parentheses(),
             Some(Token::Number(num)) => Ok(Expression::Value(Value::Number(num))),
@@ -101,12 +101,12 @@ where
                 Some(op) => Ok(op.expression(self.parse_expression(op.precedence)?)),
                 None => {
                     let tag = self.parse_dotted_ident(tag)?;
-                    let next_tok = try_opt!(self.next());
+                    let next_tok = self.next().transpose()?;
                     if let Some(Token::LeftParen) = next_tok {
                         // function call
                         let start_line = self.line();
                         let args = self.parse_comma_list()?;
-                        match try_opt!(self.next()) {
+                        match self.next().transpose()? {
                             Some(Token::RightParen) => {}
                             Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
                             None => return Err(ParserError::Parentheses(start_line).into()),
@@ -126,7 +126,7 @@ where
 
     fn parse_dotted_ident(&mut self, tag: String) -> EResult<String> {
         let mut arr = vec![tag];
-        while let Some(tok) = try_opt!(self.next()) {
+        while let Some(tok) = self.next().transpose()? {
             match tok {
                 Token::Dot => arr.push(expect!(self, Token::Tag(tag) => tag)),
                 _ => {
@@ -150,7 +150,7 @@ where
             }
             n => return Err(ParserError::ParenList(n, start_line).into()),
         };
-        match try_opt!(self.next()) {
+        match self.next().transpose()? {
             Some(Token::RightParen) => Ok(exp),
             Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
             None => Err(ParserError::Parentheses(start_line).into()),
@@ -159,7 +159,7 @@ where
 
     fn parse_comma_list(&mut self) -> EResult<Vec<Expression>> {
         let mut list = Vec::new();
-        while let Some(tok) = try_opt!(self.next()) {
+        while let Some(tok) = self.next().transpose()? {
             match tok {
                 Token::Comma => {}
                 Token::RightParen => {
@@ -184,7 +184,7 @@ where
         let mut index = 0;
         let start_line = self.line();
         loop {
-            match try_opt!(self.next()) {
+            match self.next().transpose()? {
                 // a named argument
                 Some(Token::Tag(arg)) => {
                     // insert the new argument into the hashmap
@@ -201,7 +201,7 @@ where
                         Entry::Vacant(e) => e.insert(index),
                     };
                     index += 1;
-                    match try_opt!(self.next()) {
+                    match self.next().transpose()? {
                         Some(Token::Comma) => {}
                         Some(Token::RightParen) => break,
                         Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
@@ -222,7 +222,7 @@ where
 
     fn parse_comma_point_list(&mut self) -> EResult<Vec<(Option<Expression>, Variable)>> {
         let mut points = Vec::new();
-        while let Some(tok) = try_opt!(self.next()) {
+        while let Some(tok) = self.next().transpose()? {
             let point = match tok {
                 Token::Comma => continue,
                 Token::LeftParen => {
@@ -235,7 +235,7 @@ where
                 _ => return Err(ParserError::Token(tok, self.line()).into()),
             };
             points.push(point);
-            match try_opt!(self.next()) {
+            match self.next().transpose()? {
                 None => break,
                 Some(Token::Comma) => continue,
                 Some(Token::Semicolon) => {
@@ -251,7 +251,7 @@ where
     fn parse_route(&mut self) -> EResult<Vec<Segment>> {
         let mut route = Vec::new();
         let mut start = expect!(self, Token::Tag(tag) => tag);
-        while let Some(tok) = try_opt!(self.next()) {
+        while let Some(tok) = self.next().transpose()? {
             self.put_back(tok);
             expect! { self,
                 Token::Tag(ref tag) if tag == "--" => {},
@@ -272,7 +272,7 @@ where
     }
 
     fn parse_statement(&mut self) -> EResult<Option<StatementKind>> {
-        match try_opt!(self.next()) {
+        match self.next().transpose()? {
             // tag; start of an assignment expression or function definition
             Some(Token::Tag(tag)) => {
                 match tag.as_ref() {
@@ -340,7 +340,7 @@ where
     fn parse_dot_list(&mut self) -> EResult<Vec<Variable>> {
         let mut list = Vec::new();
         loop {
-            match try_opt!(self.next()) {
+            match self.next().transpose()? {
                 Some(Token::Dot) => expect!(self, Token::Tag(tag) => list.push(tag)),
                 Some(tok) => {
                     self.put_back(tok);
