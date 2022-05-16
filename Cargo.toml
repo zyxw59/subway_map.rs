@@ -2,7 +2,7 @@
 name = "subway_map"
 version = "0.1.0"
 authors = ["Emily Crandall Fleischman <emilycf@mit.edu>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 regex-syntax = "0.6.3"

@@ -232,7 +232,7 @@ impl PointCollection {
     /// borowed.
     fn add_pair(
         pairs: &mut HashMap<(PointId, PointId), LineId>,
-        points: &mut Vec<PointInfo>,
+        points: &mut [PointInfo],
         p1: PointId,
         p2: PointId,
         line: LineId,
