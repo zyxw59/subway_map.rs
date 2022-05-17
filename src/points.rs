@@ -1,4 +1,5 @@
 use std::collections::{btree_map::Entry, BTreeMap, HashMap, HashSet};
+use std::fmt;
 use std::ops::{Index, IndexMut};
 
 use itertools::Itertools;
@@ -818,9 +819,16 @@ impl PointInfo {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct PointId(usize);
+
+impl fmt::Debug for PointId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // print on a single line even with `#?` formatter
+        write!(f, "PointId({})", self.0)
+    }
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Route {
@@ -908,9 +916,16 @@ impl IndexMut<usize> for Route {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct RouteId(usize);
+
+impl fmt::Debug for RouteId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // print on a single line even with `#?` formatter
+        write!(f, "RouteId({})", self.0)
+    }
+}
 
 /// A segment of a route.
 #[derive(Clone, Copy, Debug, Serialize)]

@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashSet};
+use std::fmt;
 
 use serde::Serialize;
 
@@ -623,6 +624,13 @@ impl PartialOrd for LinePoint {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct LineId(pub usize);
+
+impl fmt::Debug for LineId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // print on a single line even with `#?` formatter
+        write!(f, "LineId({})", self.0)
+    }
+}
