@@ -679,7 +679,8 @@ impl PointCollection {
             start.value,
             corner.value,
             end.value,
-            radius_in.max(radius_out) + self.inner_radius,
+            self.inner_radius,
+            radius_in.max(radius_out),
         )
         .offset(offset_in, offset_out)
     }

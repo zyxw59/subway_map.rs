@@ -8,6 +8,8 @@ pub struct Corner {
     pub corner: Point,
     /// The radius of the corner.
     pub radius: f64,
+    /// The distance between the corner and the endpoints of the arc.
+    pub arc_width: f64,
     /// Whether the arc runs clockwise (`true`) or counterclockwise (`false`).
     pub sweep: bool,
     /// The start point of the arc.
@@ -18,18 +20,21 @@ pub struct Corner {
 
 impl Corner {
     /// Constructs a new `Corner` with the given parameters.
-    pub fn new(from: Point, corner: Point, to: Point, radius: f64) -> Corner {
+    pub fn new(from: Point, corner: Point, to: Point, base_radius: f64, offset: f64) -> Corner {
         let in_dir = (from - corner).unit();
         let out_dir = (to - corner).unit();
         let dot = in_dir * out_dir;
-        let corner_distance = ((1.0 + dot) / (1.0 - dot)).sqrt() * radius;
+        let tan = ((1.0 - dot) / (1.0 + dot)).sqrt();
+        let radius = base_radius * tan.sqrt() + offset;
+        let arc_width = base_radius / tan.sqrt() + offset / tan;
         Corner {
             corner,
             radius,
+            arc_width,
             // positive cross product => clockwise; negative cross product => counterclockwise
             sweep: in_dir.cross(out_dir) < 0.0,
-            start: in_dir.mul_add(corner_distance, corner),
-            end: out_dir.mul_add(corner_distance, corner),
+            start: in_dir.mul_add(arc_width, corner),
+            end: out_dir.mul_add(arc_width, corner),
         }
     }
 
@@ -72,6 +77,7 @@ impl Corner {
         Corner {
             corner,
             radius: (offset_in + offset_out).abs() / 2.0,
+            arc_width: 0.0,
             sweep: offset_in < -offset_out,
             start: perp.mul_add(offset_in, corner),
             end: perp.mul_add(-offset_out, corner),
