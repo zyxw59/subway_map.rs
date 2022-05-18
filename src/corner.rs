@@ -100,14 +100,24 @@ impl Corner {
 pub struct ParallelShift(pub Point, pub Point, pub Point, pub Point);
 
 impl ParallelShift {
-    pub fn new(offset_in: f64, offset_out: f64, dir: Point, at: Point) -> ParallelShift {
+    pub fn new(
+        transverse_in: f64,
+        transverse_out: f64,
+        longitudinal_in: f64,
+        longitudinal_out: f64,
+        dir: Point,
+        at: Point,
+    ) -> ParallelShift {
         let dir = dir.unit();
-        let delta = (offset_out - offset_in).abs();
+        let longitudinal_width = longitudinal_in + longitudinal_out;
+        let transverse_width = (transverse_out - transverse_in).abs();
+        let at = dir.mul_add(longitudinal_out - longitudinal_in, at);
+        let width = transverse_width.max(longitudinal_width / 2.0);
         ParallelShift(
-            at + dir.basis(-delta, -offset_in),
-            at + dir.basis(0.0, -offset_in),
-            at + dir.basis(0.0, -offset_out),
-            at + dir.basis(delta, -offset_out),
+            at + dir.basis(-width, -transverse_in),
+            at + dir.basis(0.0, -transverse_in),
+            at + dir.basis(0.0, -transverse_out),
+            at + dir.basis(width, -transverse_out),
         )
     }
 

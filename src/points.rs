@@ -22,7 +22,7 @@ use crate::statement;
 use crate::values::{Point, PointProvenance};
 
 use line::{Line, LineId};
-use route_corner::{RouteCorner, RouteTurn};
+use route_corner::{RouteCorners, RouteTurn};
 
 #[derive(Default, Debug, Serialize)]
 pub struct PointCollection {
@@ -534,7 +534,7 @@ impl PointCollection {
         }
 
         for route in &self.routes {
-            let path = self.route_to_path(route);
+            let path = self.route_to_path(route, &route_corners);
             document.add_route(&route.name, &route.style, path);
         }
     }
@@ -542,7 +542,7 @@ impl PointCollection {
     fn extend_route_corners(
         &self,
         route: &Route,
-        route_corners: &mut HashMap<PointId, RouteCorner>,
+        route_corners: &mut RouteCorners,
     ) {
         for (current, next) in route.iter().tuple_windows() {
             if current.end == next.start
@@ -590,7 +590,7 @@ impl PointCollection {
         }
     }
 
-    fn route_to_path(&self, route: &Route) -> Path {
+    fn route_to_path(&self, route: &Route, route_corners: &RouteCorners) -> Path {
         let mut path = Path::new()
             .set("id", format!("route-{}", route.name))
             .set("class", format!("route {}", route.style));
@@ -600,14 +600,26 @@ impl PointCollection {
             for (current, next) in route.iter().tuple_windows() {
                 // process `current` in the loop; `next` will be handled on the next iteration, or
                 // after the loop, for the last segment.
-                for shift in self.parallel_shifts(current) {
+                for shift in self.parallel_shifts(current, route_corners) {
                     data = shift.apply(data);
                 }
                 if current.end == next.start {
+                    let route_corner = route_corners.get(&current.end);
+                    // TODO: should get line segment endpoints
+                    let longitudinal_in = route_corner
+                        .and_then(|rc| rc.get(current.start))
+                        .unwrap_or(0.0);
+                    let longitudinal_out =
+                        route_corner.and_then(|rc| rc.get(next.end)).unwrap_or(0.0);
                     match self.are_collinear(current.start, current.end, next.end) {
                         Collinearity::Sequential => {
                             // parallel shift
-                            if let Some(shift) = self.parallel_shift(current, next) {
+                            if let Some(shift) = self.parallel_shift(
+                                current,
+                                next,
+                                longitudinal_in,
+                                longitudinal_out,
+                            ) {
                                 data = shift.apply(data);
                             }
                         }
@@ -633,7 +645,7 @@ impl PointCollection {
                 }
             }
             let current = route.last().unwrap();
-            for shift in self.parallel_shifts(current) {
+            for shift in self.parallel_shifts(current, route_corners) {
                 data = shift.apply(data);
             }
             data = data.line_to(self.segment_end(current));
@@ -642,10 +654,11 @@ impl PointCollection {
         path
     }
 
-    pub fn parallel_shifts(
-        &self,
-        segment: &RouteSegment,
-    ) -> impl Iterator<Item = ParallelShift> + '_ {
+    pub fn parallel_shifts<'a>(
+        &'a self,
+        segment: &'a RouteSegment,
+        route_corners: &'a RouteCorners,
+    ) -> impl Iterator<Item = ParallelShift> + 'a {
         // this is only called on segments which have already been added, so we can be sure that
         // all the points mentioned are valid.
         let start_id = segment.start;
@@ -661,12 +674,26 @@ impl PointCollection {
             if crate::values::float_eq(offset_in, offset_out) {
                 None
             } else {
-                let (dir, at) = if reverse {
-                    (-line.direction, line.point(prev.start.distance))
+                let dir;
+                let in_id;
+                let at_id;
+                let out_id;
+                if reverse {
+                    dir = -line.direction;
+                    in_id = prev.end.id;
+                    at_id = prev.start.id;
+                    out_id = next.end.id;
                 } else {
-                    (line.direction, line.point(prev.end.distance))
-                };
-                Some(ParallelShift::new(offset_in, offset_out, dir, at))
+                    dir = line.direction;
+                    in_id = prev.start.id;
+                    at_id = prev.end.id;
+                    out_id = next.start.id;
+                }
+                let at = self[at_id].info.value;
+                let route_corner = route_corners.get(&at_id);
+                let long_in = route_corner.and_then(|rc| rc.get(in_id)).unwrap_or(0.0);
+                let long_out = route_corner.and_then(|rc| rc.get(out_id)).unwrap_or(0.0);
+                Some(ParallelShift::new(offset_in, offset_out, long_in, long_out, dir, at))
             }
         })
     }
@@ -675,6 +702,8 @@ impl PointCollection {
         &self,
         segment_in: &RouteSegment,
         segment_out: &RouteSegment,
+        longitudinal_in: f64,
+        longitudinal_out: f64,
     ) -> Option<ParallelShift> {
         let start_id = segment_in.start;
         let end_id = segment_in.end;
@@ -682,9 +711,9 @@ impl PointCollection {
         let end = self[end_id].info;
         let line = &self[(start_id, end_id)];
         let (reverse, prev, next) = line.segments_at(start, end);
-        let offset_in = prev.calculate_offset(segment_in.offset, reverse, self.default_width);
-        let offset_out = next.calculate_offset(segment_out.offset, reverse, self.default_width);
-        if crate::values::float_eq(offset_in, offset_out) {
+        let transverse_in = prev.calculate_offset(segment_in.offset, reverse, self.default_width);
+        let transverse_out = next.calculate_offset(segment_out.offset, reverse, self.default_width);
+        if crate::values::float_eq(transverse_in, transverse_out) {
             None
         } else {
             let dir = if reverse {
@@ -692,7 +721,14 @@ impl PointCollection {
             } else {
                 line.direction
             };
-            Some(ParallelShift::new(offset_in, offset_out, dir, end.value))
+            Some(ParallelShift::new(
+                transverse_in,
+                transverse_out,
+                longitudinal_in,
+                longitudinal_out,
+                dir,
+                end.value,
+            ))
         }
     }
 

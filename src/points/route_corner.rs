@@ -2,6 +2,8 @@ use std::{cmp::Ordering, collections::HashMap, fmt};
 
 use super::PointId;
 
+pub type RouteCorners = HashMap<PointId, RouteCorner>;
+
 #[derive(Default)]
 pub struct RouteCorner {
     // point: PointId,
