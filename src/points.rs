@@ -10,8 +10,9 @@ use svg::node::{
 };
 
 mod line;
+mod route_corner;
 
-use crate::corner::{Corner, ParallelShift};
+use crate::corner::{calculate_longitudinal_offsets, Corner, ParallelShift};
 use crate::document::Document;
 use crate::error::{EvaluatorError, MathError};
 use crate::expressions::Variable;
@@ -19,6 +20,7 @@ use crate::statement;
 use crate::values::{Point, PointProvenance};
 
 use line::{Line, LineId};
+use route_corner::{RouteCorner, RouteTurn};
 
 #[derive(Default, Debug, Serialize)]
 pub struct PointCollection {
@@ -524,9 +526,100 @@ impl PointCollection {
     }
 
     pub fn draw_routes(&self, document: &mut Document) {
+        let mut route_corners = HashMap::new();
+        for route in &self.routes {
+            self.extend_route_corners(route, &mut route_corners);
+        }
+
         for route in &self.routes {
             let path = self.route_to_path(route);
             document.add_route(&route.name, &route.style, path);
+        }
+    }
+
+    fn extend_route_corners(
+        &self,
+        route: &Route,
+        route_corners: &mut HashMap<PointId, RouteCorner>,
+    ) {
+        for (current, next) in route.iter().tuple_windows() {
+            if current.end == next.start {
+                let corner = route_corners.entry(current.end).or_default();
+                match self.are_collinear(current.start, current.end, next.end) {
+                    // no arc
+                    Collinearity::Sequential => continue,
+                    // same offset in and out; no arc, just a straight terminator
+                    Collinearity::NotSequential if current.offset == -next.offset => continue,
+                    // semicircular arc
+                    Collinearity::NotSequential => {
+                        let line = &self[(current.start, current.end)];
+                        let (rev, seg) =
+                            line.get_segment(self[current.start].info, self[current.end].info);
+                        let far_pt = if rev { seg.end.id } else { seg.start.id };
+                        let left = RouteTurn {
+                            // offsets are positive to the right.
+                            transverse: current.offset.min(next.offset),
+                            // arc always starts at the perp with distance 0
+                            longitudinal: 0.0,
+                        };
+                        let right = RouteTurn {
+                            transverse: current.offset.max(next.offset),
+                            longitudinal: 0.0,
+                        };
+                        corner.insert_both(far_pt, left, right);
+                    }
+                    // some other arc
+                    Collinearity::NotCollinear => {
+                        let line_in = &self[(current.start, current.end)];
+                        let line_out = &self[(next.start, next.end)];
+                        let start_pt = self[current.start].info;
+                        let corner_pt = self[current.end].info;
+                        let end_pt = self[next.end].info;
+
+                        let (rev_in, seg_in) = line_in.get_segment(start_pt, corner_pt);
+                        let (rev_out, seg_out) = line_out.get_segment(end_pt, corner_pt);
+                        let off_in =
+                            seg_in.calculate_offset(current.offset, rev_in, self.default_width);
+                        let off_out =
+                            seg_out.calculate_offset(-next.offset, rev_out, self.default_width);
+                        let start_pt = self[if rev_in { seg_in.end } else { seg_in.start }.id].info;
+                        let end_pt =
+                            self[if rev_out { seg_out.end } else { seg_out.start }.id].info;
+                        let arc = Corner::new(
+                            start_pt.value,
+                            corner_pt.value,
+                            end_pt.value,
+                            self.inner_radius,
+                            0.0,
+                        );
+                        let (delta_in, delta_out) = calculate_longitudinal_offsets(
+                            start_pt.value,
+                            corner_pt.value,
+                            end_pt.value,
+                            off_in,
+                            off_out,
+                        );
+                        let perp_in = arc.arc_width + delta_in;
+                        let perp_out = arc.arc_width + delta_out;
+                        let turn_in = RouteTurn {
+                            transverse: current.offset,
+                            longitudinal: perp_in,
+                        };
+                        let turn_out = RouteTurn {
+                            transverse: -next.offset,
+                            longitudinal: perp_out,
+                        };
+                        // sweep = true => clockwise => turning right
+                        if arc.sweep {
+                            corner.insert_right(start_pt.id, turn_in);
+                            corner.insert_left(end_pt.id, turn_out);
+                        } else {
+                            corner.insert_left(start_pt.id, turn_in);
+                            corner.insert_right(end_pt.id, turn_out);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -706,7 +799,7 @@ impl PointCollection {
         // if `is_start`, we reversed the start and end points already, so flip `reverse`
         reverse ^= is_start;
         let mut offset = seg.calculate_offset(segment.offset, reverse, self.default_width);
-        // we want absoolute offset.
+        // we want absolute offset.
         if reverse {
             offset = -offset;
         }

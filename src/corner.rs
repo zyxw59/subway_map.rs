@@ -53,13 +53,16 @@ impl Corner {
     }
 
     /// Offsets the values of a `Corner` by the specified parallel distances.
-    pub fn offset(self, offset_in: f64, offset_out: f64) -> Corner {
+    pub fn offset(self, transverse_in: f64, transverse_out: f64) -> Corner {
         let in_dir = (self.start - self.corner).unit();
-        let out_dir = (self.end - self.corner).unit();
-        let offset = in_dir.basis(
-            -offset_in.mul_add(in_dir * out_dir, offset_out) / in_dir.cross(out_dir),
-            offset_in,
+        let (longitudinal_in, _) = calculate_longitudinal_offsets(
+            self.start,
+            self.corner,
+            self.end,
+            transverse_in,
+            transverse_out,
         );
+        let offset = in_dir.basis(longitudinal_in, transverse_in);
         Corner {
             corner: self.corner + offset,
             start: self.start + offset,
@@ -118,4 +121,30 @@ impl ParallelShift {
         data.line_to(self.0)
             .cubic_curve_to((self.1, self.2, self.3))
     }
+}
+
+/// Calculates the offsets from the corner along each ray of a corner, with the given parallel
+/// offsets on each ray.
+///
+/// Positive input offsets correspond to shifting the ray to the right (counterclockwise for the
+/// `from` to `corner` segment; clockwise for the `corner` to `to` segment).
+///
+/// Positive output offsets correspond to shifting the corner towards `from` and `to`,
+/// respectively.
+pub fn calculate_longitudinal_offsets(
+    from: Point,
+    corner: Point,
+    to: Point,
+    transverse_in: f64,
+    transverse_out: f64,
+) -> (f64, f64) {
+    let in_dir = (from - corner).unit();
+    let out_dir = (to - corner).unit();
+    // positive if in_dir is clockwise of out_dir
+    let cross = out_dir.cross(in_dir);
+    let dot = in_dir * out_dir;
+    (
+        transverse_in.mul_add(dot, transverse_out) / cross,
+        transverse_out.mul_add(dot, transverse_in) / cross,
+    )
 }
