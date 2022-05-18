@@ -428,6 +428,16 @@ impl Segment {
         .update_new(offset, width, route_segment)
     }
 
+    /// Returns the first and last points of the segment. If `reverse` is true, they will be
+    /// returned in reverse order.
+    pub fn endpoints(&self, reverse: bool) -> (LinePoint, LinePoint) {
+        if !reverse {
+            (self.start, self.end)
+        } else {
+            (self.end, self.start)
+        }
+    }
+
     pub fn routes(&self) -> impl Iterator<Item = &RouteSegmentRef> + Clone + '_ {
         self.routes.iter()
     }
