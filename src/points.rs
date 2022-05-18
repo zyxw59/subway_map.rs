@@ -381,6 +381,7 @@ impl PointCollection {
 
     fn draw_stop(&self, stop: &Stop, document: &mut Document) {
         // just put a circle at the stop for now
+        // TODO: properly handle `RouteCorner`s
         // TODO: More complicated stop icons
         // TODO: Stop labels
         // step 0: get the point info from the stop
@@ -421,8 +422,8 @@ impl PointCollection {
                             }
                             Collinearity::NotSequential => {
                                 // u-turn; place the marker at the top of the arc.
-                                let corner = self.u_turn(prev_seg, segment);
-                                points_and_routes.push((corner.midpoint(), seg_ref.route));
+                                // let corner = self.u_turn(prev_seg, segment);
+                                // points_and_routes.push((corner.midpoint(), seg_ref.route));
                             }
                             Collinearity::NotCollinear => {
                                 // corner; place the marker at the midpoint of the curve.
@@ -626,7 +627,7 @@ impl PointCollection {
                                 data = data.line_to(self.segment_end(current));
                             } else {
                                 // u-turn
-                                data = self.u_turn(current, next).apply(data);
+                                data = self.u_turn(current, next, longitudinal_in).apply(data);
                             }
                         }
                         Collinearity::NotCollinear => {
@@ -730,7 +731,12 @@ impl PointCollection {
         }
     }
 
-    pub fn u_turn(&self, segment_in: &RouteSegment, segment_out: &RouteSegment) -> Corner {
+    pub fn u_turn(
+        &self,
+        segment_in: &RouteSegment,
+        segment_out: &RouteSegment,
+        shift: f64,
+    ) -> Corner {
         let start_id = segment_in.start;
         let end_id = segment_in.end;
         let start = self[start_id].info;
@@ -739,7 +745,7 @@ impl PointCollection {
         let (reverse, seg) = line.get_segment(start, end);
         let offset_in = seg.calculate_offset(segment_in.offset, reverse, self.default_width);
         let offset_out = seg.calculate_offset(segment_out.offset, !reverse, self.default_width);
-        Corner::u_turn(start.value, end.value, offset_in, offset_out)
+        Corner::u_turn(start.value, end.value, offset_in, offset_out, shift)
     }
 
     pub fn corner(&self, segment_in: &RouteSegment, segment_out: &RouteSegment) -> Corner {

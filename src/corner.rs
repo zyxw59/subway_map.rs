@@ -70,15 +70,21 @@ impl Corner {
     ///
     /// Because the line is traversed in reverse on the way out, `offset_out` is oriented in the
     /// opposite direction as `offset_in`.
-    pub fn u_turn(from: Point, corner: Point, offset_in: f64, offset_out: f64) -> Corner {
-        let perp = (from - corner).unit().perp();
+    pub fn u_turn(
+        from: Point,
+        corner: Point,
+        offset_in: f64,
+        offset_out: f64,
+        shift: f64,
+    ) -> Corner {
+        let vector = (from - corner).unit();
         Corner {
             corner,
             radius: (offset_in + offset_out).abs() / 2.0,
             arc_width: 0.0,
             sweep: offset_in < -offset_out,
-            start: perp.mul_add(offset_in, corner),
-            end: perp.mul_add(-offset_out, corner),
+            start: corner + vector.basis(shift, offset_in),
+            end: corner + vector.basis(shift, -offset_out),
         }
     }
 
