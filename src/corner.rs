@@ -56,7 +56,7 @@ impl Corner {
         let in_dir = (self.start - self.corner).unit();
         let out_dir = (self.end - self.corner).unit();
         let (longitudinal_in, _) =
-            calculate_longitudinal_offsets(in_dir, out_dir, transverse_in, transverse_out);
+            calculate_longitudinal_offsets(in_dir, out_dir, -transverse_in, transverse_out);
         let offset = in_dir.basis(longitudinal_in, transverse_in);
         Corner {
             corner: self.corner + offset,
@@ -135,9 +135,10 @@ pub fn calculate_longitudinal_offsets(
     // positive if in_dir is clockwise of out_dir
     let cross = out_dir.cross(in_dir);
     let dot = in_dir * out_dir;
+    let transverse_in = -transverse_in;
     (
-        -transverse_in.mul_add(dot, transverse_out) / cross,
-        transverse_out.mul_add(dot, -transverse_in) / cross,
+        transverse_in.mul_add(dot, transverse_out) / cross,
+        transverse_out.mul_add(dot, transverse_in) / cross,
     )
 }
 

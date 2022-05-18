@@ -566,7 +566,7 @@ impl PointCollection {
                 let out_dir = (end_pt.value - corner_pt.value).unit();
                 let arc_width = self.inner_radius / calculate_tan_half_angle(in_dir, out_dir);
                 let (delta_in, delta_out) =
-                    calculate_longitudinal_offsets(in_dir, out_dir, off_in, off_out);
+                    calculate_longitudinal_offsets(in_dir, out_dir, -off_in, off_out);
                 let perp_in = arc_width + delta_in;
                 let perp_out = arc_width + delta_out;
                 let turn_in = RouteTurn {
