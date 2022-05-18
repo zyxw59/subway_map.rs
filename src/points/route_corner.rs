@@ -24,10 +24,8 @@ impl RouteCorner {
         self.turns.entry(point).or_default().insert_right(turn)
     }
 
-    pub fn insert_both(&mut self, point: PointId, left: RouteTurn, right: RouteTurn) {
-        let turns = self.turns.entry(point).or_default();
-        turns.insert_left(left);
-        turns.insert_right(right);
+    pub fn get(&self, point: PointId) -> Option<f64> {
+        self.turns.get(&point).and_then(RouteTurns::get)
     }
 }
 
@@ -59,6 +57,14 @@ impl RouteTurns {
             self.right = Some(new)
         }
     }
+
+    fn get(&self) -> Option<f64> {
+        match (self.left, self.right) {
+            (Some(left), Some(right)) => Some(left.longitudinal.max(right.longitudinal)),
+            (Some(x), None) | (None, Some(x)) => Some(x.longitudinal),
+            (None, None) => None,
+        }
+    }
 }
 
 impl fmt::Debug for RouteTurns {
@@ -77,7 +83,7 @@ impl fmt::Debug for RouteTurns {
 #[derive(Debug, Clone, Copy)]
 pub struct RouteTurn {
     pub transverse: isize,
-    pub longitudinal: f64, // some other info maybe
+    pub longitudinal: f64,
 }
 
 impl RouteTurn {

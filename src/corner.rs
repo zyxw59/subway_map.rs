@@ -23,8 +23,7 @@ impl Corner {
     pub fn new(from: Point, corner: Point, to: Point, base_radius: f64, offset: f64) -> Corner {
         let in_dir = (from - corner).unit();
         let out_dir = (to - corner).unit();
-        let dot = in_dir * out_dir;
-        let tan = ((1.0 - dot) / (1.0 + dot)).sqrt();
+        let tan = calculate_tan_half_angle(in_dir, out_dir);
         let radius = base_radius * tan.sqrt() + offset;
         let arc_width = base_radius / tan.sqrt() + offset / tan;
         Corner {
@@ -55,13 +54,9 @@ impl Corner {
     /// Offsets the values of a `Corner` by the specified parallel distances.
     pub fn offset(self, transverse_in: f64, transverse_out: f64) -> Corner {
         let in_dir = (self.start - self.corner).unit();
-        let (longitudinal_in, _) = calculate_longitudinal_offsets(
-            self.start,
-            self.corner,
-            self.end,
-            transverse_in,
-            transverse_out,
-        );
+        let out_dir = (self.end - self.corner).unit();
+        let (longitudinal_in, _) =
+            calculate_longitudinal_offsets(in_dir, out_dir, transverse_in, transverse_out);
         let offset = in_dir.basis(longitudinal_in, transverse_in);
         Corner {
             corner: self.corner + offset,
@@ -123,28 +118,33 @@ impl ParallelShift {
     }
 }
 
-/// Calculates the offsets from the corner along each ray of a corner, with the given parallel
-/// offsets on each ray.
+/// Calculates the offsets from the corner along each ray of a corner, with the given transverse
+/// offsets on each ray. Assumes the input vectors are unit vectors.
 ///
-/// Positive input offsets correspond to shifting the ray to the right (counterclockwise for the
-/// `from` to `corner` segment; clockwise for the `corner` to `to` segment).
+/// Positive transverse offsets correspond to shifting the ray to the right relative to their
+/// respective rays.
 ///
-/// Positive output offsets correspond to shifting the corner towards `from` and `to`,
-/// respectively.
+/// Positive longitudinal offsets correspond to shifting the corner along the respective rays.
+#[inline]
 pub fn calculate_longitudinal_offsets(
-    from: Point,
-    corner: Point,
-    to: Point,
+    in_dir: Point,
+    out_dir: Point,
     transverse_in: f64,
     transverse_out: f64,
 ) -> (f64, f64) {
-    let in_dir = (from - corner).unit();
-    let out_dir = (to - corner).unit();
     // positive if in_dir is clockwise of out_dir
     let cross = out_dir.cross(in_dir);
     let dot = in_dir * out_dir;
     (
-        transverse_in.mul_add(dot, transverse_out) / cross,
-        transverse_out.mul_add(dot, transverse_in) / cross,
+        -transverse_in.mul_add(dot, transverse_out) / cross,
+        transverse_out.mul_add(dot, -transverse_in) / cross,
     )
+}
+
+/// Calculate `tan(θ/2)`, where `θ` is the angle formed by the two vectors.
+#[inline]
+pub fn calculate_tan_half_angle(in_dir: Point, out_dir: Point) -> f64 {
+    let magnitude = in_dir.norm() * out_dir.norm();
+    let dot = in_dir * out_dir;
+    ((magnitude - dot) / (magnitude + dot)).sqrt()
 }
