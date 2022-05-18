@@ -427,8 +427,8 @@ impl PointCollection {
                             }
                             Collinearity::NotCollinear => {
                                 // corner; place the marker at the midpoint of the curve.
-                                let corner = self.corner(prev_seg, segment);
-                                points_and_routes.push((corner.midpoint(), seg_ref.route));
+                                // let corner = self.corner(prev_seg, segment);
+                                // points_and_routes.push((corner.midpoint(), seg_ref.route));
                             }
                         }
                     }
@@ -558,14 +558,14 @@ impl PointCollection {
                 let off_in = seg_in.calculate_offset(current.offset, rev_in, self.default_width);
                 let off_out = seg_out.calculate_offset(-next.offset, rev_out, self.default_width);
                 let (start_pt, _) = seg_in.endpoints(rev_in);
-                let (_, end_pt) = seg_in.endpoints(rev_out);
+                let (end_pt, _) = seg_out.endpoints(rev_out);
                 let start_pt = self[start_pt.id].info;
                 let end_pt = self[end_pt.id].info;
                 let in_dir = (start_pt.value - corner_pt.value).unit();
                 let out_dir = (end_pt.value - corner_pt.value).unit();
                 let arc_width = self.inner_radius / calculate_tan_half_angle(in_dir, out_dir);
                 let (delta_in, delta_out) =
-                    calculate_longitudinal_offsets(in_dir, out_dir, -off_in, off_out);
+                    calculate_longitudinal_offsets(in_dir, out_dir, -off_in, -off_out);
                 let perp_in = arc_width + delta_in;
                 let perp_out = arc_width + delta_out;
                 let turn_in = RouteTurn {
@@ -632,7 +632,9 @@ impl PointCollection {
                         }
                         Collinearity::NotCollinear => {
                             // corner
-                            data = self.corner(current, next).apply(data);
+                            data = self
+                                .corner(current, next, longitudinal_in, longitudinal_out)
+                                .apply(data);
                         }
                     }
                 } else {
@@ -748,7 +750,13 @@ impl PointCollection {
         Corner::u_turn(start.value, end.value, offset_in, offset_out, shift)
     }
 
-    pub fn corner(&self, segment_in: &RouteSegment, segment_out: &RouteSegment) -> Corner {
+    pub fn corner(
+        &self,
+        segment_in: &RouteSegment,
+        segment_out: &RouteSegment,
+        offset_long_in: f64,
+        offset_long_out: f64,
+    ) -> Corner {
         let start_id = segment_in.start;
         let corner_id = segment_in.end;
         let end_id = segment_out.end;
@@ -759,30 +767,22 @@ impl PointCollection {
         let line_out = &self[(corner_id, end_id)];
         let (reverse_in, seg_in) = line_in.get_segment(start, corner);
         let (reverse_out, seg_out) = line_out.get_segment(end, corner);
-        // true => to the left (line_in is right of end)
-        // false => to the righht (line_in is left of end)
-        let turn_in = line_in.right_of(end.value);
-        let (offset_in, radius_in) = seg_in.calculate_offset_radius(
-            segment_in.offset,
-            reverse_in,
-            turn_in,
-            self.default_width,
+
+        let transverse_in =
+            seg_in.calculate_offset(segment_in.offset, reverse_in, self.default_width);
+        let transverse_out =
+            seg_out.calculate_offset(segment_out.offset, !reverse_out, self.default_width);
+
+        let (long_in, long_out) = calculate_longitudinal_offsets(
+            (start.value - corner.value).unit(),
+            (end.value - corner.value).unit(),
+            -transverse_in,
+            transverse_out,
         );
-        let turn_out = line_out.right_of(start.value);
-        let (offset_out, radius_out) = seg_out.calculate_offset_radius(
-            segment_out.offset,
-            !reverse_out,
-            turn_out,
-            self.default_width,
-        );
-        Corner::new(
-            start.value,
-            corner.value,
-            end.value,
-            self.inner_radius,
-            radius_in.max(radius_out),
-        )
-        .offset(offset_in, offset_out)
+        let arc_width = (offset_long_in - long_in).max(offset_long_out - long_out);
+
+        Corner::new(start.value, corner.value, end.value, arc_width)
+            .offset(transverse_in, transverse_out)
     }
 
     pub fn segment_start(&self, segment: &RouteSegment) -> Point {

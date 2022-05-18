@@ -20,12 +20,11 @@ pub struct Corner {
 
 impl Corner {
     /// Constructs a new `Corner` with the given parameters.
-    pub fn new(from: Point, corner: Point, to: Point, base_radius: f64, offset: f64) -> Corner {
+    pub fn new(from: Point, corner: Point, to: Point, arc_width: f64) -> Corner {
         let in_dir = (from - corner).unit();
         let out_dir = (to - corner).unit();
         let tan = calculate_tan_half_angle(in_dir, out_dir);
-        let radius = base_radius * tan.sqrt() + offset;
-        let arc_width = base_radius / tan.sqrt() + offset / tan;
+        let radius = arc_width * tan;
         Corner {
             corner,
             radius,
