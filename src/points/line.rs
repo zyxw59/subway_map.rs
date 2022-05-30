@@ -446,6 +446,11 @@ impl Segment {
         self.routes.contains(route_segment)
     }
 
+    /// Calculates the specified offset from the center of the line.
+    ///
+    /// If `reverse` is set, the offset is calculated as if the line ran in the opposite direction.
+    /// Regardless of whether `reverse` is set, the returned value will have the same sign as the
+    /// input offset.
     pub fn calculate_offset(&self, offset: isize, reverse: bool, default_width: f64) -> f64 {
         if offset == 0 {
             0.0
