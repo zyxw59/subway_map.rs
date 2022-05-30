@@ -554,18 +554,22 @@ impl PointCollection {
                 let end_pt = self[next.end].info;
 
                 let (rev_in, seg_in) = line_in.get_segment(start_pt, corner_pt);
-                let (rev_out, seg_out) = line_out.get_segment(end_pt, corner_pt);
+                let (rev_out, seg_out) = line_out.get_segment(corner_pt, end_pt);
                 let off_in = seg_in.calculate_offset(current.offset, rev_in, self.default_width);
-                let off_out = seg_out.calculate_offset(-next.offset, rev_out, self.default_width);
+                let off_out = seg_out.calculate_offset(next.offset, rev_out, self.default_width);
                 let (start_pt, _) = seg_in.endpoints(rev_in);
-                let (end_pt, _) = seg_out.endpoints(rev_out);
+                let (_, end_pt) = seg_out.endpoints(rev_out);
                 let start_pt = self[start_pt.id].info;
                 let end_pt = self[end_pt.id].info;
                 let in_dir = (start_pt.value - corner_pt.value).unit();
                 let out_dir = (end_pt.value - corner_pt.value).unit();
                 let arc_width = self.inner_radius / calculate_tan_half_angle(in_dir, out_dir);
-                let (delta_in, delta_out) =
-                    calculate_longitudinal_offsets(in_dir, out_dir, -off_in, -off_out);
+                let (delta_in, delta_out) = calculate_longitudinal_offsets(
+                    in_dir, out_dir,
+                    // `off_in` is reversed because `in_dir` is pointing from `corner` to `start`,
+                    // but `off_in` is calculated along the segment from `start` to `corner`
+                    -off_in, off_out,
+                );
                 let perp_in = arc_width + delta_in;
                 let perp_out = arc_width + delta_out;
                 let turn_in = RouteTurn {
@@ -766,12 +770,12 @@ impl PointCollection {
         let line_in = &self[(start_id, corner_id)];
         let line_out = &self[(corner_id, end_id)];
         let (reverse_in, seg_in) = line_in.get_segment(start, corner);
-        let (reverse_out, seg_out) = line_out.get_segment(end, corner);
+        let (reverse_out, seg_out) = line_out.get_segment(corner, end);
 
         let transverse_in =
             seg_in.calculate_offset(segment_in.offset, reverse_in, self.default_width);
         let transverse_out =
-            seg_out.calculate_offset(segment_out.offset, !reverse_out, self.default_width);
+            seg_out.calculate_offset(segment_out.offset, reverse_out, self.default_width);
 
         let (long_in, long_out) = calculate_longitudinal_offsets(
             (start.value - corner.value).unit(),
