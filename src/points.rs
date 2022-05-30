@@ -563,7 +563,8 @@ impl PointCollection {
                 let end_pt = self[end_pt.id].info;
                 let in_dir = (start_pt.value - corner_pt.value).unit();
                 let out_dir = (end_pt.value - corner_pt.value).unit();
-                let arc_width = self.inner_radius / calculate_tan_half_angle(in_dir, out_dir);
+                let arc_width =
+                    self.inner_radius / calculate_tan_half_angle(in_dir, out_dir).sqrt();
                 let (delta_in, delta_out) = calculate_longitudinal_offsets(
                     in_dir, out_dir,
                     // `off_in` is reversed because `in_dir` is pointing from `corner` to `start`,
