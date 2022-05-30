@@ -50,6 +50,12 @@ impl Point {
         self / self.norm()
     }
 
+    /// Unit vector in the given direction in degrees, with 0 being up the page, and increasing
+    /// clockwise.
+    pub fn dir(angle: f64) -> Self {
+        Self(sin_deg(angle), -cos_deg(angle))
+    }
+
     /// Rotates `self` 90 degrees clockwise.
     pub fn perp(self) -> Point {
         Point(self.1, -self.0)
@@ -276,7 +282,7 @@ impl Value {
     /// Unit vector in the given direction in degrees, with 0 being up the page, and increasing
     /// clockwise.
     pub fn dir(self) -> Result {
-        numeric_fn!((self) as x => Ok(Value::Point(Point(sin_deg(x), -cos_deg(x)), PointProvenance::None)))
+        numeric_fn!((self) as x => Ok(Value::Point(Point::dir(x), PointProvenance::None)))
     }
 
     /// Angle of given vector in degrees
@@ -524,11 +530,11 @@ pub fn intersect(p1: Point, d1: Point, p2: Point, d2: Point) -> Option<Point> {
 }
 
 pub fn float_eq(x: f64, y: f64) -> bool {
-    (x - y).abs() < ::std::f64::EPSILON
+    float_eq::float_eq!(x, y, rmax <= f64::EPSILON)
 }
 
 pub fn point_float_eq(p1: Point, p2: Point) -> bool {
-    (p1 - p2).norm() < ::std::f64::EPSILON
+    float_eq((p1 - p2).norm(), 0.0)
 }
 
 #[cfg(test)]

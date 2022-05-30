@@ -164,3 +164,117 @@ pub fn calculate_tan_half_angle(in_dir: Point, out_dir: Point) -> f64 {
     let dot = in_dir * out_dir;
     ((magnitude - dot) / (magnitude + dot)).sqrt()
 }
+
+#[cfg(test)]
+mod tests {
+    use float_eq::assert_float_eq;
+
+    use crate::values::Point;
+
+    use super::calculate_longitudinal_offsets;
+
+    #[test]
+    fn longitudinal_offsets() {
+        #[derive(Debug)]
+        struct Case {
+            in_dir: Point,
+            out_dir: Point,
+            trans_in: f64,
+            trans_out: f64,
+            long_in: f64,
+            long_out: f64,
+        }
+
+        let north = Point(0.0, -1.0);
+        let east = Point(-1.0, 0.0);
+        let south = Point(0.0, 1.0);
+
+        let test_cases = [
+            Case {
+                in_dir: east,
+                out_dir: south,
+                trans_in: 0.0,
+                trans_out: 0.0,
+                long_in: 0.0,
+                long_out: 0.0,
+            },
+            Case {
+                in_dir: east,
+                out_dir: south,
+                trans_in: 6.0,
+                trans_out: 7.0,
+                long_in: 7.0,
+                long_out: -6.0,
+            },
+            Case {
+                in_dir: east,
+                out_dir: south,
+                trans_in: -6.0,
+                trans_out: 7.0,
+                long_in: 7.0,
+                long_out: 6.0,
+            },
+            Case {
+                in_dir: east,
+                out_dir: north,
+                trans_in: 6.0,
+                trans_out: 7.0,
+                long_in: -7.0,
+                long_out: 6.0,
+            },
+            Case {
+                in_dir: north,
+                out_dir: Point::dir(120.0),
+                trans_in: 2.0,
+                trans_out: 4.0,
+                long_in: -10.0 / 3f64.sqrt(),
+                long_out: 8.0 / 3f64.sqrt(),
+            },
+            Case {
+                in_dir: north,
+                out_dir: Point::dir(-120.0),
+                trans_in: 2.0,
+                trans_out: 4.0,
+                long_in: 10.0 / 3f64.sqrt(),
+                long_out: -8.0 / 3f64.sqrt(),
+            },
+            Case {
+                in_dir: north,
+                out_dir: Point::dir(120.0),
+                trans_in: -2.0,
+                trans_out: 4.0,
+                long_in: -2.0 * 3f64.sqrt(),
+                long_out: 0.0,
+            },
+            Case {
+                in_dir: north,
+                out_dir: Point::dir(120.0),
+                trans_in: 2.0,
+                trans_out: -4.0,
+                long_in: 2.0 * 3f64.sqrt(),
+                long_out: 0.0,
+            },
+            Case {
+                in_dir: north,
+                out_dir: Point::dir(120.0),
+                trans_in: -2.0,
+                trans_out: -4.0,
+                long_in: 10.0 / 3f64.sqrt(),
+                long_out: -8.0 / 3f64.sqrt(),
+            },
+        ];
+
+        const TOLERANCE: f64 = 1e-10;
+
+        for case in test_cases {
+            let (actual_long_in, actual_long_out) = calculate_longitudinal_offsets(
+                case.in_dir,
+                case.out_dir,
+                case.trans_in,
+                case.trans_out,
+            );
+            assert_float_eq!(actual_long_in, case.long_in, abs <= TOLERANCE, "{case:#?}");
+            assert_float_eq!(actual_long_out, case.long_out, abs <= TOLERANCE, "{case:#?}");
+        }
+    }
+}
