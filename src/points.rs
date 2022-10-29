@@ -583,7 +583,7 @@ impl PointCollection {
                 };
                 // positive if out_dir is clockwise of in_dir
                 // => positive == turning left
-                if in_dir.cross(out_dir) > 0.0 {
+                if in_dir.cross(*out_dir) > 0.0 {
                     corner.insert_left(start_pt.id, turn_in);
                     corner.insert_right(end_pt.id, turn_out);
                 } else {
