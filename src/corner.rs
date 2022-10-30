@@ -157,7 +157,7 @@ pub fn calculate_longitudinal_offsets(
     )
 }
 
-/// Calculate `tan(θ/2)`, where `θ` is the angle formed by the two vectors.
+/// Calculate `|tan(θ/2)|`, where `θ` is the angle formed by the two vectors.
 #[inline]
 pub fn calculate_tan_half_angle(in_dir: UnitVector, out_dir: UnitVector) -> f64 {
     let cos = *in_dir * *out_dir;
