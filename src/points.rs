@@ -10,8 +10,11 @@ use svg::node::{
 };
 
 mod line;
+mod route_corner;
 
-use crate::corner::{Corner, ParallelShift};
+use crate::corner::{
+    calculate_longitudinal_offsets, calculate_tan_half_angle, Corner, ParallelShift,
+};
 use crate::document::Document;
 use crate::error::{EvaluatorError, MathError};
 use crate::expressions::Variable;
@@ -19,6 +22,7 @@ use crate::statement;
 use crate::values::{Point, PointProvenance};
 
 use line::{Line, LineId};
+use route_corner::{RouteCorners, RouteTurn};
 
 #[derive(Default, Debug, Serialize)]
 pub struct PointCollection {
@@ -377,6 +381,7 @@ impl PointCollection {
 
     fn draw_stop(&self, stop: &Stop, document: &mut Document) {
         // just put a circle at the stop for now
+        // TODO: properly handle `RouteCorner`s
         // TODO: More complicated stop icons
         // TODO: Stop labels
         // step 0: get the point info from the stop
@@ -417,13 +422,13 @@ impl PointCollection {
                             }
                             Collinearity::NotSequential => {
                                 // u-turn; place the marker at the top of the arc.
-                                let corner = self.u_turn(prev_seg, segment);
-                                points_and_routes.push((corner.midpoint(), seg_ref.route));
+                                // let corner = self.u_turn(prev_seg, segment);
+                                // points_and_routes.push((corner.midpoint(), seg_ref.route));
                             }
                             Collinearity::NotCollinear => {
                                 // corner; place the marker at the midpoint of the curve.
-                                let corner = self.corner(prev_seg, segment);
-                                points_and_routes.push((corner.midpoint(), seg_ref.route));
+                                // let corner = self.corner(prev_seg, segment);
+                                // points_and_routes.push((corner.midpoint(), seg_ref.route));
                             }
                         }
                     }
@@ -524,13 +529,72 @@ impl PointCollection {
     }
 
     pub fn draw_routes(&self, document: &mut Document) {
+        let mut route_corners = HashMap::new();
         for route in &self.routes {
-            let path = self.route_to_path(route);
+            self.extend_route_corners(route, &mut route_corners);
+        }
+
+        for route in &self.routes {
+            let path = self.route_to_path(route, &route_corners);
             document.add_route(&route.name, &route.style, path);
         }
     }
 
-    fn route_to_path(&self, route: &Route) -> Path {
+    fn extend_route_corners(&self, route: &Route, route_corners: &mut RouteCorners) {
+        for (current, next) in route.iter().tuple_windows() {
+            if current.end == next.start
+                && self.are_collinear(current.start, current.end, next.end)
+                    == Collinearity::NotCollinear
+            {
+                let corner = route_corners.entry(current.end).or_default();
+                let line_in = &self[(current.start, current.end)];
+                let line_out = &self[(next.start, next.end)];
+                let start_pt = self[current.start].info;
+                let corner_pt = self[current.end].info;
+                let end_pt = self[next.end].info;
+
+                let (rev_in, seg_in) = line_in.get_segment(start_pt, corner_pt);
+                let (rev_out, seg_out) = line_out.get_segment(corner_pt, end_pt);
+                let off_in = seg_in.calculate_offset(current.offset, rev_in, self.default_width);
+                let off_out = seg_out.calculate_offset(next.offset, rev_out, self.default_width);
+                let (start_pt, _) = seg_in.endpoints(rev_in);
+                let (_, end_pt) = seg_out.endpoints(rev_out);
+                let start_pt = self[start_pt.id].info;
+                let end_pt = self[end_pt.id].info;
+                let in_dir = (start_pt.value - corner_pt.value).unit();
+                let out_dir = (end_pt.value - corner_pt.value).unit();
+                let arc_width =
+                    self.inner_radius / calculate_tan_half_angle(in_dir, out_dir).sqrt();
+                let (delta_in, delta_out) = calculate_longitudinal_offsets(
+                    in_dir, out_dir,
+                    // `off_in` is reversed because `in_dir` is pointing from `corner` to `start`,
+                    // but `off_in` is calculated along the segment from `start` to `corner`
+                    -off_in, off_out,
+                );
+                let perp_in = arc_width + delta_in;
+                let perp_out = arc_width + delta_out;
+                let turn_in = RouteTurn {
+                    transverse: current.offset,
+                    longitudinal: perp_in,
+                };
+                let turn_out = RouteTurn {
+                    transverse: -next.offset,
+                    longitudinal: perp_out,
+                };
+                // positive if out_dir is clockwise of in_dir
+                // => positive == turning left
+                if in_dir.cross(*out_dir) > 0.0 {
+                    corner.insert_left(start_pt.id, turn_in);
+                    corner.insert_right(end_pt.id, turn_out);
+                } else {
+                    corner.insert_right(start_pt.id, turn_in);
+                    corner.insert_left(end_pt.id, turn_out);
+                }
+            }
+        }
+    }
+
+    fn route_to_path(&self, route: &Route, route_corners: &RouteCorners) -> Path {
         let mut path = Path::new()
             .set("id", format!("route-{}", route.name))
             .set("class", format!("route {}", route.style));
@@ -540,14 +604,25 @@ impl PointCollection {
             for (current, next) in route.iter().tuple_windows() {
                 // process `current` in the loop; `next` will be handled on the next iteration, or
                 // after the loop, for the last segment.
-                for shift in self.parallel_shifts(current) {
+                for shift in self.parallel_shifts(current, route_corners) {
                     data = shift.apply(data);
                 }
                 if current.end == next.start {
+                    let route_corner = route_corners.get(&current.end);
+                    let in_pt = self.get_other_segment_endpoint(current.start, current.end);
+                    let out_pt = self.get_other_segment_endpoint(next.end, next.start);
+                    let longitudinal_in = route_corner.and_then(|rc| rc.get(in_pt)).unwrap_or(0.0);
+                    let longitudinal_out =
+                        route_corner.and_then(|rc| rc.get(out_pt)).unwrap_or(0.0);
                     match self.are_collinear(current.start, current.end, next.end) {
                         Collinearity::Sequential => {
                             // parallel shift
-                            if let Some(shift) = self.parallel_shift(current, next) {
+                            if let Some(shift) = self.parallel_shift(
+                                current,
+                                next,
+                                longitudinal_in,
+                                longitudinal_out,
+                            ) {
                                 data = shift.apply(data);
                             }
                         }
@@ -557,12 +632,14 @@ impl PointCollection {
                                 data = data.line_to(self.segment_end(current));
                             } else {
                                 // u-turn
-                                data = self.u_turn(current, next).apply(data);
+                                data = self.u_turn(current, next, longitudinal_in).apply(data);
                             }
                         }
                         Collinearity::NotCollinear => {
                             // corner
-                            data = self.corner(current, next).apply(data);
+                            data = self
+                                .corner(current, next, longitudinal_in, longitudinal_out)
+                                .apply(data);
                         }
                     }
                 } else {
@@ -573,7 +650,7 @@ impl PointCollection {
                 }
             }
             let current = route.last().unwrap();
-            for shift in self.parallel_shifts(current) {
+            for shift in self.parallel_shifts(current, route_corners) {
                 data = shift.apply(data);
             }
             data = data.line_to(self.segment_end(current));
@@ -582,10 +659,18 @@ impl PointCollection {
         path
     }
 
-    pub fn parallel_shifts(
-        &self,
-        segment: &RouteSegment,
-    ) -> impl Iterator<Item = ParallelShift> + '_ {
+    /// Finds the segment along the line from `far` to `near` which contains `near`, and returns
+    /// the endpoint of that segment closest to `far`.
+    fn get_other_segment_endpoint(&self, far: PointId, near: PointId) -> PointId {
+        let (rev, seg) = self[(far, near)].get_segment(self[far].info, self[near].info);
+        seg.endpoints(rev).0.id
+    }
+
+    pub fn parallel_shifts<'a>(
+        &'a self,
+        segment: &'a RouteSegment,
+        route_corners: &'a RouteCorners,
+    ) -> impl Iterator<Item = ParallelShift> + 'a {
         // this is only called on segments which have already been added, so we can be sure that
         // all the points mentioned are valid.
         let start_id = segment.start;
@@ -601,12 +686,20 @@ impl PointCollection {
             if crate::values::float_eq(offset_in, offset_out) {
                 None
             } else {
-                let (dir, at) = if reverse {
-                    (-line.direction, line.point(prev.start.distance))
+                let (in_pt, at_pt) = prev.endpoints(reverse);
+                let (_, out_pt) = next.endpoints(reverse);
+                let dir = if reverse {
+                    -line.direction
                 } else {
-                    (line.direction, line.point(prev.end.distance))
+                    line.direction
                 };
-                Some(ParallelShift::new(offset_in, offset_out, dir, at))
+                let at = self[at_pt.id].info.value;
+                let route_corner = route_corners.get(&at_pt.id);
+                let long_in = route_corner.and_then(|rc| rc.get(in_pt.id)).unwrap_or(0.0);
+                let long_out = route_corner.and_then(|rc| rc.get(out_pt.id)).unwrap_or(0.0);
+                Some(ParallelShift::new(
+                    offset_in, offset_out, long_in, long_out, dir, at,
+                ))
             }
         })
     }
@@ -615,6 +708,8 @@ impl PointCollection {
         &self,
         segment_in: &RouteSegment,
         segment_out: &RouteSegment,
+        longitudinal_in: f64,
+        longitudinal_out: f64,
     ) -> Option<ParallelShift> {
         let start_id = segment_in.start;
         let end_id = segment_in.end;
@@ -622,9 +717,9 @@ impl PointCollection {
         let end = self[end_id].info;
         let line = &self[(start_id, end_id)];
         let (reverse, prev, next) = line.segments_at(start, end);
-        let offset_in = prev.calculate_offset(segment_in.offset, reverse, self.default_width);
-        let offset_out = next.calculate_offset(segment_out.offset, reverse, self.default_width);
-        if crate::values::float_eq(offset_in, offset_out) {
+        let transverse_in = prev.calculate_offset(segment_in.offset, reverse, self.default_width);
+        let transverse_out = next.calculate_offset(segment_out.offset, reverse, self.default_width);
+        if crate::values::float_eq(transverse_in, transverse_out) {
             None
         } else {
             let dir = if reverse {
@@ -632,11 +727,23 @@ impl PointCollection {
             } else {
                 line.direction
             };
-            Some(ParallelShift::new(offset_in, offset_out, dir, end.value))
+            Some(ParallelShift::new(
+                transverse_in,
+                transverse_out,
+                longitudinal_in,
+                longitudinal_out,
+                dir,
+                end.value,
+            ))
         }
     }
 
-    pub fn u_turn(&self, segment_in: &RouteSegment, segment_out: &RouteSegment) -> Corner {
+    pub fn u_turn(
+        &self,
+        segment_in: &RouteSegment,
+        segment_out: &RouteSegment,
+        shift: f64,
+    ) -> Corner {
         let start_id = segment_in.start;
         let end_id = segment_in.end;
         let start = self[start_id].info;
@@ -645,10 +752,16 @@ impl PointCollection {
         let (reverse, seg) = line.get_segment(start, end);
         let offset_in = seg.calculate_offset(segment_in.offset, reverse, self.default_width);
         let offset_out = seg.calculate_offset(segment_out.offset, !reverse, self.default_width);
-        Corner::u_turn(start.value, end.value, offset_in, offset_out)
+        Corner::u_turn(start.value, end.value, offset_in, offset_out, shift)
     }
 
-    pub fn corner(&self, segment_in: &RouteSegment, segment_out: &RouteSegment) -> Corner {
+    pub fn corner(
+        &self,
+        segment_in: &RouteSegment,
+        segment_out: &RouteSegment,
+        offset_long_in: f64,
+        offset_long_out: f64,
+    ) -> Corner {
         let start_id = segment_in.start;
         let corner_id = segment_in.end;
         let end_id = segment_out.end;
@@ -658,30 +771,23 @@ impl PointCollection {
         let line_in = &self[(start_id, corner_id)];
         let line_out = &self[(corner_id, end_id)];
         let (reverse_in, seg_in) = line_in.get_segment(start, corner);
-        let (reverse_out, seg_out) = line_out.get_segment(end, corner);
-        // true => to the left (line_in is right of end)
-        // false => to the righht (line_in is left of end)
-        let turn_in = line_in.right_of(end.value);
-        let (offset_in, radius_in) = seg_in.calculate_offset_radius(
-            segment_in.offset,
-            reverse_in,
-            turn_in,
-            self.default_width,
+        let (reverse_out, seg_out) = line_out.get_segment(corner, end);
+
+        let transverse_in =
+            seg_in.calculate_offset(segment_in.offset, reverse_in, self.default_width);
+        let transverse_out =
+            seg_out.calculate_offset(segment_out.offset, reverse_out, self.default_width);
+
+        let (long_in, long_out) = calculate_longitudinal_offsets(
+            (start.value - corner.value).unit(),
+            (end.value - corner.value).unit(),
+            -transverse_in,
+            transverse_out,
         );
-        let turn_out = line_out.right_of(start.value);
-        let (offset_out, radius_out) = seg_out.calculate_offset_radius(
-            segment_out.offset,
-            !reverse_out,
-            turn_out,
-            self.default_width,
-        );
-        Corner::new(
-            start.value,
-            corner.value,
-            end.value,
-            radius_in.max(radius_out) + self.inner_radius,
-        )
-        .offset(offset_in, offset_out)
+        let arc_width = (offset_long_in - long_in).max(offset_long_out - long_out);
+
+        Corner::new(start.value, corner.value, end.value, arc_width)
+            .offset(transverse_in, transverse_out)
     }
 
     pub fn segment_start(&self, segment: &RouteSegment) -> Point {
@@ -705,7 +811,7 @@ impl PointCollection {
         // if `is_start`, we reversed the start and end points already, so flip `reverse`
         reverse ^= is_start;
         let mut offset = seg.calculate_offset(segment.offset, reverse, self.default_width);
-        // we want absoolute offset.
+        // we want absolute offset.
         if reverse {
             offset = -offset;
         }
@@ -782,7 +888,7 @@ impl IndexMut<RouteId> for PointCollection {
 }
 
 /// The result of `are_collinear`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Collinearity {
     /// The three points are collinear, and in order.
     Sequential,

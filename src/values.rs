@@ -46,8 +46,8 @@ impl Point {
     }
 
     /// Returns a unit vector in the direction of the point.
-    pub fn unit(self) -> Point {
-        self / self.norm()
+    pub fn unit(self) -> UnitVector {
+        UnitVector(self / self.norm())
     }
 
     /// Rotates `self` 90 degrees clockwise.
@@ -141,6 +141,30 @@ impl ops::Div<f64> for Point {
 
     fn div(self, other: f64) -> Point {
         Point(self.0 / other, self.1 / other)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct UnitVector(Point);
+
+impl UnitVector {
+    pub const NORTH: UnitVector = UnitVector(Point(0.0, -1.0));
+    pub const SOUTH: UnitVector = UnitVector(Point(0.0, 1.0));
+    pub const EAST: UnitVector = UnitVector(Point(-1.0, 0.0));
+    pub const WEST: UnitVector = UnitVector(Point(1.0, 0.0));
+
+    /// Unit vector in the given direction in degrees, with 0 being up the page, and increasing
+    /// clockwise.
+    pub fn dir(angle: f64) -> UnitVector {
+        UnitVector(Point(sin_deg(angle), -cos_deg(angle)))
+    }
+}
+
+impl ops::Deref for UnitVector {
+    type Target = Point;
+
+    fn deref(&self) -> &Point {
+        &self.0
     }
 }
 
@@ -276,7 +300,7 @@ impl Value {
     /// Unit vector in the given direction in degrees, with 0 being up the page, and increasing
     /// clockwise.
     pub fn dir(self) -> Result {
-        numeric_fn!((self) as x => Ok(Value::Point(Point(sin_deg(x), -cos_deg(x)), PointProvenance::None)))
+        numeric_fn!((self) as x => Ok(Value::Point(*UnitVector::dir(x), PointProvenance::None)))
     }
 
     /// Angle of given vector in degrees
@@ -524,11 +548,11 @@ pub fn intersect(p1: Point, d1: Point, p2: Point, d2: Point) -> Option<Point> {
 }
 
 pub fn float_eq(x: f64, y: f64) -> bool {
-    (x - y).abs() < ::std::f64::EPSILON
+    float_eq::float_eq!(x, y, rmax <= f64::EPSILON)
 }
 
 pub fn point_float_eq(p1: Point, p2: Point) -> bool {
-    (p1 - p2).norm() < ::std::f64::EPSILON
+    float_eq((p1 - p2).norm(), 0.0)
 }
 
 #[cfg(test)]
