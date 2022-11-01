@@ -6,18 +6,10 @@ pub type RouteCorners = HashMap<PointId, RouteCorner>;
 
 #[derive(Default)]
 pub struct RouteCorner {
-    // point: PointId,
     turns: HashMap<PointId, RouteTurns>,
 }
 
 impl RouteCorner {
-    //pub fn new(point: PointId) -> Self {
-    //    RouteCorner {
-    //        point,
-    //        turns: HashMap::new(),
-    //    }
-    //}
-
     pub fn insert_left(&mut self, point: PointId, turn: RouteTurn) {
         self.turns.entry(point).or_default().insert_left(turn)
     }
