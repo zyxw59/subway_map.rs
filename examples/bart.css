@@ -1,0 +1,77 @@
+:root {
+  --bg-width: 11px;
+  --fg-width: 8px;
+}
+
+.route {
+  fill: none;
+}
+
+.route.fake {
+  display: none;
+}
+
+.route.bg {
+  stroke: black;
+  stroke-width: var(--bg-width);
+}
+
+.route.bg.guide {
+  stroke-width: 3;
+}
+
+.route.mg.guide {
+  stroke: white;
+  stroke-width: 2;
+}
+
+.route.mg, .route.fg {
+  stroke-width: var(--fg-width);
+}
+
+.route.mg.red, .route.mg.red_limited {
+  stroke: #ED1C24;
+}
+
+.route.fg.red_limited {
+  stroke: white;
+}
+
+.route.fg.yellow_limited {
+  stroke: black;
+}
+
+.route.fg.red_limited, .route.fg.yellow_limited {
+  stroke-dasharray: calc(var(--fg-width) * 0.6);
+}
+
+.route.mg.yellow, .route.mg.yellow_limited {
+  stroke: #FFE800;
+}
+
+.route.mg.orange {
+  stroke: #FAA618;
+}
+
+.route.mg.blue {
+  stroke: #00AEEF;
+}
+
+.route.mg.green {
+  stroke: #4DB848;
+}
+
+.route.mg.oac {
+  stroke: #ABA682;
+}
+
+.route.mg.purple {
+  stroke: purple;
+}
+
+.stop {
+  r: var(--fg-width);
+  stroke: black;
+  stroke-width: calc(var(--bg-width) - var(--fg-width));
+  fill: white;
+}

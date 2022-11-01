@@ -1,0 +1,38 @@
+style "bart.css";
+line_sep = 20;
+inner_radius = 10;
+ss = line_sep * 5;
+
+N = ss * dir 0;
+E = ss * dir 90;
+S = ss * dir 180;
+W = ss * dir 270;
+
+point O = (0, 0);
+x0 = O >> S;
+y0 = O >> E;
+x1 = (O + E) >> S;
+x2 = (O + 2 * E) >> S;
+y1 = (O + S) >> E;
+y2 = (O + 2 * S) >> E;
+
+point center = x1 & y1;
+point north  = x1 & y0;
+point south  = x1 & y2;
+point east   = x2 & y1;
+point west   = x0 & y1;
+point ne     = x2 & y0;
+
+point bottom_right = x2 & y2;
+top = ypart O - ss;
+bottom = ypart bottom_right + ss;
+left = xpart O - ss;
+right = xpart bottom_right + ss;
+
+route.green ecn: east --(0) center --(0) north;
+route.orange ecs: east --(1) center --(0) south;
+route.blue ecs2: east --(2) center --(1) south;
+route.yellow wcne: west --(0) center --(0) ne;
+route.red wcs: west --(-1) center --(-1) south;
+route.guide ns: north --(0) south;
+route.guide ew: east --(0) west;
