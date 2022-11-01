@@ -1,0 +1,31 @@
+<svg width="700" height="300" viewBox="-60 200 700 300" xmlns="http://www.w3.org/2000/svg">
+<rect x="-60" y="200" height="100%" width="100%" fill="white" />
+
+<g fill="none">
+<path stroke="blue" d="M 150,300 L 300,300 406.06601717798213,406.06601717798213" />
+<path stroke="blue" d="M 150,240 L 282.42640687119285,240 427.27922061357856,384.8528137423857" />
+
+<path stroke="green" d="M 300,300 V 400 M 282.42640687119285,240 V 400" />
+<path stroke="green" d="M 300,300 L 240,360 M 282.42640687119285,240 L 201.21320343559637,321.21320343559637" />
+
+<path stroke="black" d="M 130,300 L 130,240 M 120,300 L 140,300 M 120,240 L 140,240" />
+<path stroke="black" d="M 420.2081528017131,420.2081528017131 L 441.4213562373095,398.99494936611666 M 413.1370849898476,413.1370849898476 L 427.27922061357856,427.27922061357856 M 434.35028842544403,391.9238815542512 L 448.492424049175,406.06601717798213" />
+
+<path stroke="black" d="M 300,420 H 282.42640687119285 m 0,-10 v 20 M 300,410 v 20" />
+<path stroke="black" d="M 187.07106781186542,335.3553390593273 L 225.85786437626905,374.14213562373095 M 194.1421356237309,328.28427124746185 L 180,342.4264068711928 M 232.92893218813452,367.0710678118655 L 218.78679656440357,381.2132034355964" />
+
+<path stroke="black" d="M 320,320 L 430,320" />
+<path stroke="black" d="M 302.42640687119285,260 L 430,260" />
+</g>
+<g fill="black" font-size="20">
+<g font-family="monospace">
+<text x="125" y="270" text-anchor="end" dominant-baseline="middle">transverse_in</text>
+<text x="434.35028843" y="413.13708499" text-anchor="start" dominant-baseline="hanging">transverse_out</text>
+<text x="291.2132034355964" y="435" text-anchor="middle" dominant-baseline="hanging">longitudinal_in</text>
+<text x="202.9289321881345" y="358.2842712474619" text-anchor="end" dominant-baseline="hanging">longitudinal_out</text>
+</g>
+<text x="202.9289321881345" y="378.2842712474619" text-anchor="end" dominant-baseline="hanging" font-style="italic" font-size="16">(negative)</text>
+<text x="440" y="320" text-anchor="start" dominant-baseline="middle">old corner</text>
+<text x="440" y="260" text-anchor="start" dominant-baseline="middle">new corner</text>
+</g>
+</svg>

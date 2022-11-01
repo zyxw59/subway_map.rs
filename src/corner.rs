@@ -20,6 +20,8 @@ pub struct Corner {
 
 impl Corner {
     /// Constructs a new `Corner` with the given parameters.
+    ///
+    #[doc = include_str!("doc-corner-new.svg")]
     pub fn new(from: Point, corner: Point, to: Point, arc_width: f64) -> Corner {
         let in_dir = (from - corner).unit();
         let out_dir = (to - corner).unit();
@@ -51,6 +53,7 @@ impl Corner {
     }
 
     /// Offsets the values of a `Corner` by the specified parallel distances.
+    #[doc = include_str!("doc-corner-offset.svg")]
     pub fn offset(self, transverse_in: f64, transverse_out: f64) -> Corner {
         let in_dir = (self.start - self.corner).unit();
         let out_dir = (self.end - self.corner).unit();
@@ -113,6 +116,8 @@ impl ParallelShift {
         dir: Point,
         at: Point,
     ) -> ParallelShift {
+        // TODO: figure out if this is actually the desired behavior (I should make some maps that
+        // make use of parallel shifts to test it ou)
         let dir = dir.unit();
         let longitudinal_width = longitudinal_in + longitudinal_out;
         let transverse_width = (transverse_out - transverse_in).abs();
@@ -140,6 +145,8 @@ impl ParallelShift {
 /// respective rays.
 ///
 /// Positive longitudinal offsets correspond to shifting the corner along the respective rays.
+///
+#[doc = include_str!("doc-calculate-longitudinal-offsets.svg")]
 #[inline]
 pub fn calculate_longitudinal_offsets(
     in_dir: UnitVector,
