@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 use std::path::PathBuf;
 
-use structopt::StructOpt;
+use clap::Parser;
 
 #[macro_use]
 mod macros;
@@ -20,21 +20,21 @@ mod values;
 
 use parser::LexerExt;
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Args {
     /// Input file, stdin if not present.
-    #[structopt(short, long)]
+    #[clap(short, long)]
     input: Option<PathBuf>,
     /// Output file, stdout if not present.
-    #[structopt(short, long)]
+    #[clap(short, long)]
     output: Option<PathBuf>,
     /// Whether to output debugging info, and file to output to.
-    #[structopt(short, long)]
+    #[clap(short, long)]
     debug: Option<Option<PathBuf>>,
 }
 
 fn main() -> Result<(), anyhow::Error> {
-    let args = Args::from_args();
+    let args = Args::parse();
     let input: Box<dyn io::BufRead> = if let Some(path) = args.input {
         Box::new(io::BufReader::new(File::open(path)?))
     } else {
