@@ -89,11 +89,11 @@ impl PointCollection {
         match self.route_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::RouteRedefinition(
-                    e.key().clone(),
-                    line_number,
-                    self[id].line_number,
-                ))
+                Err(EvaluatorError::RouteRedefinition {
+                    name: e.key().clone(),
+                    line: line_number,
+                    original_line: self[id].line_number,
+                })
             }
             Entry::Vacant(e) => {
                 let id = RouteId(self.routes.len());
@@ -114,11 +114,11 @@ impl PointCollection {
         match self.point_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::PointRedefinition(
-                    e.key().clone(),
-                    line_number,
-                    self[id].info.line_number,
-                ))
+                Err(EvaluatorError::PointRedefinition {
+                    name: e.key().clone(),
+                    line: line_number,
+                    original_line: self[id].info.line_number,
+                })
             }
             Entry::Vacant(e) => {
                 let id = PointId(self.points.len());
@@ -138,11 +138,11 @@ impl PointCollection {
         match self.point_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::PointRedefinition(
-                    e.key().clone(),
-                    line_number,
-                    self[id].info.line_number,
-                ))
+                Err(EvaluatorError::PointRedefinition {
+                    name: e.key().clone(),
+                    line: line_number,
+                    original_line: self[id].info.line_number,
+                })
             }
             Entry::Vacant(e) => {
                 e.insert(id);

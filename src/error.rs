@@ -11,11 +11,11 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("The lexer encountered an error: {0}")]
+    #[error("Lexer error: {0}")]
     Lexer(#[from] LexerError),
-    #[error("The parser encountered an error: {0}")]
+    #[error("Parser error: {0}")]
     Parser(#[from] ParserError),
-    #[error("The evaluator encountered an error: {0}")]
+    #[error("Evaluator error: {0}")]
     Evaluator(#[from] EvaluatorError),
 }
 
@@ -31,27 +31,43 @@ pub enum ParserError {
         "Too many items in parenthesized list starting on line {1} (got {0}, expected 1 or 2)"
     )]
     ParenList(usize, usize),
-    #[error("Repeated argument {0} to function {1} on line {2}")]
-    Argument(String, String, usize),
+    #[error("Repeated argument {argument} to function {function} on line {line}")]
+    Argument {
+        argument: Variable,
+        function: Variable,
+        line: usize,
+    },
 }
 
 #[derive(Error, Debug)]
 pub enum EvaluatorError {
-    #[error("A math error ({0}) occured on line {1}")]
+    #[error("Math error on line {1}: {0}")]
     Math(#[source] MathError, usize),
-    #[error("Point ({0}) redefined on line {1} (originally defined on line {2}")]
-    PointRedefinition(Variable, usize, usize),
-    #[error("Route ({0}) redefined on line {1} (originally defined on line {2}")]
-    RouteRedefinition(Variable, usize, usize),
-    #[error("An IO error ({0}) occurred during output")]
+    #[error(
+        "Point ({name}) redefined on line {line} (originally defined on line {original_line})"
+    )]
+    PointRedefinition {
+        name: Variable,
+        line: usize,
+        original_line: usize,
+    },
+    #[error(
+        "Route ({name}) redefined on line {line} (originally defined on line {original_line})"
+    )]
+    RouteRedefinition {
+        name: Variable,
+        line: usize,
+        original_line: usize,
+    },
+    #[error("IO error during output: {0}")]
     Io(#[from] io::Error),
-    #[error("An error ({0}) occurred during debug output")]
+    #[error("Error during debug output: {0}")]
     DebugOutput(#[from] serde_json::Error),
 }
 
 #[derive(Error, Debug)]
 pub enum MathError {
-    #[error("A type error occured (expected {0:?}, got {1:?})")]
+    #[error("Type error: expected {0:?}, got {0:?}")]
     Type(Type, Type),
     #[error("Division by zero")]
     DivisionByZero,
@@ -59,12 +75,16 @@ pub enum MathError {
     ParallelIntersection,
     #[error("Domain error")]
     Domain,
-    #[error("Undefined variable {0:?}")]
+    #[error("Undefined variable {0}")]
     Variable(Variable),
-    #[error("Undefined function {0:?}")]
+    #[error("Undefined function {0}")]
     Function(Variable),
-    #[error("Incorrect number of arguments to function (expected {0}, got {1})")]
-    Arguments(usize, usize),
+    #[error("Incorrect number of arguments to function {name}: expected {expected}, got {actual}")]
+    Arguments {
+        name: Variable,
+        expected: usize,
+        actual: usize,
+    },
 }
 
 #[derive(Debug)]
@@ -90,7 +110,7 @@ pub enum LexerError {
     UnterminatedString(usize),
     #[error("Invalid UTF-8 at line {0}")]
     Unicode(usize),
-    #[error("An IO error ({0}) occured whil reading line {1}")]
+    #[error("IO error while reading line {1}: {0}")]
     Io(#[source] io::Error, usize),
 }
 

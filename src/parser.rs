@@ -177,7 +177,7 @@ where
     ///
     /// On success, returns a tuple of the function name and the function definition.
     fn parse_function_def(&mut self) -> EResult<(Variable, Function)> {
-        let tag = expect!(self, Token::Tag(tag) => tag);
+        let name = expect!(self, Token::Tag(name) => name);
         expect!(self, Token::LeftParen);
         // maps argument names to their index in the function signature
         let mut args = HashMap::new();
@@ -191,11 +191,11 @@ where
                     match args.entry(arg) {
                         // there's already an argument with this name
                         Entry::Occupied(e) => {
-                            return Err(ParserError::Argument(
-                                e.remove_entry().0,
-                                tag,
-                                self.line(),
-                            )
+                            return Err(ParserError::Argument {
+                                argument: e.remove_entry().0,
+                                function: name,
+                                line: self.line(),
+                            }
                             .into());
                         }
                         Entry::Vacant(e) => e.insert(index),
@@ -217,7 +217,14 @@ where
         expect!(self, Token::Equal);
         // get the function body, as an expression tree
         let expression = self.parse_expression(0)?;
-        Ok((tag, Function { args, expression }))
+        Ok((
+            name.clone(),
+            Function {
+                name,
+                args,
+                expression,
+            },
+        ))
     }
 
     fn parse_comma_point_list(&mut self) -> EResult<Vec<(Option<Expression>, Variable)>> {

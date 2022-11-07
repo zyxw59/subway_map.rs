@@ -56,7 +56,12 @@ impl Evaluator {
                 }
                 // named points can't be redefined, since lines are defined in terms of them
                 if let Some(original_line) = self.points.get_point_line_number(&name) {
-                    return Err(EvaluatorError::PointRedefinition(name, line, original_line).into());
+                    return Err(EvaluatorError::PointRedefinition {
+                        name,
+                        line,
+                        original_line,
+                    }
+                    .into());
                 }
                 self.variables.insert(name, value);
             }
@@ -66,7 +71,12 @@ impl Evaluator {
             StatementKind::PointSingle(name, expr) => {
                 // named points can't be redefined, since lines are defined in terms of them
                 if let Some(original_line) = self.points.get_point_line_number(&name) {
-                    return Err(EvaluatorError::PointRedefinition(name, line, original_line).into());
+                    return Err(EvaluatorError::PointRedefinition {
+                        name,
+                        line,
+                        original_line,
+                    }
+                    .into());
                 }
                 let (point, provenance) = expr
                     .evaluate(self)

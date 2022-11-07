@@ -9,6 +9,7 @@ pub type EResult<T> = Result<T, MathError>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
+    pub name: Variable,
     pub args: HashMap<Variable, usize>,
     pub expression: Expression,
 }
@@ -16,9 +17,13 @@ pub struct Function {
 impl Function {
     fn apply(&self, args: &[Expression], context: &impl EvaluationContext) -> EResult<Value> {
         let expected = self.args.len();
-        let got = args.len();
-        if expected != got {
-            return Err(MathError::Arguments(expected, got));
+        let actual = args.len();
+        if expected != actual {
+            return Err(MathError::Arguments {
+                name: self.name.clone(),
+                expected,
+                actual,
+            });
         }
         let locals = FunctionEvaluator {
             parent: context,
