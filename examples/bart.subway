@@ -62,10 +62,10 @@ points from w0  spaced SE: (m) colm, ssan, sbrn, y0, mlbr;
 point sfia = y0 + ss * dir 60;
 
 # viewbox
-top = (ypart rich min ypart antc) - ss;
-bottom = (ypart mlbr max ypart warm) + ss;
+top = ypart (rich min antc) - ss;
+bottom = ypart (mlbr max warm) + ss;
 left = xpart w0 - ss;
-right = (xpart antc max xpart dubl max xpart warm) + ss;
+right = xpart (antc max dubl max warm) + ss;
 
 # segment offsets are positive to the right, travelling in the direction of the
 # segment as written, so `a --(1) b` is the same as `b --(-1) a`
