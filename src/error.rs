@@ -92,6 +92,7 @@ pub enum Type {
     Number,
     Point,
     Line,
+    String,
 }
 
 impl From<Value> for Type {
@@ -106,6 +107,7 @@ impl From<&'_ Value> for Type {
             Value::Number(_) => Type::Number,
             Value::Point(..) => Type::Point,
             Value::Line(..) => Type::Line,
+            Value::String(..) => Type::String,
         }
     }
 }

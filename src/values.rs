@@ -264,6 +264,7 @@ pub enum Value {
     Number(f64),
     Point(Point, PointProvenance),
     Line(Point, Point, Option<(PointId, PointId)>),
+    String(String),
 }
 
 impl Value {

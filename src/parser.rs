@@ -120,6 +120,7 @@ where
                     }
                 }
             },
+            Some(Token::String(string)) => Ok(Expression::Value(Value::String(string))),
             Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
         }
     }
