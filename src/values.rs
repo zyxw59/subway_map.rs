@@ -716,7 +716,7 @@ mod tests {
     #[test]
     fn min() {
         // (2, 4) min (3, 1) == (2, 1)
-        assert_eval!(("min", (@2, 4), (@3, 1)), (1, 1))
+        assert_eval!(("min", (@2, 4), (@3, 1)), (2, 1))
     }
 
     #[test]
