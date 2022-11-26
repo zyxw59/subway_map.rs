@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use crate::expressions::{Expression, Function, Variable};
 
 /// A statement, annotated with a line number.
@@ -71,38 +69,11 @@ pub struct Stop {
     pub point: Expression,
     /// The style of the stop.
     pub styles: Vec<Variable>,
+    /// The type of marker to place at the stop.
+    pub marker_type: Variable,
+    /// The parameters for the marker.
+    pub marker_parameters: Vec<Expression>,
 }
 
-/// A label for a stop.
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
-pub struct Label {
-    /// The label text.
-    pub text: String,
-    /// The positioning of the label.
-    pub position: LabelPosition,
-}
-
-/// The position of a stop label.
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
-pub enum LabelPosition {
-    End,
-    Above,
-    Below,
-    Left,
-    Right,
-}
-
-impl TryFrom<String> for LabelPosition {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.as_ref() {
-            "end" => Ok(LabelPosition::End),
-            "above" => Ok(LabelPosition::Above),
-            "below" => Ok(LabelPosition::Below),
-            "left" => Ok(LabelPosition::Left),
-            "right" => Ok(LabelPosition::Right),
-            _ => Err(value),
-        }
-    }
+pub struct StopMarker {
 }

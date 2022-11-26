@@ -1,11 +1,10 @@
 use std::collections::{hash_map::Entry, HashMap};
-use std::convert::TryInto;
 
 use crate::error::{ParserError, Result as EResult};
 use crate::expressions::{Expression, Function, Variable};
 use crate::lexer::Token;
 use crate::operators::{BinaryBuiltins, UnaryBuiltins};
-use crate::statement::{Label, Segment, Statement, StatementKind, Stop};
+use crate::statement::{Segment, Statement, StatementKind, Stop};
 use crate::values::Value;
 
 pub trait LexerExt: Iterator<Item = EResult<Token>> {
@@ -410,39 +409,15 @@ where
 
     fn parse_stop_statement(&mut self) -> EResult<Option<StatementKind>> {
         let styles = self.parse_dot_list()?;
-        let point = expect!(self, Token::Tag(point) => point);
-        expect!(self, Token::LeftParen);
-        let tag = expect!(self, Token::Tag(tag) => tag);
-        let routes = if tag == "all" {
-            expect!(self, Token::RightParen);
-            None
-        } else {
-            self.put_back(Token::Tag(tag));
-            let mut routes = Vec::new();
-            loop {
-                expect!(self, Token::Tag(tag) => routes.push(tag));
-                expect!(self, Token::RightParen => break, Token::Comma => {});
-            }
-            Some(routes)
-        };
-        let label = expect! { self,
-            Token::String(text) => {
-                let tag = expect!(self, Token::Tag(tag) => tag);
-                let position = tag.try_into().map_err(|tag| {
-                    ParserError::Token(Token::Tag(tag), self.line())
-                })?;
-                Some(Label { text, position })
-            },
-            Token::Semicolon => {
-                self.put_back(Token::Semicolon);
-                None
-            },
-        };
+        let point = self.parse_expression(0)?;
+        expect!(self, Token::Tag(ref tag) if tag == "marker");
+        let marker_type = expect!(self, Token::Tag(tag) => tag);
+        let marker_parameters = self.parse_comma_list()?;
         Ok(Some(StatementKind::Stop(Stop {
             point,
             styles,
-            routes,
-            label,
+            marker_type,
+            marker_parameters,
         })))
     }
 }
@@ -469,7 +444,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::lexer::Lexer;
-    use crate::statement::{Label, LabelPosition, StatementKind, Stop};
+    use crate::statement::{StatementKind, Stop};
 
     use super::LexerExt;
 
@@ -657,15 +632,12 @@ mod tests {
     #[test]
     fn stop() {
         assert_statement!(
-            r#"stop a (all) "A" above"#,
+            r#"stop a marker circle 10"#,
             StatementKind::Stop(Stop {
                 styles: vec![],
-                point: "a".into(),
-                routes: None,
-                label: Some(Label {
-                    text: "A".into(),
-                    position: LabelPosition::Above,
-                }),
+                point: expression!(#"a"),
+                marker_type: "circle".into(),
+                marker_parameters: vec![expression!(10)],
             })
         )
     }
@@ -673,44 +645,25 @@ mod tests {
     #[test]
     fn stop_with_style() {
         assert_statement!(
-            r#"stop.terminus a (all) "A" end"#,
+            r#"stop.terminus a marker double_tick 20, 45"#,
             StatementKind::Stop(Stop {
                 styles: vec!["terminus".into()],
-                point: "a".into(),
-                routes: None,
-                label: Some(Label {
-                    text: "A".into(),
-                    position: LabelPosition::End,
-                }),
+                point: expression!(#"a"),
+                marker_type: "double_tick".into(),
+                marker_parameters: vec![expression!(20), expression!(45)],
             })
         )
     }
 
     #[test]
-    fn stop_with_routes() {
+    fn stop_with_text() {
         assert_statement!(
-            r#"stop a (red, blue) "A" above"#,
+            r#"stop.terminus a marker text "A station", 0"#,
             StatementKind::Stop(Stop {
-                styles: vec![],
-                point: "a".into(),
-                routes: Some(vec!["red".into(), "blue".into()]),
-                label: Some(Label {
-                    text: "A".into(),
-                    position: LabelPosition::Above,
-                }),
-            })
-        )
-    }
-
-    #[test]
-    fn stop_no_label() {
-        assert_statement!(
-            "stop a (all);",
-            StatementKind::Stop(Stop {
-                styles: vec![],
-                point: "a".into(),
-                routes: None,
-                label: None,
+                styles: vec!["terminus".into()],
+                point: expression!(#"a"),
+                marker_type: "text".into(),
+                marker_parameters: vec![expression!(@"A station"), expression!(0)],
             })
         )
     }

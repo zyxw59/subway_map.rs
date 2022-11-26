@@ -189,7 +189,7 @@ impl Evaluator {
                 }
             }
             StatementKind::Stop(stop) => {
-                self.points.add_stop(stop, line)?;
+                todo!();
             }
             StatementKind::Style(style) => self.stylesheets.push(style),
             StatementKind::Title(title) => self.title = Some(title),
@@ -238,7 +238,7 @@ impl Evaluator {
     }
 
     pub fn draw_stops(&self, document: &mut Document) {
-        self.points.draw_stops(document)
+        todo!();
     }
 }
 

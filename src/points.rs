@@ -5,7 +5,7 @@ use std::ops::{Index, IndexMut};
 use itertools::Itertools;
 use serde::Serialize;
 use svg::node::{
-    element::{path::Data, Path, Use},
+    element::{path::Data, Path},
     Node,
 };
 
@@ -18,7 +18,6 @@ use crate::corner::{
 use crate::document::Document;
 use crate::error::{EvaluatorError, MathError};
 use crate::expressions::Variable;
-use crate::statement;
 use crate::values::{Point, PointProvenance};
 
 use line::{Line, LineId};
@@ -33,7 +32,6 @@ pub struct PointCollection {
     pairs: HashMap<(PointId, PointId), LineId>,
     routes: Vec<Route>,
     route_ids: BTreeMap<Variable, RouteId>,
-    stops: Vec<Stop>,
     default_width: f64,
     inner_radius: f64,
 }
@@ -336,196 +334,6 @@ impl PointCollection {
         let width = self[route].width;
         self[line_id].add_segment(p1, p2, offset, width, route_segment);
         Ok(())
-    }
-
-    pub fn add_stop(
-        &mut self,
-        statement::Stop {
-            point,
-            styles,
-            routes,
-            label,
-        }: statement::Stop,
-        line_number: usize,
-    ) -> Result<(), EvaluatorError> {
-        let point = *self.point_ids.get(&point).ok_or(EvaluatorError::Math(
-            MathError::Variable(point),
-            line_number,
-        ))?;
-        let routes = routes
-            .map(|vec| {
-                vec.into_iter()
-                    .map(|rte| {
-                        self.route_ids
-                            .get(&rte)
-                            .copied()
-                            .ok_or(EvaluatorError::Math(MathError::Variable(rte), line_number))
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .transpose()?;
-        self.stops.push(Stop {
-            point,
-            style: styles.join(" "),
-            routes,
-            label,
-        });
-        Ok(())
-    }
-
-    pub fn draw_stops(&self, document: &mut Document) {
-        for stop in &self.stops {
-            self.draw_stop(stop, document);
-        }
-    }
-
-    fn draw_stop(&self, stop: &Stop, document: &mut Document) {
-        // just put a circle at the stop for now
-        // TODO: properly handle `RouteCorner`s
-        // TODO: More complicated stop icons
-        // TODO: Stop labels
-        // step 0: get the point info from the stop
-        let point_id = stop.point;
-        let point = &self[point_id];
-        // step 1: get the set of route segments which should have stop markers at this point.
-        let mut route_segments: HashSet<RouteSegmentRef> = HashSet::new();
-        for &line_id in &point.lines {
-            let line = &self[line_id];
-            let segments = line.get_segments_containing_point(point.info);
-            route_segments.extend(segments.iter().flatten().flat_map(|seg| {
-                seg.routes().filter(|seg_ref| {
-                    stop.routes
-                        .as_ref()
-                        .map_or(true, |routes| routes.contains(&seg_ref.route))
-                })
-            }));
-        }
-        // step 2: calculate stop marker locations, consolidating them as necessary.
-        let mut points_and_routes = Vec::new();
-        for &seg_ref in &route_segments {
-            let route = &self[seg_ref.route];
-            let segment = &route[seg_ref.index];
-            if point_id != segment.start && point_id != segment.end {
-                // case 1: the point is somewhere in the middle of the segment; we don't need to
-                // check for other segments.
-                points_and_routes.push(self.calculate_stop_simple(point_id, seg_ref));
-            } else if point_id == segment.start {
-                // case 2: the point is at the start of the segment...
-                match route.get_previous(seg_ref.index) {
-                    // case 2a: ... and the end of the previous segment in the line.
-                    Some(prev_seg) if point_id == prev_seg.end => {
-                        match self.are_collinear(prev_seg.start, point_id, segment.end) {
-                            Collinearity::Sequential => {
-                                // parallel shift; take the average of the two offsets.
-                                points_and_routes
-                                    .push(self.calculate_stop_sequential(point_id, seg_ref));
-                            }
-                            Collinearity::NotSequential => {
-                                // u-turn; place the marker at the top of the arc.
-                                // let corner = self.u_turn(prev_seg, segment);
-                                // points_and_routes.push((corner.midpoint(), seg_ref.route));
-                            }
-                            Collinearity::NotCollinear => {
-                                // corner; place the marker at the midpoint of the curve.
-                                // let corner = self.corner(prev_seg, segment);
-                                // points_and_routes.push((corner.midpoint(), seg_ref.route));
-                            }
-                        }
-                    }
-                    // case 2b: ... but not at the end of a previous segment.
-                    _ => points_and_routes.push(self.calculate_stop_simple(point_id, seg_ref)),
-                }
-            } else {
-                // case 3: the point is at the end of the segment...
-                match route.get_next(seg_ref.index) {
-                    // case 3a: ... and at the start of the next segment in the line.
-                    // we don't need to do anything here, since this case is handled by case 2a.
-                    Some(next_seg) if point_id == next_seg.start => {}
-                    // case 3b: ... but not at the start of a following segment.
-                    _ => points_and_routes.push(self.calculate_stop_simple(point_id, seg_ref)),
-                }
-            }
-        }
-        // step 2: draw the stop icons
-        for (point, route) in points_and_routes {
-            let route = &self[route];
-            let marker = Use::new()
-                .set("href", "#stop")
-                .set("x", point.0)
-                .set("y", point.1)
-                .set(
-                    "class",
-                    format!("stop {} {} {}", route.name, stop.style, route.style),
-                );
-            document.add_stop(marker);
-        }
-    }
-
-    /// Calculates the location for a stop marker for a point on a single route segment.
-    fn calculate_stop_simple(
-        &self,
-        point_id: PointId,
-        seg_ref: RouteSegmentRef,
-    ) -> (Point, RouteId) {
-        let point = &self[point_id];
-        let route_seg = &self[seg_ref.route][seg_ref.index];
-        let line = &self[(route_seg.start, route_seg.end)];
-        let reversed = line.are_reversed(self[route_seg.start].info, self[route_seg.end].info);
-        let [seg1, seg2] = line.get_segments_containing_point(point.info);
-        let offset1 = seg1
-            .filter(|seg| seg.contains_route(&seg_ref))
-            .map(|seg| seg.calculate_offset(route_seg.offset, reversed, self.default_width));
-        let offset2 = seg2
-            .filter(|seg| seg.contains_route(&seg_ref))
-            .map(|seg| seg.calculate_offset(route_seg.offset, reversed, self.default_width));
-        let offset = match (offset1, offset2) {
-            (Some(offset1), Some(offset2)) => (offset1 + offset2) / 2.0,
-            (Some(offset), None) | (None, Some(offset)) => offset,
-            (None, None) => unreachable!(),
-        };
-        // calculated offset it relative to the course of the route; we want relative to the line.
-        let offset = if reversed { -offset } else { offset };
-        let dir = line.direction;
-        (
-            (-dir.unit().perp()).mul_add(offset, point.info.value),
-            seg_ref.route,
-        )
-    }
-
-    /// Calculates the location for a stop marker for a point at the dividing point between two
-    /// segments along the same line.
-    ///
-    /// `seg_ref` refers to the segment after the point.
-    fn calculate_stop_sequential(
-        &self,
-        point_id: PointId,
-        seg_ref: RouteSegmentRef,
-    ) -> (Point, RouteId) {
-        let point = &self[point_id];
-        let next_seg = &self[seg_ref.route][seg_ref.index];
-        let prev_seg = &self[seg_ref.route][seg_ref.index - 1];
-        let line = &self[(next_seg.start, next_seg.end)];
-        let reversed = line.are_reversed(self[next_seg.start].info, self[next_seg.end].info);
-        let [seg1, seg2] = line.get_segments_containing_point(point.info);
-        // if the route is reversed relative to the line, `seg1` will match with `next_seg`, and
-        // `seg2` with `prev_seg`; otherwise `seg1` will match with `prev_seg` and `seg2` with
-        // `next_seg`.
-        // After swapping, `seg1` matches `prev_seg` and `seg2` matches `next_seg`
-        let [seg1, seg2] = if reversed { [seg2, seg1] } else { [seg1, seg2] };
-        let offset1 = seg1
-            .map(|seg| seg.calculate_offset(prev_seg.offset, reversed, self.default_width))
-            .unwrap();
-        let offset2 = seg2
-            .map(|seg| seg.calculate_offset(next_seg.offset, reversed, self.default_width))
-            .unwrap();
-        let offset = (offset1 + offset2) / 2.0;
-        // calculated offset it relative to the course of the route; we want relative to the line.
-        let offset = if reversed { -offset } else { offset };
-        let dir = line.direction;
-        (
-            (-dir.unit().perp()).mul_add(offset, point.info.value),
-            seg_ref.route,
-        )
     }
 
     pub fn draw_routes(&self, document: &mut Document) {
@@ -1047,21 +855,6 @@ pub struct RouteSegment {
 pub struct RouteSegmentRef {
     pub route: RouteId,
     pub index: usize,
-}
-
-/// A stop.
-#[derive(Clone, Debug, Serialize)]
-pub struct Stop {
-    /// The location of the stop.
-    pub point: PointId,
-    /// The style of the stop.
-    pub style: String,
-    /// The set of routes which stop at the stop, or `None` if all lines stop.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub routes: Option<Vec<RouteId>>,
-    /// The label.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<statement::Label>,
 }
 
 #[cfg(test)]
