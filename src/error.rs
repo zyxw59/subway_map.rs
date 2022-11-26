@@ -92,14 +92,22 @@ pub enum Type {
     Number,
     Point,
     Line,
+    String,
 }
 
 impl From<Value> for Type {
     fn from(expr: Value) -> Type {
+        (&expr).into()
+    }
+}
+
+impl From<&'_ Value> for Type {
+    fn from(expr: &Value) -> Type {
         match expr {
             Value::Number(_) => Type::Number,
             Value::Point(..) => Type::Point,
             Value::Line(..) => Type::Line,
+            Value::String(..) => Type::String,
         }
     }
 }

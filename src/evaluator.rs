@@ -47,11 +47,11 @@ impl Evaluator {
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 if &name == "line_sep" {
                     let value =
-                        f64::try_from(value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
                     self.points.set_default_width(value);
                 } else if &name == "inner_radius" {
                     let value =
-                        f64::try_from(value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
                     self.points.set_inner_radius(value);
                 }
                 // named points can't be redefined, since lines are defined in terms of them
@@ -167,7 +167,7 @@ impl Evaluator {
                     // otherwise, get the default line_sep
                     .or_else(|| self.get_variable("line_sep"))
                     // convert value to number
-                    .and_then(Value::as_number)
+                    .and_then(Value::into_number)
                     // if it wasn't found, or wasn't a number, default to 1
                     .unwrap_or(1.0);
                 let route = self.points.insert_route_get_id(name, width, styles, line)?;
@@ -215,19 +215,19 @@ impl Evaluator {
     pub fn set_view_box(&self, document: &mut Document) {
         let top = self
             .get_variable("top")
-            .and_then(Value::as_number)
+            .and_then(Value::into_number)
             .unwrap_or(0.0);
         let left = self
             .get_variable("left")
-            .and_then(Value::as_number)
+            .and_then(Value::into_number)
             .unwrap_or(0.0);
         let bottom = self
             .get_variable("bottom")
-            .and_then(Value::as_number)
+            .and_then(Value::into_number)
             .unwrap_or(0.0);
         let right = self
             .get_variable("right")
-            .and_then(Value::as_number)
+            .and_then(Value::into_number)
             .unwrap_or(0.0);
         document.set_view_box(top, left, bottom, right);
     }
@@ -246,7 +246,7 @@ impl EvaluationContext for Evaluator {
         if let Some((point, id)) = self.points.get_point_and_id(name) {
             Some(Value::Point(point, PointProvenance::Named(id)))
         } else {
-            self.variables.get(name).copied()
+            self.variables.get(name).cloned()
         }
     }
 
@@ -330,12 +330,12 @@ mod tests {
                      Point($last_x as f64, $last_y as f64)
                 ]),
             );
-            for (name, value) in &[
+            for (name, value) in [
                  (stringify!($first), value!($first_x, $first_y)),
                  $((stringify!($name), value!($x, $y))),*,
                  (stringify!($last), value!($last_x, $last_y)),
             ] {
-                assert_eq!(evaluator.get_variable(name), Some(*value));
+                assert_eq!(evaluator.get_variable(name), Some(value));
             }
         }
     }
