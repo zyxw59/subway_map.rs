@@ -48,7 +48,7 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
         self.arg_order
             .get(name)
             .and_then(|&i| self.args.get(i))
-            .copied()
+            .cloned()
             .or_else(|| self.parent.get_variable(name))
     }
 
@@ -75,7 +75,7 @@ pub enum Expression {
 impl Expression {
     pub fn evaluate(&self, context: &impl EvaluationContext) -> EResult<Value> {
         Ok(match self {
-            Expression::Value(v) => *v,
+            Expression::Value(v) => v.clone(),
             Expression::Point(p) => {
                 let (x, y) = p.as_ref();
                 Value::point(x.evaluate(context)?, y.evaluate(context)?)?

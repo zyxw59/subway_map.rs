@@ -201,6 +201,17 @@ impl TryFrom<Value> for f64 {
     }
 }
 
+impl TryFrom<&'_ Value> for f64 {
+    type Error = MathError;
+
+    fn try_from(value: &Value) -> result::Result<f64, MathError> {
+        match value {
+            Value::Number(x) => Ok(*x),
+            _ => Err(MathError::Type(Type::Number, value.into())),
+        }
+    }
+}
+
 impl From<Point> for Value {
     fn from(point: Point) -> Value {
         Value::Point(point, PointProvenance::None)
@@ -248,7 +259,7 @@ impl PartialEq for PointProvenance {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Number(f64),
     Point(Point, PointProvenance),
@@ -256,7 +267,7 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn as_number(self) -> Option<f64> {
+    pub fn into_number(self) -> Option<f64> {
         match self {
             Value::Number(x) => Some(x),
             _ => None,
@@ -329,8 +340,8 @@ impl Value {
 
     /// Line between two points
     pub fn line_between(self, rhs: Value) -> Result {
-        match (self, rhs) {
-            (Value::Point(p1, id1), Value::Point(p2, id2)) => {
+        match (&self, rhs) {
+            (&Value::Point(p1, id1), Value::Point(p2, id2)) => {
                 Ok(Value::Line(p1, p2 - p1, id1.line(id2)))
             }
             _ => Err(MathError::Type(Type::Point, self.into())),
@@ -339,91 +350,89 @@ impl Value {
 
     /// Line from point and vector
     pub fn line_vector(self, rhs: Value) -> Result {
-        match (self, rhs) {
-            (Value::Point(p1, _), Value::Point(p2, _)) => Ok(Value::Line(p1, p2, None)),
+        match (&self, rhs) {
+            (&Value::Point(p1, _), Value::Point(p2, _)) => Ok(Value::Line(p1, p2, None)),
             _ => Err(MathError::Type(Type::Point, self.into())),
         }
     }
 
     pub fn intersect(self, rhs: Value) -> Result {
-        use self::Value::*;
-        match (self, rhs) {
-            (Line(p1, d1, ids1), Line(p2, d2, ids2)) => match intersect(p1, d1, p2, d2) {
-                Some(intersection) => Ok(Point(
-                    intersection,
-                    PointProvenance::Intersection(ids1, ids2),
-                )),
-                None => Err(MathError::ParallelIntersection),
-            },
+        match (&self, rhs) {
+            (&Value::Line(p1, d1, ids1), Value::Line(p2, d2, ids2)) => {
+                match intersect(p1, d1, p2, d2) {
+                    Some(intersection) => Ok(Value::Point(
+                        intersection,
+                        PointProvenance::Intersection(ids1, ids2),
+                    )),
+                    None => Err(MathError::ParallelIntersection),
+                }
+            }
             _ => Err(MathError::Type(Type::Line, self.into())),
         }
     }
 
-    fn eq_bool(self, other: Value) -> std::result::Result<bool, MathError> {
-        use self::Value::*;
+    fn eq_bool(&self, other: &Value) -> std::result::Result<bool, MathError> {
         match (self, other) {
-            (Number(x), Number(y)) => Ok(float_eq(x, y)),
-            (Point(p1, id1), Point(p2, id2)) => Ok(id1 == id2 || point_float_eq(p1, p2)),
+            (&Value::Number(x), &Value::Number(y)) => Ok(float_eq(x, y)),
+            (&Value::Point(p1, id1), &Value::Point(p2, id2)) => {
+                Ok(id1 == id2 || point_float_eq(p1, p2))
+            }
             _ => Err(MathError::Type(self.into(), other.into())),
         }
     }
 
     pub fn eq(self, other: Value) -> Result {
-        self.eq_bool(other).map(Value::from)
+        self.eq_bool(&other).map(Value::from)
     }
 
     pub fn ne(self, other: Value) -> Result {
-        self.eq_bool(other).map(|x| Value::from(!x))
+        self.eq_bool(&other).map(|x| Value::from(!x))
     }
 
     pub fn lt(self, other: Value) -> Result {
-        use self::Value::*;
-        match (self, other) {
-            (Number(x), Number(y)) => Ok(Value::from(x < y)),
+        match (&self, other) {
+            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x < y)),
             _ => Err(MathError::Type(Type::Number, self.into())),
         }
     }
 
     pub fn le(self, other: Value) -> Result {
-        use self::Value::*;
-        match (self, other) {
-            (Number(x), Number(y)) => Ok(Value::from(x <= y)),
+        match (&self, other) {
+            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x <= y)),
             _ => Err(MathError::Type(Type::Number, self.into())),
         }
     }
 
     pub fn gt(self, other: Value) -> Result {
-        use self::Value::*;
-        match (self, other) {
-            (Number(x), Number(y)) => Ok(Value::from(x > y)),
+        match (&self, other) {
+            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x > y)),
             _ => Err(MathError::Type(Type::Number, self.into())),
         }
     }
 
     pub fn ge(self, other: Value) -> Result {
-        use self::Value::*;
-        match (self, other) {
-            (Number(x), Number(y)) => Ok(Value::from(x >= y)),
+        match (&self, other) {
+            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x >= y)),
             _ => Err(MathError::Type(Type::Number, self.into())),
         }
     }
 
     pub fn max(self, other: Value) -> Result {
         use self::Value::*;
-        match (self, other) {
-            (Number(x), Number(y)) => Ok(Number(x.max(y))),
-            (Point(p1, _), Point(p2, _)) => Ok(Point(p1.max(p2), PointProvenance::None)),
-            (Line(..), _) => Err(MathError::Type(Type::Number, Type::Line)),
+        match (&self, &other) {
+            (&Number(x), &Number(y)) => Ok(Number(x.max(y))),
+            (&Point(p1, _), &Point(p2, _)) => Ok(Point(p1.max(p2), PointProvenance::None)),
+            (&Line(..), _) => Err(MathError::Type(Type::Number, Type::Line)),
             (_, _) => Err(MathError::Type(self.into(), other.into())),
         }
     }
 
     pub fn min(self, other: Value) -> Result {
         use self::Value::*;
-        match (self, other) {
-            (Number(x), Number(y)) => Ok(Number(x.min(y))),
-            (Point(p1, _), Point(p2, _)) => Ok(Point(p1.min(p2), PointProvenance::None)),
-            (Line(..), _) => Err(MathError::Type(Type::Number, Type::Line)),
+        match (&self, &other) {
+            (&Number(x), &Number(y)) => Ok(Number(x.min(y))),
+            (&Point(p1, _), &Point(p2, _)) => Ok(Point(p1.min(p2), PointProvenance::None)),
+            (&Line(..), _) => Err(MathError::Type(Type::Number, Type::Line)),
             (_, _) => Err(MathError::Type(self.into(), other.into())),
         }
     }
@@ -431,7 +440,7 @@ impl Value {
 
 impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
-        self.eq_bool(*other).unwrap_or(false)
+        self.eq_bool(other).unwrap_or(false)
     }
 }
 
@@ -440,9 +449,9 @@ impl ops::Add for Value {
 
     fn add(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (self, rhs) {
-            (Number(a), Number(b)) => Number(a + b),
-            (Point(p1, _), Point(p2, _)) => Point(p1 + p2, PointProvenance::None),
+        Ok(match (&self, &rhs) {
+            (&Number(a), &Number(b)) => Number(a + b),
+            (&Point(p1, _), &Point(p2, _)) => Point(p1 + p2, PointProvenance::None),
             _ => return Err(MathError::Type(self.into(), rhs.into())),
         })
     }
@@ -453,9 +462,9 @@ impl ops::Sub for Value {
 
     fn sub(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (self, rhs) {
-            (Number(a), Number(b)) => Number(a - b),
-            (Point(p1, _), Point(p2, _)) => Point(p1 - p2, PointProvenance::None),
+        Ok(match (&self, &rhs) {
+            (&Number(a), &Number(b)) => Number(a - b),
+            (&Point(p1, _), &Point(p2, _)) => Point(p1 - p2, PointProvenance::None),
             _ => return Err(MathError::Type(self.into(), rhs.into())),
         })
     }
@@ -466,11 +475,11 @@ impl ops::Mul for Value {
 
     fn mul(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (self, rhs) {
-            (Number(a), Number(b)) => Number(a * b),
-            (Number(a), Point(p, _)) => Point(a * p, PointProvenance::None),
-            (Point(p, _), Number(a)) => Point(p * a, PointProvenance::None),
-            (Point(p1, _), Point(p2, _)) => Number(p1 * p2),
+        Ok(match (&self, &rhs) {
+            (&Number(a), &Number(b)) => Number(a * b),
+            (&Number(a), &Point(p, _)) => Point(a * p, PointProvenance::None),
+            (&Point(p, _), &Number(a)) => Point(p * a, PointProvenance::None),
+            (&Point(p1, _), &Point(p2, _)) => Number(p1 * p2),
             _ => return Err(MathError::Type(self.into(), rhs.into())),
         })
     }
@@ -481,10 +490,10 @@ impl ops::Div for Value {
 
     fn div(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (self, rhs) {
-            (_, Number(x)) if x == 0.0 => return Err(MathError::DivisionByZero),
-            (Number(a), Number(b)) => Number(a / b),
-            (Point(p, _), Number(a)) => Point(p / a, PointProvenance::None),
+        Ok(match (&self, &rhs) {
+            (_, &Number(x)) if x == 0.0 => return Err(MathError::DivisionByZero),
+            (&Number(a), &Number(b)) => Number(a / b),
+            (&Point(p, _), &Number(a)) => Point(p / a, PointProvenance::None),
             _ => return Err(MathError::Type(Type::Number, rhs.into())),
         })
     }
