@@ -6,6 +6,7 @@ use crate::error::{EvaluatorError, MathError, Result as EResult};
 use crate::expressions::{Function, Variable};
 use crate::points::PointCollection;
 use crate::statement::{Statement, StatementKind};
+use crate::stops::StopCollection;
 use crate::values::{Point, PointProvenance, Value};
 
 pub trait EvaluationContext {
@@ -19,6 +20,7 @@ pub struct Evaluator {
     variables: HashMap<Variable, Value>,
     functions: HashMap<Variable, Function>,
     points: PointCollection,
+    stops: StopCollection,
     stylesheets: Vec<String>,
     title: Option<String>,
 }

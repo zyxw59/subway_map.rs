@@ -16,6 +16,7 @@ mod operators;
 pub mod parser;
 pub mod points;
 pub mod statement;
+mod stops;
 mod values;
 
 use parser::LexerExt;

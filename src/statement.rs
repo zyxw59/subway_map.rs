@@ -68,13 +68,9 @@ pub struct Segment {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Stop {
     /// The location of the stop.
-    pub point: Variable,
+    pub point: Expression,
     /// The style of the stop.
     pub styles: Vec<Variable>,
-    /// The set of routes which stop at the stop, or `None` if all lines stop.
-    pub routes: Option<Vec<Variable>>,
-    /// The label.
-    pub label: Option<Label>,
 }
 
 /// A label for a stop.
