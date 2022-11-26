@@ -161,9 +161,8 @@ impl Evaluator {
                 let width = styles
                     .iter()
                     // if a style has a distinct line_sep, get the appropriate line_sep
-                    .filter_map(|style| self.get_variable(&format!("line_sep.{}", style)))
                     // take the line_sep of the first listed style with a defined line_sep
-                    .next()
+                    .find_map(|style| self.get_variable(&format!("line_sep.{}", style)))
                     // otherwise, get the default line_sep
                     .or_else(|| self.get_variable("line_sep"))
                     // convert value to number
