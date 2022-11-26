@@ -378,6 +378,7 @@ impl Value {
             (&Value::Point(p1, id1), &Value::Point(p2, id2)) => {
                 Ok(id1 == id2 || point_float_eq(p1, p2))
             }
+            (Value::String(s1), Value::String(s2)) => Ok(s1 == s2),
             _ => Err(MathError::Type(self.into(), other.into())),
         }
     }

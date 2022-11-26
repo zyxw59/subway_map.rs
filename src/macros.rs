@@ -82,6 +82,9 @@ macro_rules! expression {
     ($x:expr) => {
         $crate::expressions::Expression::Value($crate::values::Value::Number($x as f64))
     };
+    (@$s:expr) => {
+        $crate::expressions::Expression::Value($crate::values::Value::String($s.into()))
+    };
 }
 
 #[cfg(test)]
@@ -100,6 +103,9 @@ macro_rules! value {
             $crate::values::Point($x as f64, $y as f64),
             $crate::values::PointProvenance::Named($id),
         )
+    };
+    (@$s:expr) => {
+        $crate::values::Value::String($s.into())
     };
 }
 

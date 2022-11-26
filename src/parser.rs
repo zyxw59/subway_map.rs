@@ -558,6 +558,11 @@ mod tests {
         assert_expression!("3*x.y", ("*", 3, (#"x.y")));
     }
 
+    #[test]
+    fn string() {
+        assert_expression!(r#""foobar""#, (@"foobar"));
+    }
+
     macro_rules! assert_statement {
         ($text:expr, $statement:expr) => {{
             let result = Lexer::new($text.as_bytes())
@@ -573,7 +578,7 @@ mod tests {
     fn variable_assignment() {
         assert_statement!(
             "a = b",
-            StatementKind::Variable("a".to_string(), expression!(#"b"))
+            StatementKind::Variable("a".into(), expression!(#"b"))
         );
     }
 
@@ -581,7 +586,7 @@ mod tests {
     fn dotted_variable_assignment() {
         assert_statement!(
             "a.b = c",
-            StatementKind::Variable("a.b".to_string(), expression!(#"c"))
+            StatementKind::Variable("a.b".into(), expression!(#"c"))
         );
     }
 
@@ -589,7 +594,7 @@ mod tests {
     fn point_single() {
         assert_statement!(
             "point a = b",
-            StatementKind::PointSingle("a".to_string(), expression!(#"b"))
+            StatementKind::PointSingle("a".into(), expression!(#"b"))
         );
     }
 
@@ -598,12 +603,12 @@ mod tests {
         assert_statement!(
             "points from a spaced x: (1/2) b, c, (1/2) d",
             StatementKind::PointSpaced {
-                from: "a".to_string(),
+                from: "a".into(),
                 spaced: expression!(#"x"),
                 points: vec![
-                    (Some(expression!("/", 1, 2)), "b".to_string()),
-                    (None, "c".to_string()),
-                    (Some(expression!("/", 1, 2)), "d".to_string()),
+                    (Some(expression!("/", 1, 2)), "b".into()),
+                    (None, "c".into()),
+                    (Some(expression!("/", 1, 2)), "d".into()),
                 ],
             }
         );
@@ -614,11 +619,11 @@ mod tests {
         assert_statement!(
             "points from a to (1/2) d: (1/2) b, c",
             StatementKind::PointExtend {
-                from: "a".to_string(),
-                to: (Some(expression!("/", 1, 2)), "d".to_string()),
+                from: "a".into(),
+                to: (Some(expression!("/", 1, 2)), "d".into()),
                 points: vec![
-                    (Some(expression!("/", 1, 2)), "b".to_string()),
-                    (None, "c".to_string()),
+                    (Some(expression!("/", 1, 2)), "b".into()),
+                    (None, "c".into()),
                 ],
                 is_past: false,
             }
@@ -631,7 +636,7 @@ mod tests {
             "route red: a --(1) b --(1) c",
             StatementKind::Route {
                 styles: vec![],
-                name: "red".to_string(),
+                name: "red".into(),
                 segments: vec![segment!("a", "b", 1), segment!("b", "c", 1),],
             }
         )
@@ -642,8 +647,8 @@ mod tests {
         assert_statement!(
             "route.narrow red: a --(1) b --(1) c",
             StatementKind::Route {
-                styles: vec!["narrow".to_string()],
-                name: "red".to_string(),
+                styles: vec!["narrow".into()],
+                name: "red".into(),
                 segments: vec![segment!("a", "b", 1), segment!("b", "c", 1),],
             }
         )
@@ -655,10 +660,10 @@ mod tests {
             r#"stop a (all) "A" above"#,
             StatementKind::Stop(Stop {
                 styles: vec![],
-                point: "a".to_string(),
+                point: "a".into(),
                 routes: None,
                 label: Some(Label {
-                    text: "A".to_string(),
+                    text: "A".into(),
                     position: LabelPosition::Above,
                 }),
             })
@@ -670,11 +675,11 @@ mod tests {
         assert_statement!(
             r#"stop.terminus a (all) "A" end"#,
             StatementKind::Stop(Stop {
-                styles: vec!["terminus".to_string()],
-                point: "a".to_string(),
+                styles: vec!["terminus".into()],
+                point: "a".into(),
                 routes: None,
                 label: Some(Label {
-                    text: "A".to_string(),
+                    text: "A".into(),
                     position: LabelPosition::End,
                 }),
             })
@@ -687,10 +692,10 @@ mod tests {
             r#"stop a (red, blue) "A" above"#,
             StatementKind::Stop(Stop {
                 styles: vec![],
-                point: "a".to_string(),
-                routes: Some(vec!["red".to_string(), "blue".to_string()]),
+                point: "a".into(),
+                routes: Some(vec!["red".into(), "blue".into()]),
                 label: Some(Label {
-                    text: "A".to_string(),
+                    text: "A".into(),
                     position: LabelPosition::Above,
                 }),
             })
@@ -703,7 +708,7 @@ mod tests {
             "stop a (all);",
             StatementKind::Stop(Stop {
                 styles: vec![],
-                point: "a".to_string(),
+                point: "a".into(),
                 routes: None,
                 label: None,
             })
