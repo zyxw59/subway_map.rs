@@ -392,50 +392,78 @@ impl Value {
     }
 
     pub fn lt(self, other: Value) -> Result {
-        match (&self, other) {
-            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x < y)),
-            _ => Err(MathError::Type(Type::Number, self.into())),
+        match (self, other) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x < y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::from(x < y)),
+            (bad, good @ (Value::Number(..) | Value::String(..)))
+            | (good @ (Value::Number(..) | Value::String(..)), bad) => {
+                Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
         }
     }
 
     pub fn le(self, other: Value) -> Result {
-        match (&self, other) {
-            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x <= y)),
-            _ => Err(MathError::Type(Type::Number, self.into())),
+        match (self, other) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x <= y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::from(x <= y)),
+            (bad, good @ (Value::Number(..) | Value::String(..)))
+            | (good @ (Value::Number(..) | Value::String(..)), bad) => {
+                Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
         }
     }
 
     pub fn gt(self, other: Value) -> Result {
-        match (&self, other) {
-            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x > y)),
-            _ => Err(MathError::Type(Type::Number, self.into())),
+        match (self, other) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x > y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::from(x > y)),
+            (bad, good @ (Value::Number(..) | Value::String(..)))
+            | (good @ (Value::Number(..) | Value::String(..)), bad) => {
+                Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
         }
     }
 
     pub fn ge(self, other: Value) -> Result {
-        match (&self, other) {
-            (&Value::Number(x), Value::Number(y)) => Ok(Value::from(x >= y)),
-            _ => Err(MathError::Type(Type::Number, self.into())),
+        match (self, other) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x >= y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::from(x >= y)),
+            (bad, good @ (Value::Number(..) | Value::String(..)))
+            | (good @ (Value::Number(..) | Value::String(..)), bad) => {
+                Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
         }
     }
 
     pub fn max(self, other: Value) -> Result {
         use self::Value::*;
-        match (&self, &other) {
-            (&Number(x), &Number(y)) => Ok(Number(x.max(y))),
-            (&Point(p1, _), &Point(p2, _)) => Ok(Point(p1.max(p2), PointProvenance::None)),
-            (&Line(..), _) => Err(MathError::Type(Type::Number, Type::Line)),
-            (_, _) => Err(MathError::Type(self.into(), other.into())),
+        match (self, other) {
+            (Number(x), Number(y)) => Ok(Number(x.max(y))),
+            (Point(p1, _), Point(p2, _)) => Ok(Point(p1.max(p2), PointProvenance::None)),
+            (String(x), String(y)) => Ok(String(x.max(y))),
+            (bad, good @ (Number(..) | Point(..) | String(..)))
+            | (good @ (Number(..) | Point(..) | String(..)), bad) => {
+                Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
         }
     }
 
     pub fn min(self, other: Value) -> Result {
         use self::Value::*;
-        match (&self, &other) {
-            (&Number(x), &Number(y)) => Ok(Number(x.min(y))),
-            (&Point(p1, _), &Point(p2, _)) => Ok(Point(p1.min(p2), PointProvenance::None)),
-            (&Line(..), _) => Err(MathError::Type(Type::Number, Type::Line)),
-            (_, _) => Err(MathError::Type(self.into(), other.into())),
+        match (self, other) {
+            (Number(x), Number(y)) => Ok(Number(x.min(y))),
+            (Point(p1, _), Point(p2, _)) => Ok(Point(p1.min(p2), PointProvenance::None)),
+            (String(x), String(y)) => Ok(String(x.min(y))),
+            (bad, good @ (Number(..) | Point(..) | String(..)))
+            | (good @ (Number(..) | Point(..) | String(..)), bad) => {
+                Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
         }
     }
 }
@@ -451,10 +479,15 @@ impl ops::Add for Value {
 
     fn add(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (&self, &rhs) {
-            (&Number(a), &Number(b)) => Number(a + b),
-            (&Point(p1, _), &Point(p2, _)) => Point(p1 + p2, PointProvenance::None),
-            _ => return Err(MathError::Type(self.into(), rhs.into())),
+        Ok(match (self, rhs) {
+            (Number(a), Number(b)) => Number(a + b),
+            (Point(p1, _), Point(p2, _)) => Point(p1 + p2, PointProvenance::None),
+            (String(s1), String(s2)) => String(s1 + &s2),
+            (bad, good @ (Number(..) | Point(..) | String(..)))
+            | (good @ (Number(..) | Point(..) | String(..)), bad) => {
+                return Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
 }
@@ -464,10 +497,13 @@ impl ops::Sub for Value {
 
     fn sub(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (&self, &rhs) {
-            (&Number(a), &Number(b)) => Number(a - b),
-            (&Point(p1, _), &Point(p2, _)) => Point(p1 - p2, PointProvenance::None),
-            _ => return Err(MathError::Type(self.into(), rhs.into())),
+        Ok(match (self, rhs) {
+            (Number(a), Number(b)) => Number(a - b),
+            (Point(p1, _), Point(p2, _)) => Point(p1 - p2, PointProvenance::None),
+            (bad, good @ (Number(..) | Point(..))) | (good @ (Number(..) | Point(..)), bad) => {
+                return Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
 }
@@ -477,12 +513,15 @@ impl ops::Mul for Value {
 
     fn mul(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (&self, &rhs) {
-            (&Number(a), &Number(b)) => Number(a * b),
-            (&Number(a), &Point(p, _)) => Point(a * p, PointProvenance::None),
-            (&Point(p, _), &Number(a)) => Point(p * a, PointProvenance::None),
-            (&Point(p1, _), &Point(p2, _)) => Number(p1 * p2),
-            _ => return Err(MathError::Type(self.into(), rhs.into())),
+        Ok(match (self, rhs) {
+            (Number(a), Number(b)) => Number(a * b),
+            (Number(a), Point(p, _)) => Point(a * p, PointProvenance::None),
+            (Point(p, _), Number(a)) => Point(p * a, PointProvenance::None),
+            (Point(p1, _), Point(p2, _)) => Number(p1 * p2),
+            (bad, good @ (Number(..) | Point(..))) | (good @ (Number(..) | Point(..)), bad) => {
+                return Err(MathError::Type(good.into(), bad.into()))
+            }
+            (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
 }
@@ -492,11 +531,11 @@ impl ops::Div for Value {
 
     fn div(self, rhs: Value) -> Result {
         use self::Value::*;
-        Ok(match (&self, &rhs) {
-            (_, &Number(x)) if x == 0.0 => return Err(MathError::DivisionByZero),
-            (&Number(a), &Number(b)) => Number(a / b),
-            (&Point(p, _), &Number(a)) => Point(p / a, PointProvenance::None),
-            _ => return Err(MathError::Type(Type::Number, rhs.into())),
+        Ok(match (self, rhs) {
+            (_, Number(x)) if x == 0.0 => return Err(MathError::DivisionByZero),
+            (Number(a), Number(b)) => Number(a / b),
+            (Point(p, _), Number(a)) => Point(p / a, PointProvenance::None),
+            (bad, Number(..)) | (_, bad) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
 }
@@ -569,13 +608,13 @@ pub fn point_float_eq(p1: Point, p2: Point) -> bool {
 #[cfg(test)]
 mod tests {
     macro_rules! assert_eval {
-        (($($expr:tt)+), ($($val:expr),*)) => {{
+        (($($expr:tt)+), ($($val:tt)*)) => {{
             let expr = expression!($($expr)+);
-            assert_eq!(expr.evaluate(&()).unwrap(), value!($($val),*));
+            assert_eq!(expr.evaluate(&()).unwrap(), value!($($val)*));
         }};
-        (($($expr:tt)+), $val:expr) => {{
+        (($($expr:tt)+), $($val:tt)*) => {{
             let expr = expression!($($expr)+);
-            assert_eq!(expr.evaluate(&()).unwrap(), value!($val));
+            assert_eq!(expr.evaluate(&()).unwrap(), value!($($val)*));
         }};
     }
 
@@ -676,6 +715,17 @@ mod tests {
 
     #[test]
     fn min() {
-        assert_eval!(("min", (@1, 2), ("min", (@3, 4), (@2, 1))), (1, 1))
+        // (2, 4) min (3, 1) == (2, 1)
+        assert_eval!(("min", (@2, 4), (@3, 1)), (1, 1))
+    }
+
+    #[test]
+    fn string_concat() {
+        assert_eval!(("+", (@"foo"), (@"bar")), @"foobar");
+    }
+
+    #[test]
+    fn string_max() {
+        assert_eval!(("max", (@"a"), (@"b")), @"b");
     }
 }
