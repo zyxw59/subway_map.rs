@@ -59,10 +59,35 @@ pub enum EvaluatorError {
         line: usize,
         original_line: usize,
     },
+    #[error("Undefined stop marker {name} on line {line}")]
+    UndefinedStopMarker { name: Variable, line: usize },
+    #[error("Invalid arguments to stop marker of type {name} on line {line}: {error}")]
+    InvalidMarkerArgs {
+        name: Variable,
+        line: usize,
+        #[source]
+        error: MathError,
+    },
     #[error("IO error during output: {0}")]
     Io(#[from] io::Error),
     #[error("Error during debug output: {0}")]
     DebugOutput(#[from] serde_json::Error),
+}
+
+impl EvaluatorError {
+    pub fn invalid_marker_args_len(
+        name: Variable,
+        line: usize,
+        expected: usize,
+        actual: usize,
+    ) -> Self {
+        let error = MathError::Arguments {
+            name: name.clone(),
+            expected,
+            actual,
+        };
+        Self::InvalidMarkerArgs { name, line, error }
+    }
 }
 
 #[derive(Error, Debug)]

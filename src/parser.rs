@@ -162,7 +162,7 @@ where
         while let Some(tok) = self.next().transpose()? {
             match tok {
                 Token::Comma => {}
-                Token::RightParen => {
+                Token::RightParen | Token::Semicolon => {
                     self.put_back(tok);
                     break;
                 }
