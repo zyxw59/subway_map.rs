@@ -49,6 +49,8 @@ impl Stop {
                 let angle = self
                     .get_optional_parameter_typed::<f64>("angle")?
                     .unwrap_or(0.0);
+                // TODO: handle multi-lin text
+                // TODO: add fg/bg elements like for routes
                 let text_el = TextElement::new()
                     .set("x", self.point.0)
                     .set("y", self.point.1)
@@ -61,6 +63,8 @@ impl Stop {
                     .add(Text::new(text));
                 group.append(text_el);
             }
+            // TODO: more marker types?
+            // TODO: user-defined marker types?
             _ => {
                 return Err(EvaluatorError::UndefinedStopMarker {
                     name: self.marker_type.clone(),

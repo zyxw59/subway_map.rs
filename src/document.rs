@@ -42,6 +42,7 @@ impl Document {
     }
 
     pub fn add_stop(&mut self, stop: Group) {
+        // TODO: layering of stops w/r/t other elements
         self.stops.append(stop);
     }
 
