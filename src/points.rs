@@ -795,18 +795,6 @@ impl Route {
         self.segments.last()
     }
 
-    fn get(&self, index: usize) -> Option<&RouteSegment> {
-        self.segments.get(index)
-    }
-
-    fn get_previous(&self, index: usize) -> Option<&RouteSegment> {
-        index.checked_sub(1).and_then(|index| self.get(index))
-    }
-
-    fn get_next(&self, index: usize) -> Option<&RouteSegment> {
-        index.checked_add(1).and_then(|index| self.get(index))
-    }
-
     fn len(&self) -> usize {
         self.segments.len()
     }
