@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::expressions::{Expression, Function, Variable};
 
 /// A statement, annotated with a line number.
@@ -72,8 +74,5 @@ pub struct Stop {
     /// The type of marker to place at the stop.
     pub marker_type: Variable,
     /// The parameters for the marker.
-    pub marker_parameters: Vec<Expression>,
-}
-
-pub struct StopMarker {
+    pub marker_parameters: HashMap<Variable, Expression>,
 }

@@ -212,6 +212,28 @@ impl TryFrom<&'_ Value> for f64 {
     }
 }
 
+impl TryFrom<Value> for String {
+    type Error = MathError;
+
+    fn try_from(value: Value) -> result::Result<String, MathError> {
+        match value {
+            Value::String(s) => Ok(s),
+            _ => Err(MathError::Type(Type::String, value.into())),
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a Value> for &'a str {
+    type Error = MathError;
+
+    fn try_from(value: &'a Value) -> result::Result<&'a str, MathError> {
+        match value {
+            Value::String(s) => Ok(s),
+            _ => Err(MathError::Type(Type::String, value.into())),
+        }
+    }
+}
+
 impl From<Point> for Value {
     fn from(point: Point) -> Value {
         Value::Point(point, PointProvenance::None)
@@ -288,7 +310,7 @@ impl Value {
             let x = x.abs();
             let y = y.abs();
             if y > x {
-                Err(MathError::Domain)
+                Err(MathError::Domain(format!("{x} +-+ {y}")))
             } else {
                 Ok(Value::Number((x*x - y*y).sqrt()))
             }

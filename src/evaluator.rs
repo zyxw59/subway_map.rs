@@ -197,7 +197,7 @@ impl Evaluator {
                 let marker_parameters = stop
                     .marker_parameters
                     .into_iter()
-                    .map(|expr| expr.evaluate(&*self))
+                    .map(|(key, expr)| Ok((key, expr.evaluate(&*self)?)))
                     .collect::<Result<_, _>>()
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 self.stops.push(Stop {

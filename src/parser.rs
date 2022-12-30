@@ -412,13 +412,44 @@ where
         let point = self.parse_expression(0)?;
         expect!(self, Token::Tag(ref tag) if tag == "marker");
         let marker_type = expect!(self, Token::Tag(tag) => tag);
-        let marker_parameters = self.parse_comma_list()?;
+        let marker_parameters = self.parse_marker_params()?;
         Ok(Some(StatementKind::Stop(Stop {
             point,
             styles,
             marker_type,
             marker_parameters,
         })))
+    }
+
+    fn parse_marker_params(&mut self) -> EResult<HashMap<String, Expression>> {
+        let mut params = HashMap::new();
+        while let Some(tok) = self.next().transpose()? {
+            match tok {
+                Token::Comma => continue,
+                Token::Semicolon => {
+                    self.put_back(tok);
+                    break;
+                }
+                Token::Tag(tag) => {
+                    expect!(self, Token::Tag(ref colon) if colon == ":");
+                    let expr = self.parse_expression(0)?;
+                    match params.entry(tag) {
+                        // there's already an argument with this name
+                        Entry::Occupied(e) => {
+                            return Err(ParserError::Argument {
+                                argument: e.remove_entry().0,
+                                function: "marker".to_owned(),
+                                line: self.line(),
+                            }
+                            .into());
+                        }
+                        Entry::Vacant(e) => e.insert(expr),
+                    };
+                }
+                _ => self.put_back(tok),
+            }
+        }
+        Ok(params)
     }
 }
 
@@ -632,12 +663,12 @@ mod tests {
     #[test]
     fn stop() {
         assert_statement!(
-            r#"stop a marker circle 10"#,
+            r#"stop a marker circle r: 10"#,
             StatementKind::Stop(Stop {
                 styles: vec![],
                 point: expression!(#"a"),
                 marker_type: "circle".into(),
-                marker_parameters: vec![expression!(10)],
+                marker_parameters: [("r".to_owned(), expression!(10))].into_iter().collect(),
             })
         )
     }
@@ -645,12 +676,17 @@ mod tests {
     #[test]
     fn stop_with_style() {
         assert_statement!(
-            r#"stop.terminus a marker double_tick 20, 45"#,
+            r#"stop.terminus a marker double_tick length: 20, angle: 45"#,
             StatementKind::Stop(Stop {
                 styles: vec!["terminus".into()],
                 point: expression!(#"a"),
                 marker_type: "double_tick".into(),
-                marker_parameters: vec![expression!(20), expression!(45)],
+                marker_parameters: [
+                    ("length".to_owned(), expression!(20)),
+                    ("angle".to_owned(), expression!(45))
+                ]
+                .into_iter()
+                .collect(),
             })
         )
     }
@@ -658,12 +694,17 @@ mod tests {
     #[test]
     fn stop_with_text() {
         assert_statement!(
-            r#"stop.terminus a marker text "A station", 0"#,
+            r#"stop.terminus a marker text text: "A station", angle: 0"#,
             StatementKind::Stop(Stop {
                 styles: vec!["terminus".into()],
                 point: expression!(#"a"),
                 marker_type: "text".into(),
-                marker_parameters: vec![expression!(@"A station"), expression!(0)],
+                marker_parameters: [
+                    ("text".to_owned(), expression!(@"A station")),
+                    ("angle".to_owned(), expression!(0))
+                ]
+                .into_iter()
+                .collect(),
             })
         )
     }
