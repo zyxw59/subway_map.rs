@@ -28,7 +28,10 @@ pub struct Stop {
 
 impl Stop {
     pub fn draw(&self, document: &mut Document) -> Result<(), EvaluatorError> {
-        let mut group = Group::new().set("class", self.styles.join(" "));
+        let mut group = Group::new().set(
+            "class",
+            format!("stop {} {}", self.marker_type, self.styles.join(" ")),
+        );
         match &*self.marker_type {
             "circle" => {
                 let radius = self.get_parameter_typed::<f64>("r")?;

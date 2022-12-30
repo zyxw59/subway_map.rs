@@ -1,6 +1,14 @@
 :root {
   --bg-width: 11px;
   --fg-width: 8px;
+
+  --red: #ED1C24;
+  --yellow: #FFE800;
+  --orange: #FAA618;
+  --blue: #00AEEF;
+  --green: #4DB848;
+  --oac: #ABA682;
+  --purple: purple;
 }
 
 .route {
@@ -29,8 +37,36 @@
   stroke-width: var(--fg-width);
 }
 
-.route.mg.red, .route.mg.red_limited {
-  stroke: #ED1C24;
+.route.mg {
+  stroke: var(--route-color);
+}
+
+.red, .red_limited {
+  --route-color: var(--red);
+}
+
+.yellow, .yellow_limited {
+  --route-color: var(--yellow);
+}
+
+.orange {
+  --route-color: var(--orange);
+}
+
+.blue {
+  --route-color: var(--blue);
+}
+
+.green {
+  --route-color: var(--green);
+}
+
+.oac {
+  --route-color: var(--oac);
+}
+
+.purple {
+  --route-color: var(--purple);
 }
 
 .route.fg.red_limited {
@@ -45,33 +81,18 @@
   stroke-dasharray: calc(var(--fg-width) * 0.6);
 }
 
-.route.mg.yellow, .route.mg.yellow_limited {
-  stroke: #FFE800;
-}
-
-.route.mg.orange {
-  stroke: #FAA618;
-}
-
-.route.mg.blue {
-  stroke: #00AEEF;
-}
-
-.route.mg.green {
-  stroke: #4DB848;
-}
-
-.route.mg.oac {
-  stroke: #ABA682;
-}
-
-.route.mg.purple {
-  stroke: purple;
-}
-
-.stop {
-  r: var(--fg-width);
+.stop.circle.transfer {
   stroke: black;
   stroke-width: calc(var(--bg-width) - var(--fg-width));
   fill: white;
+}
+
+.stop.circle.terminus {
+  stroke: black;
+  stroke-width: calc(var(--bg-width) - var(--fg-width));
+  fill: var(--route-color);
+}
+
+.stop.text.terminus, .stop.text.transfer {
+  font-weight: bold;
 }
