@@ -446,7 +446,7 @@ where
                         Entry::Vacant(e) => e.insert(expr),
                     };
                 }
-                _ => self.put_back(tok),
+                tok => return Err(ParserError::Token(tok, self.line()).into()),
             }
         }
         Ok(params)
