@@ -431,7 +431,7 @@ where
                     break;
                 }
                 Token::Tag(tag) => {
-                    expect!(self, Token::Tag(ref colon) if colon == ":");
+                    expect!(self, Token::Equal);
                     let expr = self.parse_expression(0)?;
                     match params.entry(tag) {
                         // there's already an argument with this name

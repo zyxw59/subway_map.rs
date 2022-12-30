@@ -289,6 +289,7 @@ enum CharCat {
     RightBracket,
     Comment,
     Whitespace,
+    Comparison,
     Other,
 }
 
@@ -304,6 +305,7 @@ impl From<char> for CharCat {
             '[' => LeftBracket,
             ']' => RightBracket,
             '#' => Comment,
+            '<' | '=' | '>' => Comparison,
             c if is_word_character(c) => Letter,
             c if c.is_whitespace() => Whitespace,
             _ => Other,
