@@ -42,7 +42,8 @@ impl Document {
     }
 
     pub fn add_stop(&mut self, stop: Group) {
-        // TODO: layering of stops w/r/t other elements
+        // TODO(#14): layering of stops w/r/t other elements and rendering stops with multiple layers
+        // (like routes) for things like outlines
         self.stops.append(stop);
     }
 
