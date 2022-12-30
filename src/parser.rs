@@ -663,7 +663,7 @@ mod tests {
     #[test]
     fn stop() {
         assert_statement!(
-            r#"stop a marker circle r: 10"#,
+            r#"stop a marker circle r=10"#,
             StatementKind::Stop(Stop {
                 styles: vec![],
                 point: expression!(#"a"),
@@ -676,7 +676,7 @@ mod tests {
     #[test]
     fn stop_with_style() {
         assert_statement!(
-            r#"stop.terminus a marker double_tick length: 20, angle: 45"#,
+            r#"stop.terminus a marker double_tick length=20, angle=45"#,
             StatementKind::Stop(Stop {
                 styles: vec!["terminus".into()],
                 point: expression!(#"a"),
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn stop_with_text() {
         assert_statement!(
-            r#"stop.terminus a marker text text: "A station", angle: 0"#,
+            r#"stop.terminus a marker text text="A station", angle=0"#,
             StatementKind::Stop(Stop {
                 styles: vec!["terminus".into()],
                 point: expression!(#"a"),
