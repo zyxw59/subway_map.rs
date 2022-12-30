@@ -1,5 +1,5 @@
 use svg::node::{
-    element::{Circle, Definitions, Group, Path, Style, Title, Use, SVG},
+    element::{Definitions, Group, Path, Style, Title, Use, SVG},
     Node, Text,
 };
 
@@ -9,9 +9,8 @@ pub struct Document {
     title: Title,
     stylesheets: Vec<String>,
     routes_def: Definitions,
-    stops_def: Definitions,
     routes_use: Group,
-    stops_use: Group,
+    stops: Group,
 }
 
 impl Document {
@@ -42,8 +41,10 @@ impl Document {
         );
     }
 
-    pub fn add_stop(&mut self, stop: Use) {
-        self.stops_use.append(stop);
+    pub fn add_stop(&mut self, stop: Group) {
+        // TODO(#14): layering of stops w/r/t other elements and rendering stops with multiple layers
+        // (like routes) for things like outlines
+        self.stops.append(stop);
     }
 
     pub fn set_view_box(&mut self, top: f64, left: f64, bottom: f64, right: f64) {
@@ -68,9 +69,8 @@ impl Document {
             .add(self.title)
             .add(Style::new(style_content))
             .add(self.routes_def)
-            .add(self.stops_def)
             .add(self.routes_use)
-            .add(self.stops_use)
+            .add(self.stops)
     }
 }
 
@@ -81,9 +81,8 @@ impl Default for Document {
             stylesheets: Default::default(),
             title: Title::new(),
             routes_def: Definitions::new(),
-            stops_def: Definitions::new().add(Circle::new().set("id", "stop")),
             routes_use: Group::new().set("id", "routes"),
-            stops_use: Group::new().set("id", "stops"),
+            stops: Group::new().set("id", "stops"),
         }
     }
 }

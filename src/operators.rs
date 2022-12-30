@@ -53,6 +53,7 @@ mod builtins {
     bin_op! {LINE_BETWEEN(Exponential, Value::line_between, "<>")}
     bin_op! {LINE_VECTOR(Exponential, Value::line_vector, ">>")}
     bin_op! {INTERSECT(Multiplicative, Value::intersect, "&")}
+    bin_op! {LINE_OFFSET(Exponential, Value::line_offset, "^^")}
 
     macro_rules! unary_op {
         ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
@@ -96,6 +97,7 @@ impl BinaryBuiltins {
             "<>" => Some(&builtins::LINE_BETWEEN),
             ">>" => Some(&builtins::LINE_VECTOR),
             "&" => Some(&builtins::INTERSECT),
+            "^^" => Some(&builtins::LINE_OFFSET),
             _ => None,
         }
     }

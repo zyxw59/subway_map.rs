@@ -16,6 +16,7 @@ mod operators;
 pub mod parser;
 pub mod points;
 pub mod statement;
+mod stops;
 mod values;
 
 use parser::LexerExt;
@@ -59,7 +60,7 @@ fn main() -> Result<(), anyhow::Error> {
         Box::new(io::stdout())
     };
     write!(output, r#"<?xml version="1.0" encoding="utf-8" ?>"#)?;
-    svg::write(&mut output, &evaluator.create_document().compile())
+    svg::write(&mut output, &evaluator.create_document()?.compile())
         .map_err(error::EvaluatorError::Io)?;
     Ok(())
 }

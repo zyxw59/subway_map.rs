@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::collections::HashMap;
 
 use crate::expressions::{Expression, Function, Variable};
 
@@ -68,45 +68,11 @@ pub struct Segment {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Stop {
     /// The location of the stop.
-    pub point: Variable,
+    pub point: Expression,
     /// The style of the stop.
     pub styles: Vec<Variable>,
-    /// The set of routes which stop at the stop, or `None` if all lines stop.
-    pub routes: Option<Vec<Variable>>,
-    /// The label.
-    pub label: Option<Label>,
-}
-
-/// A label for a stop.
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
-pub struct Label {
-    /// The label text.
-    pub text: String,
-    /// The positioning of the label.
-    pub position: LabelPosition,
-}
-
-/// The position of a stop label.
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
-pub enum LabelPosition {
-    End,
-    Above,
-    Below,
-    Left,
-    Right,
-}
-
-impl TryFrom<String> for LabelPosition {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.as_ref() {
-            "end" => Ok(LabelPosition::End),
-            "above" => Ok(LabelPosition::Above),
-            "below" => Ok(LabelPosition::Below),
-            "left" => Ok(LabelPosition::Left),
-            "right" => Ok(LabelPosition::Right),
-            _ => Err(value),
-        }
-    }
+    /// The type of marker to place at the stop.
+    pub marker_type: Variable,
+    /// The parameters for the marker.
+    pub marker_parameters: HashMap<Variable, Expression>,
 }

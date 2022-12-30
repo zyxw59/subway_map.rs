@@ -6,6 +6,7 @@ use crate::error::{EvaluatorError, MathError, Result as EResult};
 use crate::expressions::{Function, Variable};
 use crate::points::PointCollection;
 use crate::statement::{Statement, StatementKind};
+use crate::stops::{Stop, StopCollection};
 use crate::values::{Point, PointProvenance, Value};
 
 pub trait EvaluationContext {
@@ -19,6 +20,7 @@ pub struct Evaluator {
     variables: HashMap<Variable, Value>,
     functions: HashMap<Variable, Function>,
     points: PointCollection,
+    stops: StopCollection,
     stylesheets: Vec<String>,
     title: Option<String>,
 }
@@ -161,9 +163,8 @@ impl Evaluator {
                 let width = styles
                     .iter()
                     // if a style has a distinct line_sep, get the appropriate line_sep
-                    .filter_map(|style| self.get_variable(&format!("line_sep.{}", style)))
                     // take the line_sep of the first listed style with a defined line_sep
-                    .next()
+                    .find_map(|style| self.get_variable(&format!("line_sep.{}", style)))
                     // otherwise, get the default line_sep
                     .or_else(|| self.get_variable("line_sep"))
                     // convert value to number
@@ -188,7 +189,24 @@ impl Evaluator {
                 }
             }
             StatementKind::Stop(stop) => {
-                self.points.add_stop(stop, line)?;
+                let point = stop
+                    .point
+                    .evaluate(&*self)
+                    .and_then(Point::try_from)
+                    .map_err(|err| EvaluatorError::Math(err, line))?;
+                let marker_parameters = stop
+                    .marker_parameters
+                    .into_iter()
+                    .map(|(key, expr)| Ok((key, expr.evaluate(&*self)?)))
+                    .collect::<Result<_, _>>()
+                    .map_err(|err| EvaluatorError::Math(err, line))?;
+                self.stops.push(Stop {
+                    point,
+                    marker_parameters,
+                    styles: stop.styles,
+                    marker_type: stop.marker_type,
+                    input_line: line,
+                })
             }
             StatementKind::Style(style) => self.stylesheets.push(style),
             StatementKind::Title(title) => self.title = Some(title),
@@ -200,7 +218,7 @@ impl Evaluator {
         serde_json::to_writer_pretty(file, &self.points).map_err(Into::into)
     }
 
-    pub fn create_document(&self) -> Document {
+    pub fn create_document(&self) -> Result<Document, EvaluatorError> {
         let mut document = Document::new();
         if let Some(ref title) = self.title {
             document.set_title(title);
@@ -208,8 +226,8 @@ impl Evaluator {
         document.add_stylesheets(&self.stylesheets);
         self.set_view_box(&mut document);
         self.draw_routes(&mut document);
-        self.draw_stops(&mut document);
-        document
+        self.draw_stops(&mut document)?;
+        Ok(document)
     }
 
     pub fn set_view_box(&self, document: &mut Document) {
@@ -236,8 +254,8 @@ impl Evaluator {
         self.points.draw_routes(document);
     }
 
-    pub fn draw_stops(&self, document: &mut Document) {
-        self.points.draw_stops(document)
+    pub fn draw_stops(&self, document: &mut Document) -> Result<(), EvaluatorError> {
+        self.stops.draw(document)
     }
 }
 

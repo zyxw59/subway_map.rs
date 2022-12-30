@@ -212,6 +212,28 @@ impl TryFrom<&'_ Value> for f64 {
     }
 }
 
+impl TryFrom<Value> for String {
+    type Error = MathError;
+
+    fn try_from(value: Value) -> result::Result<String, MathError> {
+        match value {
+            Value::String(s) => Ok(s),
+            _ => Err(MathError::Type(Type::String, value.into())),
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a Value> for &'a str {
+    type Error = MathError;
+
+    fn try_from(value: &'a Value) -> result::Result<&'a str, MathError> {
+        match value {
+            Value::String(s) => Ok(s),
+            _ => Err(MathError::Type(Type::String, value.into())),
+        }
+    }
+}
+
 impl From<Point> for Value {
     fn from(point: Point) -> Value {
         Value::Point(point, PointProvenance::None)
@@ -288,7 +310,7 @@ impl Value {
             let x = x.abs();
             let y = y.abs();
             if y > x {
-                Err(MathError::Domain)
+                Err(MathError::Domain(format!("{x} +-+ {y}")))
             } else {
                 Ok(Value::Number((x*x - y*y).sqrt()))
             }
@@ -372,12 +394,24 @@ impl Value {
         }
     }
 
+    pub fn line_offset(self, rhs: Value) -> Result {
+        match (self, rhs) {
+            (Value::Line(p, d, _), Value::Number(dist)) => {
+                Ok(Value::Line(d.unit().perp().mul_add(dist, p), d, None))
+            }
+            (Value::Line(..), rhs) => Err(MathError::Type(Type::Number, rhs.into())),
+            (lhs, _) => Err(MathError::Type(Type::Number, lhs.into())),
+        }
+    }
+
     fn eq_bool(&self, other: &Value) -> std::result::Result<bool, MathError> {
         match (self, other) {
             (&Value::Number(x), &Value::Number(y)) => Ok(float_eq(x, y)),
             (&Value::Point(p1, id1), &Value::Point(p2, id2)) => {
                 Ok(id1 == id2 || point_float_eq(p1, p2))
             }
+            (&Value::Line(p1, d1, ids1), &Value::Line(p2, d2, ids2)) => Ok(ids1 == ids2
+                || vector_parallel_float_eq(d1, d2) && vector_parallel_float_eq(p2 - p1, d1)),
             (Value::String(s1), Value::String(s2)) => Ok(s1 == s2),
             _ => Err(MathError::Type(self.into(), other.into())),
         }
@@ -605,6 +639,11 @@ pub fn point_float_eq(p1: Point, p2: Point) -> bool {
     float_eq((p1 - p2).norm(), 0.0)
 }
 
+/// Returns true if the two vectors are parallel or antiparallel
+fn vector_parallel_float_eq(v1: Point, v2: Point) -> bool {
+    float_eq(v1.cross(v2), 0.0)
+}
+
 #[cfg(test)]
 mod tests {
     macro_rules! assert_eval {
@@ -711,6 +750,11 @@ mod tests {
     #[test]
     fn intersect() {
         assert_eval!(("&", ("<>", (@1, 2), (@3, 4)), ("<>", (@1, 4), (@3, 2))), (2, 3))
+    }
+
+    #[test]
+    fn offset() {
+        assert_eval!(("^^", ("<>", (@0, 0), (@3, 4)), 5), ((4, -3) -> (7, 1)))
     }
 
     #[test]

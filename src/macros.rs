@@ -104,6 +104,13 @@ macro_rules! value {
             $crate::values::PointProvenance::Named($id),
         )
     };
+    (($x1:expr, $y1:expr) -> ($x2:expr, $y2:expr)) => {
+        $crate::values::Value::Line(
+            $crate::values::Point($x1 as f64, $y1 as f64),
+            $crate::values::Point(($x2 - $x1) as f64, ($y2 - $y1) as f64),
+            None,
+        )
+    };
     (@$s:expr) => {
         $crate::values::Value::String($s.into())
     };
