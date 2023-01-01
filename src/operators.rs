@@ -27,9 +27,9 @@ mod builtins {
 
     macro_rules! bin_op {
         ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: BinaryOperator<'static> = BinaryOperator {
+            pub const $name: BinaryOperator = BinaryOperator {
                 precedence: Precedence::$prec as usize,
-                function: &$fun,
+                function: $fun,
                 name: $debug,
             };
         };
@@ -57,9 +57,9 @@ mod builtins {
 
     macro_rules! unary_op {
         ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: UnaryOperator<'static> = UnaryOperator {
+            pub const $name: UnaryOperator = UnaryOperator {
                 precedence: Precedence::$prec as usize,
-                function: &$fun,
+                function: $fun,
                 name: $debug,
             };
         };
@@ -77,7 +77,7 @@ mod builtins {
 pub struct BinaryBuiltins;
 
 impl BinaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static BinaryOperator<'static>> {
+    pub fn get(&self, key: &str) -> Option<&'static BinaryOperator> {
         match key {
             "==" => Some(&builtins::EQ),
             "!=" => Some(&builtins::NE),
@@ -106,7 +106,7 @@ impl BinaryBuiltins {
 pub struct UnaryBuiltins;
 
 impl UnaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static UnaryOperator<'static>> {
+    pub fn get(&self, key: &str) -> Option<&'static UnaryOperator> {
         match key {
             "-" => Some(&builtins::NEG),
             "cos" => Some(&builtins::COS),
@@ -121,13 +121,13 @@ impl UnaryBuiltins {
 }
 
 #[derive(Clone)]
-pub struct BinaryOperator<'a> {
+pub struct BinaryOperator {
     pub precedence: usize,
-    function: &'a dyn Fn(Value, Value) -> EResult<Value>,
+    function: fn(Value, Value) -> EResult<Value>,
     name: &'static str,
 }
 
-impl<'a> BinaryOperator<'a> {
+impl BinaryOperator {
     pub fn apply(&self, lhs: Value, rhs: Value) -> EResult<Value> {
         (self.function)(lhs, rhs)
     }
@@ -137,26 +137,26 @@ impl<'a> BinaryOperator<'a> {
     }
 }
 
-impl<'a> fmt::Debug for BinaryOperator<'a> {
+impl fmt::Debug for BinaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }
 
-impl<'a> PartialEq for BinaryOperator<'a> {
+impl PartialEq for BinaryOperator {
     fn eq(&self, other: &Self) -> bool {
         self.precedence == other.precedence && self.name == other.name
     }
 }
 
 #[derive(Clone)]
-pub struct UnaryOperator<'a> {
+pub struct UnaryOperator {
     pub precedence: usize,
-    function: &'a dyn Fn(Value) -> EResult<Value>,
+    function: fn(Value) -> EResult<Value>,
     name: &'static str,
 }
 
-impl<'a> UnaryOperator<'a> {
+impl UnaryOperator {
     pub fn apply(&self, argument: Value) -> EResult<Value> {
         (self.function)(argument)
     }
@@ -166,13 +166,13 @@ impl<'a> UnaryOperator<'a> {
     }
 }
 
-impl<'a> fmt::Debug for UnaryOperator<'a> {
+impl fmt::Debug for UnaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }
 
-impl<'a> PartialEq for UnaryOperator<'a> {
+impl PartialEq for UnaryOperator {
     fn eq(&self, other: &Self) -> bool {
         self.precedence == other.precedence && self.name == other.name
     }
