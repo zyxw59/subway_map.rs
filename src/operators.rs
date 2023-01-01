@@ -19,8 +19,6 @@ enum Precedence {
 }
 
 mod builtins {
-    use std::ops;
-
     use crate::values::Value;
 
     use super::{BinaryOperator, Precedence, UnaryOperator};
@@ -43,12 +41,12 @@ mod builtins {
     bin_op! {GE(Comparison, Value::ge, "<=")}
     bin_op! {MAX(Comparison, Value::max, "max")}
     bin_op! {MIN(Comparison, Value::min, "min")}
-    bin_op! {ADD(Additive, ops::Add::add, "+")}
-    bin_op! {SUB(Additive, ops::Sub::sub, "-")}
+    bin_op! {ADD(Additive, Value::add, "+")}
+    bin_op! {SUB(Additive, Value::sub, "-")}
     bin_op! {HYPOT(Additive, Value::hypot, "++")}
     bin_op! {HYPOT_SUB(Additive, Value::hypot_sub, "+-+")}
-    bin_op! {MUL(Multiplicative, ops::Mul::mul, "*")}
-    bin_op! {DIV(Multiplicative, ops::Div::div, "/")}
+    bin_op! {MUL(Multiplicative, Value::mul, "*")}
+    bin_op! {DIV(Multiplicative, Value::div, "/")}
     bin_op! {POW(Exponential, Value::pow, "^")}
     bin_op! {LINE_BETWEEN(Exponential, Value::line_between, "<>")}
     bin_op! {LINE_VECTOR(Exponential, Value::line_vector, ">>")}
@@ -65,7 +63,7 @@ mod builtins {
         };
     }
 
-    unary_op! {NEG(Multiplicative, ops::Neg::neg, "-")}
+    unary_op! {NEG(Multiplicative, Value::neg, "-")}
     unary_op! {COS(Exponential, Value::cos, "cos")}
     unary_op! {SIN(Exponential, Value::sin, "sin")}
     unary_op! {DIR(Exponential, Value::dir, "dir")}
