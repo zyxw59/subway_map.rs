@@ -34,7 +34,7 @@ macro_rules! token {
 macro_rules! expression {
     ($op:tt, ($($x:tt)+), ($($y:tt)+)) => {{
         $crate::expressions::Expression::BinaryOperator(
-            $crate::operators::BinaryBuiltins.get($op).unwrap(),
+            $crate::operators::BinaryOperator::builtin($op).unwrap(),
             Box::new((expression!($($x)+), expression!($($y)+))),
         )
     }};
@@ -43,7 +43,7 @@ macro_rules! expression {
     };
     ($op:tt, ($($x:tt)+)) => {{
         $crate::expressions::Expression::UnaryOperator(
-            $crate::operators::UnaryBuiltins.get($op).unwrap(),
+            $crate::operators::UnaryOperator::builtin($op).unwrap(),
             Box::new(expression!($($x)+)),
         )
     }};

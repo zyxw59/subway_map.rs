@@ -23,98 +23,58 @@ mod builtins {
 
     use super::{BinaryOperator, Precedence, UnaryOperator};
 
-    macro_rules! bin_op {
-        ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: BinaryOperator = BinaryOperator {
-                precedence: Precedence::$prec as usize,
-                function: $fun,
-                name: $debug,
-            };
+    macro_rules! builtins {
+        ($ty:ident: $($id:ident ( $prec:ident, $fun:path, $name:literal )),* $(,)?) => {
+            $(
+                pub const $id: $ty = $ty {
+                    precedence: Precedence::$prec as usize,
+                    function: $fun,
+                    name: $name,
+                };
+            )*
+            impl $ty {
+                pub fn builtin(key: &str) -> Option<&'static Self> {
+                    match key {
+                        $(
+                            $name => Some(&$id),
+                        )*
+                        _ => None,
+                    }
+                }
+            }
         };
     }
 
-    bin_op! {EQ(Comparison, Value::eq, "==")}
-    bin_op! {NE(Comparison, Value::ne, "!=")}
-    bin_op! {LT(Comparison, Value::lt, ">")}
-    bin_op! {LE(Comparison, Value::le, ">=")}
-    bin_op! {GT(Comparison, Value::gt, "<")}
-    bin_op! {GE(Comparison, Value::ge, "<=")}
-    bin_op! {MAX(Comparison, Value::max, "max")}
-    bin_op! {MIN(Comparison, Value::min, "min")}
-    bin_op! {ADD(Additive, Value::add, "+")}
-    bin_op! {SUB(Additive, Value::sub, "-")}
-    bin_op! {HYPOT(Additive, Value::hypot, "++")}
-    bin_op! {HYPOT_SUB(Additive, Value::hypot_sub, "+-+")}
-    bin_op! {MUL(Multiplicative, Value::mul, "*")}
-    bin_op! {DIV(Multiplicative, Value::div, "/")}
-    bin_op! {POW(Exponential, Value::pow, "^")}
-    bin_op! {LINE_BETWEEN(Exponential, Value::line_between, "<>")}
-    bin_op! {LINE_VECTOR(Exponential, Value::line_vector, ">>")}
-    bin_op! {INTERSECT(Multiplicative, Value::intersect, "&")}
-    bin_op! {LINE_OFFSET(Exponential, Value::line_offset, "^^")}
-
-    macro_rules! unary_op {
-        ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: UnaryOperator = UnaryOperator {
-                precedence: Precedence::$prec as usize,
-                function: $fun,
-                name: $debug,
-            };
-        };
+    builtins! {BinaryOperator:
+        EQ(Comparison, Value::eq, "=="),
+        NE(Comparison, Value::ne, "!="),
+        LT(Comparison, Value::lt, ">"),
+        LE(Comparison, Value::le, ">="),
+        GT(Comparison, Value::gt, "<"),
+        GE(Comparison, Value::ge, "<="),
+        MAX(Comparison, Value::max, "max"),
+        MIN(Comparison, Value::min, "min"),
+        ADD(Additive, Value::add, "+"),
+        SUB(Additive, Value::sub, "-"),
+        HYPOT(Additive, Value::hypot, "++"),
+        HYPOT_SUB(Additive, Value::hypot_sub, "+-+"),
+        MUL(Multiplicative, Value::mul, "*"),
+        DIV(Multiplicative, Value::div, "/"),
+        POW(Exponential, Value::pow, "^"),
+        LINE_BETWEEN(Exponential, Value::line_between, "<>"),
+        LINE_VECTOR(Exponential, Value::line_vector, ">>"),
+        INTERSECT(Multiplicative, Value::intersect, "&"),
+        LINE_OFFSET(Exponential, Value::line_offset, "^^"),
     }
 
-    unary_op! {NEG(Multiplicative, Value::neg, "-")}
-    unary_op! {COS(Exponential, Value::cos, "cos")}
-    unary_op! {SIN(Exponential, Value::sin, "sin")}
-    unary_op! {DIR(Exponential, Value::dir, "dir")}
-    unary_op! {ANGLE(Exponential, Value::angle, "angle")}
-    unary_op! {XPART(Multiplicative, Value::xpart, "xpart")}
-    unary_op! {YPART(Multiplicative, Value::ypart, "ypart")}
-}
-
-pub struct BinaryBuiltins;
-
-impl BinaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static BinaryOperator> {
-        match key {
-            "==" => Some(&builtins::EQ),
-            "!=" => Some(&builtins::NE),
-            "<" => Some(&builtins::LT),
-            "<=" => Some(&builtins::LE),
-            ">" => Some(&builtins::GT),
-            ">=" => Some(&builtins::GE),
-            "+" => Some(&builtins::ADD),
-            "-" => Some(&builtins::SUB),
-            "++" => Some(&builtins::HYPOT),
-            "+-+" => Some(&builtins::HYPOT_SUB),
-            "*" => Some(&builtins::MUL),
-            "/" => Some(&builtins::DIV),
-            "^" => Some(&builtins::POW),
-            "max" => Some(&builtins::MAX),
-            "min" => Some(&builtins::MIN),
-            "<>" => Some(&builtins::LINE_BETWEEN),
-            ">>" => Some(&builtins::LINE_VECTOR),
-            "&" => Some(&builtins::INTERSECT),
-            "^^" => Some(&builtins::LINE_OFFSET),
-            _ => None,
-        }
-    }
-}
-
-pub struct UnaryBuiltins;
-
-impl UnaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static UnaryOperator> {
-        match key {
-            "-" => Some(&builtins::NEG),
-            "cos" => Some(&builtins::COS),
-            "sin" => Some(&builtins::SIN),
-            "dir" => Some(&builtins::DIR),
-            "angle" => Some(&builtins::ANGLE),
-            "xpart" => Some(&builtins::XPART),
-            "ypart" => Some(&builtins::YPART),
-            _ => None,
-        }
+    builtins! {UnaryOperator:
+        NEG(Multiplicative, Value::neg, "-"),
+        COS(Exponential, Value::cos, "cos"),
+        SIN(Exponential, Value::sin, "sin"),
+        DIR(Exponential, Value::dir, "dir"),
+        ANGLE(Exponential, Value::angle, "angle"),
+        XPART(Multiplicative, Value::xpart, "xpart"),
+        YPART(Multiplicative, Value::ypart, "ypart"),
     }
 }
 

@@ -3,7 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use crate::error::{ParserError, Result as EResult};
 use crate::expressions::{Expression, Function, Variable};
 use crate::lexer::Token;
-use crate::operators::{BinaryBuiltins, UnaryBuiltins};
+use crate::operators::{BinaryOperator, UnaryOperator};
 use crate::statement::{Segment, Statement, StatementKind, Stop};
 use crate::values::Value;
 
@@ -75,7 +75,7 @@ where
         while let Some(tok) = self.next().transpose()? {
             if let Some(op) = tok
                 .as_tag()
-                .and_then(|tag| BinaryBuiltins.get(tag))
+                .and_then(|tag| BinaryOperator::builtin(tag))
                 .filter(|op| op.precedence >= min_precedence)
             {
                 // we have an operator; now to get the right hand side, accumulating operators with
@@ -96,7 +96,7 @@ where
             None => Err(ParserError::EndOfInput(self.line()).into()),
             Some(Token::LeftParen) => self.parse_parentheses(),
             Some(Token::Number(num)) => Ok(Expression::Value(Value::Number(num))),
-            Some(Token::Tag(tag)) => match UnaryBuiltins.get(&tag) {
+            Some(Token::Tag(tag)) => match UnaryOperator::builtin(&tag) {
                 Some(op) => Ok(op.expression(self.parse_expression(op.precedence)?)),
                 None => {
                     let tag = self.parse_dotted_ident(tag)?;
