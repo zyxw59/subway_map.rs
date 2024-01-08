@@ -60,8 +60,11 @@ impl Document {
         let style_content = self
             .stylesheets
             .into_iter()
-            .map(|s| format!("@import url({})\n;", s))
-            .collect::<String>();
+            .fold(String::new(), |mut output, s| {
+                use std::fmt::Write;
+                let _ = write!(output, "@import url({})\n;", s);
+                output
+            });
         SVG::new()
             .set("viewBox", self.view_box)
             .set("height", self.view_box.3)
