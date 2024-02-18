@@ -458,8 +458,9 @@ impl Segment {
             let offset = if reverse { -offset } else { offset };
             let zero_offset = self
                 .pos_offsets
-                .get(0)
-                .unwrap_or(&None)
+                .first()
+                .copied()
+                .flatten()
                 .unwrap_or(default_width);
             let value: f64 = if offset >= 0 {
                 let offset = offset as usize;
