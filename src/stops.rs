@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use svg::node::{
-    element::{Circle, Group, Text as TextElement},
-    Node, Text,
+    element::{Circle, Group, Text},
+    Node,
 };
 
 use crate::{
@@ -50,7 +50,7 @@ impl Stop {
                     .get_optional_parameter_typed::<f64>("angle")?
                     .unwrap_or(0.0);
                 // TODO(#15): handle multi-line text
-                let text_el = TextElement::new()
+                let text_el = Text::new(text)
                     .set("x", self.point.0)
                     .set("y", self.point.1)
                     .set("text-anchor", anchor.horizontal_anchor())
@@ -58,8 +58,7 @@ impl Stop {
                     .set(
                         "transform",
                         format!("rotate({} {} {})", angle, self.point.0, self.point.1),
-                    )
-                    .add(Text::new(text));
+                    );
                 group.append(text_el);
             }
             // TODO(#16): more marker types?
