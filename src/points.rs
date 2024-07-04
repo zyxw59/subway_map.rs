@@ -1,6 +1,8 @@
-use std::collections::{btree_map::Entry, BTreeMap, HashMap, HashSet};
-use std::fmt;
-use std::ops::{Index, IndexMut};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
+    fmt,
+    ops::{Index, IndexMut},
+};
 
 use itertools::Itertools;
 use serde::Serialize;
@@ -9,16 +11,16 @@ use svg::node::{
     Node,
 };
 
+use crate::{
+    corner::{calculate_longitudinal_offsets, calculate_tan_half_angle, Corner, ParallelShift},
+    document::Document,
+    error::{EvaluatorError, MathError},
+    expressions::Variable,
+    values::{Point, PointProvenance},
+};
+
 mod line;
 mod route_corner;
-
-use crate::corner::{
-    calculate_longitudinal_offsets, calculate_tan_half_angle, Corner, ParallelShift,
-};
-use crate::document::Document;
-use crate::error::{EvaluatorError, MathError};
-use crate::expressions::Variable;
-use crate::values::{Point, PointProvenance};
 
 use line::{Line, LineId};
 use route_corner::{RouteCorners, RouteTurn};

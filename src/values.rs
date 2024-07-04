@@ -1,15 +1,14 @@
-use std::convert::TryFrom;
-use std::fmt;
-use std::ops;
-use std::result;
+use std::{fmt, ops, result};
 
 use serde::Serialize;
 use svg::node::element::path::Parameters;
 
-use crate::error::{MathError, Type};
-use crate::points::PointId;
+use crate::{
+    error::{MathError, Type},
+    points::PointId,
+};
 
-pub type Result = result::Result<Value, MathError>;
+pub type Result<T = Value, E = MathError> = result::Result<T, E>;
 
 macro_rules! numeric_fn {
     (($x:ident, $y:ident) => $val:expr) => {
@@ -171,7 +170,7 @@ impl ops::Deref for UnitVector {
 impl TryFrom<Value> for Point {
     type Error = MathError;
 
-    fn try_from(value: Value) -> result::Result<Point, MathError> {
+    fn try_from(value: Value) -> Result<Point> {
         match value {
             Value::Point(p, _) => Ok(p),
             _ => Err(MathError::Type(Type::Point, value.into())),
@@ -182,7 +181,7 @@ impl TryFrom<Value> for Point {
 impl TryFrom<Value> for (Point, PointProvenance) {
     type Error = MathError;
 
-    fn try_from(value: Value) -> result::Result<(Point, PointProvenance), MathError> {
+    fn try_from(value: Value) -> Result<(Point, PointProvenance)> {
         match value {
             Value::Point(point, provenance) => Ok((point, provenance)),
             _ => Err(MathError::Type(Type::Point, value.into())),
@@ -193,7 +192,7 @@ impl TryFrom<Value> for (Point, PointProvenance) {
 impl TryFrom<Value> for f64 {
     type Error = MathError;
 
-    fn try_from(value: Value) -> result::Result<f64, MathError> {
+    fn try_from(value: Value) -> Result<f64> {
         match value {
             Value::Number(x) => Ok(x),
             _ => Err(MathError::Type(Type::Number, value.into())),
@@ -204,7 +203,7 @@ impl TryFrom<Value> for f64 {
 impl TryFrom<&'_ Value> for f64 {
     type Error = MathError;
 
-    fn try_from(value: &Value) -> result::Result<f64, MathError> {
+    fn try_from(value: &Value) -> Result<f64> {
         match value {
             Value::Number(x) => Ok(*x),
             _ => Err(MathError::Type(Type::Number, value.into())),
@@ -215,7 +214,7 @@ impl TryFrom<&'_ Value> for f64 {
 impl TryFrom<Value> for String {
     type Error = MathError;
 
-    fn try_from(value: Value) -> result::Result<String, MathError> {
+    fn try_from(value: Value) -> Result<String> {
         match value {
             Value::String(s) => Ok(s),
             _ => Err(MathError::Type(Type::String, value.into())),
@@ -226,7 +225,7 @@ impl TryFrom<Value> for String {
 impl<'a> TryFrom<&'a Value> for &'a str {
     type Error = MathError;
 
-    fn try_from(value: &'a Value) -> result::Result<&'a str, MathError> {
+    fn try_from(value: &'a Value) -> Result<&'a str> {
         match value {
             Value::String(s) => Ok(s),
             _ => Err(MathError::Type(Type::String, value.into())),
@@ -404,7 +403,7 @@ impl Value {
         }
     }
 
-    fn eq_bool(&self, other: &Value) -> std::result::Result<bool, MathError> {
+    fn eq_bool(&self, other: &Value) -> Result<bool> {
         match (self, other) {
             (&Value::Number(x), &Value::Number(y)) => Ok(float_eq(x, y)),
             (&Value::Point(p1, id1), &Value::Point(p2, id2)) => {
@@ -624,7 +623,7 @@ pub fn intersect(p1: Point, d1: Point, p2: Point, d2: Point) -> Option<Point> {
     let cross = d1.cross(d2);
     // if `cross ~= 0`, the lines are (approximately) parallel; in this case there is no
     // intersection.
-    if cross.abs() < ::std::f64::EPSILON {
+    if cross.abs() < f64::EPSILON {
         None
     } else {
         Some(d1.mul_add((p2 - p1).cross(d2) / cross, p1))

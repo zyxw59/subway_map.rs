@@ -1,13 +1,14 @@
 use std::collections::HashMap;
-use std::convert::TryFrom;
 
-use crate::document::Document;
-use crate::error::{EvaluatorError, MathError, Result as EResult};
-use crate::expressions::{Function, Variable};
-use crate::points::PointCollection;
-use crate::statement::{Statement, StatementKind};
-use crate::stops::{Stop, StopCollection};
-use crate::values::{Point, PointProvenance, Value};
+use crate::{
+    document::Document,
+    error::{EvaluatorError, MathError, Result},
+    expressions::{Function, Variable},
+    points::PointCollection,
+    statement::{Statement, StatementKind},
+    stops::{Stop, StopCollection},
+    values::{Point, PointProvenance, Value},
+};
 
 pub trait EvaluationContext {
     fn get_variable(&self, name: &str) -> Option<Value>;
@@ -30,17 +31,14 @@ impl Evaluator {
         Default::default()
     }
 
-    pub fn evaluate_all(
-        &mut self,
-        parser: impl Iterator<Item = EResult<Statement>>,
-    ) -> EResult<()> {
+    pub fn evaluate_all(&mut self, parser: impl Iterator<Item = Result<Statement>>) -> Result<()> {
         for statement in parser {
             self.evaluate(statement?)?;
         }
         Ok(())
     }
 
-    fn evaluate(&mut self, Statement { statement, line }: Statement) -> EResult<()> {
+    fn evaluate(&mut self, Statement { statement, line }: Statement) -> Result<()> {
         match statement {
             StatementKind::Null => {}
             StatementKind::Variable(name, expr) => {

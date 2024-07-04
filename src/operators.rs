@@ -1,11 +1,9 @@
-use std::cmp::PartialEq;
 use std::fmt;
 
-use crate::error::MathError;
-use crate::expressions::Expression;
-use crate::values::Value;
-
-type EResult<T> = Result<T, MathError>;
+use crate::{
+    expressions::Expression,
+    values::{Result, Value},
+};
 
 enum Precedence {
     /// Comparison operators, such as `==`, `>`, `<>`, etc.
@@ -123,12 +121,12 @@ impl UnaryBuiltins {
 #[derive(Clone)]
 pub struct BinaryOperator<'a> {
     pub precedence: usize,
-    function: &'a dyn Fn(Value, Value) -> EResult<Value>,
+    function: &'a dyn Fn(Value, Value) -> Result<Value>,
     name: &'static str,
 }
 
 impl<'a> BinaryOperator<'a> {
-    pub fn apply(&self, lhs: Value, rhs: Value) -> EResult<Value> {
+    pub fn apply(&self, lhs: Value, rhs: Value) -> Result<Value> {
         (self.function)(lhs, rhs)
     }
 
@@ -152,12 +150,12 @@ impl<'a> PartialEq for BinaryOperator<'a> {
 #[derive(Clone)]
 pub struct UnaryOperator<'a> {
     pub precedence: usize,
-    function: &'a dyn Fn(Value) -> EResult<Value>,
+    function: &'a dyn Fn(Value) -> Result<Value>,
     name: &'static str,
 }
 
 impl<'a> UnaryOperator<'a> {
-    pub fn apply(&self, argument: Value) -> EResult<Value> {
+    pub fn apply(&self, argument: Value) -> Result<Value> {
         (self.function)(argument)
     }
 

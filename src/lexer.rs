@@ -2,8 +2,10 @@ use std::io::BufRead;
 
 use regex_syntax::is_word_character;
 
-use crate::error::{LexerError, Result as EResult};
-use crate::parser::LexerExt;
+use crate::{
+    error::{LexerError, Result},
+    parser::LexerExt,
+};
 
 pub struct Lexer<R> {
     input: R,
@@ -34,7 +36,7 @@ impl<R: BufRead> Lexer<R> {
         self.vec_buffer.get(self.pos + 1).cloned()
     }
 
-    fn get_next_token(&mut self) -> EResult<Option<Token>> {
+    fn get_next_token(&mut self) -> Result<Option<Token>> {
         self.skip_whitespace_and_comments()?;
         if let Some(c) = self.get()? {
             match c.into() {
@@ -54,7 +56,7 @@ impl<R: BufRead> Lexer<R> {
         }
     }
 
-    fn fill_buffer(&mut self) -> EResult<usize> {
+    fn fill_buffer(&mut self) -> Result<usize> {
         self.str_buffer.clear();
         self.vec_buffer.clear();
         self.input
@@ -71,7 +73,7 @@ impl<R: BufRead> Lexer<R> {
     /// Returns the current character, calling `fill_buffer` as necessary.
     ///
     /// If the buffer is still empty after `fill_buffer`, returns `None`, indicating end of input.
-    fn get(&mut self) -> EResult<Option<char>> {
+    fn get(&mut self) -> Result<Option<char>> {
         Ok(match self.get_current_char() {
             // if we've got a character, here it is
             Some(c) => Some(c),
@@ -84,7 +86,7 @@ impl<R: BufRead> Lexer<R> {
         })
     }
 
-    fn skip_whitespace_and_comments(&mut self) -> EResult<()> {
+    fn skip_whitespace_and_comments(&mut self) -> Result<()> {
         while let Some(c) = self.get()? {
             match c.into() {
                 // move along
@@ -100,7 +102,7 @@ impl<R: BufRead> Lexer<R> {
         Ok(())
     }
 
-    fn parse_word(&mut self) -> EResult<Token> {
+    fn parse_word(&mut self) -> Result<Token> {
         let mut word = String::new();
         while let Some(c) = self.get()? {
             if is_word_character(c) {
@@ -113,7 +115,7 @@ impl<R: BufRead> Lexer<R> {
         Ok(Token::Tag(word))
     }
 
-    fn parse_string(&mut self) -> EResult<Token> {
+    fn parse_string(&mut self) -> Result<Token> {
         self.pos += 1;
         let mut s = String::new();
         while let Some(c) = self.get()? {
@@ -134,7 +136,7 @@ impl<R: BufRead> Lexer<R> {
         Err(LexerError::UnterminatedString(self.line).into())
     }
 
-    fn parse_dot(&mut self) -> EResult<Token> {
+    fn parse_dot(&mut self) -> Result<Token> {
         match self.get_next_char().map(CharCat::from) {
             // next char is a number, parse this dot as part of that number
             Some(CharCat::Number) => self.parse_number(),
@@ -170,7 +172,7 @@ impl<R: BufRead> Lexer<R> {
         }
     }
 
-    fn parse_number(&mut self) -> EResult<Token> {
+    fn parse_number(&mut self) -> Result<Token> {
         let mut mantissa = 0_u64;
         let mut sigfigs = 0_u8;
         let mut exponent = 0_i32;
@@ -239,7 +241,7 @@ impl<R: BufRead> Lexer<R> {
         }
     }
 
-    fn parse_other(&mut self, cat: CharCat) -> EResult<Token> {
+    fn parse_other(&mut self, cat: CharCat) -> Result<Token> {
         let mut tag = String::new();
         while let Some(c) = self.get()? {
             if CharCat::from(c) == cat {
@@ -257,7 +259,7 @@ impl<R: BufRead> Lexer<R> {
 }
 
 impl<R: BufRead> Iterator for Lexer<R> {
-    type Item = EResult<Token>;
+    type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.put_back.take() {

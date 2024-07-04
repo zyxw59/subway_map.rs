@@ -1,13 +1,15 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use crate::error::{ParserError, Result as EResult};
-use crate::expressions::{Expression, Function, Variable};
-use crate::lexer::Token;
-use crate::operators::{BinaryBuiltins, UnaryBuiltins};
-use crate::statement::{Segment, Statement, StatementKind, Stop};
-use crate::values::Value;
+use crate::{
+    error::{ParserError, Result},
+    expressions::{Expression, Function, Variable},
+    lexer::Token,
+    operators::{BinaryBuiltins, UnaryBuiltins},
+    statement::{Segment, Statement, StatementKind, Stop},
+    values::Value,
+};
 
-pub trait LexerExt: Iterator<Item = EResult<Token>> {
+pub trait LexerExt: Iterator<Item = Result<Token>> {
     fn put_back(&mut self, put_back: Token);
 
     fn line(&self) -> usize;
@@ -55,7 +57,7 @@ impl<T> Parser<T>
 where
     T: LexerExt,
 {
-    fn next(&mut self) -> Option<EResult<Token>> {
+    fn next(&mut self) -> Option<Result<Token>> {
         self.tokens.next()
     }
 
@@ -67,7 +69,7 @@ where
         self.tokens.line()
     }
 
-    fn parse_expression(&mut self, min_precedence: usize) -> EResult<Expression> {
+    fn parse_expression(&mut self, min_precedence: usize) -> Result<Expression> {
         // initial left-hand side
         let mut lhs = self.parse_primary()?;
         // as long as we encounter operators with precedence >= min_precedence, we can accumulate
@@ -91,7 +93,7 @@ where
         Ok(lhs)
     }
 
-    fn parse_primary(&mut self) -> EResult<Expression> {
+    fn parse_primary(&mut self) -> Result<Expression> {
         match self.next().transpose()? {
             None => Err(ParserError::EndOfInput(self.line()).into()),
             Some(Token::LeftParen) => self.parse_parentheses(),
@@ -124,7 +126,7 @@ where
         }
     }
 
-    fn parse_dotted_ident(&mut self, tag: String) -> EResult<String> {
+    fn parse_dotted_ident(&mut self, tag: String) -> Result<String> {
         let mut arr = vec![tag];
         while let Some(tok) = self.next().transpose()? {
             match tok {
@@ -138,7 +140,7 @@ where
         Ok(arr.join("."))
     }
 
-    fn parse_parentheses(&mut self) -> EResult<Expression> {
+    fn parse_parentheses(&mut self) -> Result<Expression> {
         let start_line = self.line();
         let mut list = self.parse_comma_list()?;
         let exp = match list.len() {
@@ -157,7 +159,7 @@ where
         }
     }
 
-    fn parse_comma_list(&mut self) -> EResult<Vec<Expression>> {
+    fn parse_comma_list(&mut self) -> Result<Vec<Expression>> {
         let mut list = Vec::new();
         while let Some(tok) = self.next().transpose()? {
             match tok {
@@ -176,7 +178,7 @@ where
     /// Parses a function definition.
     ///
     /// On success, returns a tuple of the function name and the function definition.
-    fn parse_function_def(&mut self) -> EResult<(Variable, Function)> {
+    fn parse_function_def(&mut self) -> Result<(Variable, Function)> {
         let name = expect!(self, Token::Tag(name) => name);
         expect!(self, Token::LeftParen);
         // maps argument names to their index in the function signature
@@ -227,7 +229,7 @@ where
         ))
     }
 
-    fn parse_comma_point_list(&mut self) -> EResult<Vec<(Option<Expression>, Variable)>> {
+    fn parse_comma_point_list(&mut self) -> Result<Vec<(Option<Expression>, Variable)>> {
         let mut points = Vec::new();
         while let Some(tok) = self.next().transpose()? {
             let point = match tok {
@@ -255,7 +257,7 @@ where
         Ok(points)
     }
 
-    fn parse_route(&mut self) -> EResult<Vec<Segment>> {
+    fn parse_route(&mut self) -> Result<Vec<Segment>> {
         let mut route = Vec::new();
         let mut start = expect!(self, Token::Tag(tag) => tag);
         while let Some(tok) = self.next().transpose()? {
@@ -278,7 +280,7 @@ where
         Ok(route)
     }
 
-    fn parse_statement(&mut self) -> EResult<Option<StatementKind>> {
+    fn parse_statement(&mut self) -> Result<Option<StatementKind>> {
         match self.next().transpose()? {
             // tag; start of an assignment expression or function definition
             Some(Token::Tag(tag)) => {
@@ -344,7 +346,7 @@ where
         }
     }
 
-    fn parse_dot_list(&mut self) -> EResult<Vec<Variable>> {
+    fn parse_dot_list(&mut self) -> Result<Vec<Variable>> {
         let mut list = Vec::new();
         loop {
             match self.next().transpose()? {
@@ -359,7 +361,7 @@ where
         Ok(list)
     }
 
-    fn parse_points_statement(&mut self) -> EResult<Option<StatementKind>> {
+    fn parse_points_statement(&mut self) -> Result<Option<StatementKind>> {
         expect!(self, Token::Tag(ref tag) if tag == "from");
         let from = expect!(self, Token::Tag(tag) => tag);
         let kind = expect!(self, Token::Tag(tag) => tag);
@@ -387,7 +389,7 @@ where
         &mut self,
         from: Variable,
         is_past: bool,
-    ) -> EResult<Option<StatementKind>> {
+    ) -> Result<Option<StatementKind>> {
         let to = expect! { self,
             Token::LeftParen => {
                 let multiplier = self.parse_expression(0)?;
@@ -407,7 +409,7 @@ where
         }))
     }
 
-    fn parse_stop_statement(&mut self) -> EResult<Option<StatementKind>> {
+    fn parse_stop_statement(&mut self) -> Result<Option<StatementKind>> {
         let styles = self.parse_dot_list()?;
         let point = self.parse_expression(0)?;
         expect!(self, Token::Tag(ref tag) if tag == "marker");
@@ -421,7 +423,7 @@ where
         })))
     }
 
-    fn parse_marker_params(&mut self) -> EResult<HashMap<String, Expression>> {
+    fn parse_marker_params(&mut self) -> Result<HashMap<String, Expression>> {
         let mut params = HashMap::new();
         while let Some(tok) = self.next().transpose()? {
             match tok {
@@ -457,9 +459,9 @@ impl<T> Iterator for Parser<T>
 where
     T: LexerExt,
 {
-    type Item = EResult<Statement>;
+    type Item = Result<Statement>;
 
-    fn next(&mut self) -> Option<EResult<Statement>> {
+    fn next(&mut self) -> Option<Result<Statement>> {
         self.parse_statement().transpose().map(|res| {
             res.and_then(|statement| {
                 expect!(self, Token::Semicolon);

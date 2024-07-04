@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use crate::error::MathError;
-use crate::evaluator::EvaluationContext;
-use crate::operators::{BinaryOperator, UnaryOperator};
-use crate::values::Value;
-
-pub type EResult<T> = Result<T, MathError>;
+use crate::{
+    error::MathError,
+    evaluator::EvaluationContext,
+    operators::{BinaryOperator, UnaryOperator},
+    values::{Result, Value},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
@@ -15,7 +15,7 @@ pub struct Function {
 }
 
 impl Function {
-    fn apply(&self, args: &[Expression], context: &impl EvaluationContext) -> EResult<Value> {
+    fn apply(&self, args: &[Expression], context: &impl EvaluationContext) -> Result<Value> {
         let expected = self.args.len();
         let actual = args.len();
         if expected != actual {
@@ -31,7 +31,7 @@ impl Function {
             args: args
                 .iter()
                 .map(|arg| arg.evaluate(context))
-                .collect::<EResult<Vec<Value>>>()?,
+                .collect::<Result<Vec<Value>>>()?,
         };
         self.expression.evaluate(&locals)
     }
@@ -73,7 +73,7 @@ pub enum Expression {
 }
 
 impl Expression {
-    pub fn evaluate(&self, context: &impl EvaluationContext) -> EResult<Value> {
+    pub fn evaluate(&self, context: &impl EvaluationContext) -> Result<Value> {
         Ok(match self {
             Expression::Value(v) => v.clone(),
             Expression::Point(p) => {

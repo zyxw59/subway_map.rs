@@ -1,13 +1,10 @@
-use std::io;
-use std::result;
+use std::{io, result};
 
 use thiserror::Error;
 
-use crate::expressions::Variable;
-use crate::lexer::Token;
-use crate::values::Value;
+use crate::{expressions::Variable, lexer::Token, values::Value};
 
-pub type Result<T> = result::Result<T, Error>;
+pub type Result<T, E = Error> = result::Result<T, E>;
 
 #[derive(Error, Debug)]
 pub enum Error {

@@ -1,6 +1,8 @@
-use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashSet};
-use std::fmt;
+use std::{
+    cmp::Ordering,
+    collections::{BTreeSet, HashSet},
+    fmt,
+};
 
 use serde::Serialize;
 
