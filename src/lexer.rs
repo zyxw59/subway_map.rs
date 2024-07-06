@@ -1,11 +1,101 @@
-use std::io::BufRead;
+use std::io::{BufRead, self};
 
+use bstr::ByteSlice;
+use expr_parser::token::{CharSet, CharSetTokenizer, Source};
 use regex_syntax::is_word_character;
 
 use crate::{
     error::{LexerError, Result},
     parser::LexerExt,
 };
+
+pub struct BufReadSource<R> {
+    reader: R,
+    buffer: Vec<u8>,
+    current_index: usize,
+    done: bool,
+    line_indices: Vec<usize>,
+}
+
+impl<R: BufRead> BufReadSource<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            reader,
+            buffer: Vec::new(),
+            current_index: 0,
+            done: false,
+            line_indices: Vec::new(),
+        }
+    }
+
+    fn flil_buf(&mut self) -> io::Result<()> {
+        if self.buffer.is_empty() {
+            self.line_indices.push(self.current_index);
+            match self.reader.read_until(b'\n', &mut self.buffer) {
+                Ok(0) => self.done = true,
+                Ok(_) => {}
+                Err(error) => {
+                    self.done = true;
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn split_buffer(&mut self, byte_idx: usize) -> io::Result<String> {
+        let mut s = self.buffer.split_off(byte_idx);
+        std::mem::swap(&mut s, &mut self.buffer);
+        let s =
+            String::from_utf8(s).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        Ok(s)
+    }
+}
+
+impl<R: BufRead> Source for BufReadSource<R> {
+    type Char = char;
+    type String = String;
+    type Error = io::Error;
+
+    fn next_index(&self) -> usize {
+        self.current_index
+    }
+
+    fn is_empty(&self) -> bool {
+        self.done
+    }
+
+    fn advance_while(
+        &mut self,
+        mut predicate: impl FnMut(Self::Char) -> bool,
+    ) -> Result<Self::String, Self::Error> {
+        let mut token = String::new();
+        let mut ch_len = 0;
+        while !self.done {
+            self.flil_buf()?;
+            for (ch_idx, (byte_idx, _, ch)) in self.buffer.char_indices().enumerate() {
+                ch_len = ch_idx;
+                if !predicate(ch) {
+                    self.current_index += ch_idx;
+                    let s = self.split_buffer(byte_idx)?;
+                    if token.is_empty() {
+                        return Ok(s);
+                    } else {
+                        return Ok(token + &s);
+                    }
+                }
+            }
+            self.current_index += ch_len;
+            let s = self.split_buffer(self.buffer.len())?;
+            if token.is_empty() {
+                token = s;
+            } else {
+                token.push_str(&s);
+            }
+        }
+        Ok(token)
+    }
+}
 
 pub struct Lexer<R> {
     input: R,
