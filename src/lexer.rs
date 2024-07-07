@@ -194,21 +194,17 @@ impl<R: BufRead> Lexer<R> {
     }
 
     fn parse_number(&mut self) -> Result<Token> {
-        use std::borrow::Cow;
         let start_idx = self.byte_idx;
         self.advance_while(|c| matches!(c, '0'..='9' | '_'));
         if let Some('.') = self.get_current_char() {
             self.advance_one();
             self.advance_while(|c| matches!(c, '0'..='9' | '_'));
         }
-        let mut s = Cow::Borrowed(self.slice_from(start_idx));
+        let mut s = std::borrow::Cow::Borrowed(self.slice_from(start_idx));
         if s.contains('_') {
             s.to_mut().retain(|c| c != '_');
         }
-        let val: f64 = s.parse().map_err(|_| LexerError::InvalidFloat {
-            line: self.line(),
-            column: self.column(),
-        })?;
+        let val: f64 = s.parse().unwrap();
         Ok(Token::Number(val))
     }
 
