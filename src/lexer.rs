@@ -1,8 +1,8 @@
-use std::io::{BufRead, self};
+use std::io::{self, BufRead};
 
 use bstr::ByteSlice;
 use bytes::{Bytes, BytesMut};
-use expr_parser::token::{CharSet, CharSetTokenizer, Source};
+use expr_parser::token::{CharSet, CharSetResult, CharSetTokenizer, NumberState, Source};
 use regex_syntax::is_word_character;
 
 use crate::{
@@ -129,7 +129,7 @@ impl<R: BufRead> Lexer<R> {
         if let Some(c) = self.get()? {
             match c.into() {
                 CharCat::Letter | CharCat::Underscore => self.parse_word(),
-                CharCat::Number => self.parse_number(),
+                CharCat::Number(_) => self.parse_number(),
                 CharCat::Dot => self.parse_dot(),
                 CharCat::Quote => self.parse_string(),
                 CharCat::Singleton => {
@@ -227,7 +227,7 @@ impl<R: BufRead> Lexer<R> {
     fn parse_dot(&mut self) -> Result<Token> {
         match self.get_next_char().map(CharCat::from) {
             // next char is a number, parse this dot as part of that number
-            Some(CharCat::Number) => self.parse_number(),
+            Some(CharCat::Number(_)) => self.parse_number(),
             // next char is a dot, parse this dot as part of a sequence of dots
             Some(CharCat::Dot) => {
                 // we necessarily have at least two dots.
@@ -241,7 +241,7 @@ impl<R: BufRead> Lexer<R> {
                             n += 1;
                         }
                         // a number? rewind, the last dot should be parsed as part of that number
-                        CharCat::Number => {
+                        CharCat::Number(_) => {
                             self.pos -= 1;
                             n -= 1;
                             break;
@@ -269,7 +269,7 @@ impl<R: BufRead> Lexer<R> {
         while sigfigs < 17 {
             if let Some(c) = self.get()? {
                 match c.into() {
-                    CharCat::Number => {
+                    CharCat::Number(_) => {
                         self.pos += 1;
                         mantissa *= 10;
                         mantissa += c as u64 - '0' as u64;
@@ -298,7 +298,7 @@ impl<R: BufRead> Lexer<R> {
         }
         while let Some(c) = self.get()? {
             match c.into() {
-                CharCat::Number => {
+                CharCat::Number(_) => {
                     self.pos += 1;
                     // if we haven't matched a decimal yet, we're adding insignificant digits
                     // before the decimal, so we're increasing the exponent
@@ -367,11 +367,13 @@ impl<R: BufRead> LexerExt for Lexer<R> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum CharCat {
+    #[default]
+    None,
     Letter,
     Underscore,
-    Number,
+    Number(NumberState),
     Dot,
     Quote,
     Singleton,
@@ -387,7 +389,7 @@ impl From<char> for CharCat {
     fn from(c: char) -> CharCat {
         use self::CharCat::*;
         match c {
-            '0'..='9' => Number,
+            '0'..='9' => Number(NumberState::Integer),
             '.' => Dot,
             '_' => Underscore,
             '"' => Quote,
@@ -400,6 +402,91 @@ impl From<char> for CharCat {
             c if c.is_whitespace() => Whitespace,
             _ => Other,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum CharCat2 {
+    #[default]
+    None,
+    Word,
+    Number(NumberState),
+    Dot(DotState),
+    Quote,
+    Singleton,
+    LeftBracket,
+    RightBracket,
+    Comment,
+    Whitespace,
+    Comparison,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DotState {
+    Single,
+    Multiple,
+}
+
+impl From<char> for CharCat2 {
+    fn from(ch: char) -> Self {
+        match ch {
+            '0'..='9' => Self::Number(NumberState::Integer),
+            '.' => Self::Dot(DotState::Single),
+            '"' => Self::Quote,
+            '(' | ')' | ',' | ';' => Self::Singleton,
+            '[' => Self::LeftBracket,
+            ']' => Self::RightBracket,
+            '#' => Self::Comment,
+            '<' | '=' | '>' => Self::Comparison,
+            c if is_word_character(c) => Self::Word,
+            c if c.is_whitespace() => Self::Whitespace,
+            _ => Self::Other,
+        }
+    }
+}
+
+impl CharSet<char> for CharCat2 {
+    type TokenKind = ();
+    type Error = LexerError;
+
+    fn next_char(&mut self, ch: char) -> CharSetResult<Self::TokenKind, Self::Error> {
+        match *self {
+            Self::None => {
+                *self = ch.into();
+                CharSetResult::Continue
+            }
+            Self::Word => {
+                if is_word_character(ch) {
+                    CharSetResult::Continue
+                } else {
+                    CharSetResult::Done(Some(todo!()))
+                }
+            }
+            Self::Number(state) => state.next_char(ch).map_into(),
+            Self::Dot(DotState::Single) if ('0'..='9').contains(&ch) => {
+                *self = Self::Number(NumberState::Fractional);
+                CharSetResult::Continue
+            }
+            Self::Dot(_) if ch == '.' => {
+                *self = Self::Dot(DotState::Multiple);
+                CharSetResult::Continue
+            }
+            Self::Dot(_) => CharSetResult::Done(Some(todo!())),
+            Self::Quote => {}
+            Self::Singleton => {}
+            Self::LeftBracket => {}
+            Self::RightBracket => {}
+            Self::Comment => {}
+            Self::Whitespace => {}
+            Self::Comparison => {}
+            Self::Other => {}
+            _ => todo!(),
+        }
+    }
+
+    fn end_of_input(self) -> Result<Option<Self::TokenKind>, Self::Error> {
+        todo!();
     }
 }
 

@@ -9,7 +9,7 @@ anyhow = "1.0.79"
 bstr = "1.9.1"
 bytes = "1.6.0"
 clap = { version = "4.5", features = ["derive"] }
-expr-parser = { git = "https://github.com/zyxw59/expr-parser", version = "0.1.0" }
+expr-parser = { git = "https://github.com/zyxw59/expr-parser", version = "0.1.0", branch = "extensibility-helpers" }
 float_eq = "1.0.1"
 itertools = "0.13"
 regex-syntax = "0.8"
