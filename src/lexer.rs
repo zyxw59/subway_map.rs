@@ -9,10 +9,14 @@ use crate::{
 
 pub struct Lexer<R> {
     input: R,
-    str_buffer: String,
-    vec_buffer: Vec<char>,
-    pos: usize,
-    line: usize,
+    buffer: String,
+    /// Byte index into `buffer`
+    byte_idx: usize,
+    /// Character index into the file, used for token spans.
+    char_idx: usize,
+    /// Character indices of the start of each line, used for mapping spans to (line, column)
+    /// pairs.
+    lines: Vec<usize>,
     put_back: Option<Token>,
 }
 
@@ -20,20 +24,16 @@ impl<R: BufRead> Lexer<R> {
     pub fn new(input: R) -> Lexer<R> {
         Lexer {
             input,
-            str_buffer: String::new(),
-            vec_buffer: Vec::new(),
-            pos: 0,
-            line: 0,
+            buffer: String::new(),
+            byte_idx: 0,
+            char_idx: 0,
+            lines: vec![0],
             put_back: None,
         }
     }
 
-    fn get_current_char(&self) -> Option<char> {
-        self.vec_buffer.get(self.pos).cloned()
-    }
-
-    fn get_next_char(&self) -> Option<char> {
-        self.vec_buffer.get(self.pos + 1).cloned()
+    pub fn column(&self) -> usize {
+        self.char_idx - self.lines.last().unwrap()
     }
 
     fn get_next_token(&mut self) -> Result<Option<Token>> {
@@ -45,7 +45,7 @@ impl<R: BufRead> Lexer<R> {
                 CharCat::Dot => self.parse_dot(),
                 CharCat::Quote => self.parse_string(),
                 CharCat::Singleton => {
-                    self.pos += 1;
+                    self.advance_one();
                     Ok(Token::singleton(c).unwrap())
                 }
                 cat => self.parse_other(cat),
@@ -56,18 +56,71 @@ impl<R: BufRead> Lexer<R> {
         }
     }
 
-    fn fill_buffer(&mut self) -> Result<usize> {
-        self.str_buffer.clear();
-        self.vec_buffer.clear();
-        self.input
-            .read_line(&mut self.str_buffer)
-            .map_err(|err| LexerError::from_io(err, self.line))?;
-        self.vec_buffer.extend(self.str_buffer.chars());
-        self.pos = 0;
-        if !self.vec_buffer.is_empty() {
-            self.line += 1;
+    fn skip_whitespace_and_comments(&mut self) -> Result<()> {
+        while let Some(c) = self.get()? {
+            match c {
+                // rest of line is a comment; retrieve new line
+                '#' => {
+                    self.char_idx += 1;
+                    self.fill_buffer()?;
+                }
+                c if c.is_whitespace() => self.advance_while(char::is_whitespace),
+                // stop skipping
+                _ => break,
+            }
         }
-        Ok(self.vec_buffer.len())
+        Ok(())
+    }
+
+    fn fill_buffer(&mut self) -> Result<()> {
+        self.buffer.clear();
+        self.byte_idx = 0;
+        self.input
+            .read_line(&mut self.buffer)
+            .map_err(|err| LexerError::from_io(err, self.line()))?;
+        if !self.buffer.is_empty() {
+            self.lines.push(self.char_idx);
+        }
+        Ok(())
+    }
+
+    fn advance_one(&mut self) {
+        if let Some(c) = self.get_current_char() {
+            self.char_idx += 1;
+            self.byte_idx += c.len_utf8();
+        }
+    }
+
+    fn retreat_one(&mut self) {
+        if let Some(c) = self.buffer[..self.byte_idx].chars().last() {
+            self.char_idx -= 1;
+            self.byte_idx -= c.len_utf8();
+        }
+    }
+
+    fn advance_while(&mut self, mut pred: impl FnMut(char) -> bool) {
+        let mut num_chars = 0;
+        let byte_idx = self.buffer[self.byte_idx..]
+            .char_indices()
+            .find_map(|(num_bytes, ch)| {
+                if pred(ch) {
+                    num_chars += 1;
+                    None
+                } else {
+                    Some(self.byte_idx + num_bytes)
+                }
+            })
+            .unwrap_or(self.buffer.len());
+        self.byte_idx = byte_idx;
+        self.char_idx += num_chars;
+    }
+
+    fn slice_from(&self, start_idx: usize) -> &str {
+        &self.buffer[start_idx..self.byte_idx]
+    }
+
+    fn get_current_char(&self) -> Option<char> {
+        self.buffer[self.byte_idx..].chars().next()
     }
 
     /// Returns the current character, calling `fill_buffer` as necessary.
@@ -86,174 +139,85 @@ impl<R: BufRead> Lexer<R> {
         })
     }
 
-    fn skip_whitespace_and_comments(&mut self) -> Result<()> {
-        while let Some(c) = self.get()? {
-            match c {
-                // rest of line is a comment; retrieve new line
-                '#' => {
-                    self.fill_buffer()?;
-                }
-                // move along
-                c if c.is_whitespace() => self.pos += 1,
-                // stop skipping
-                _ => break,
-            }
-        }
-        Ok(())
-    }
-
     fn parse_word(&mut self) -> Result<Token> {
-        let mut word = String::new();
-        while let Some(c) = self.get()? {
-            if is_word_character(c) {
-                word.push(c);
-                self.pos += 1;
-            } else {
-                break;
-            }
-        }
-        Ok(Token::Tag(word))
+        let start_idx = self.byte_idx;
+        self.advance_while(is_word_character);
+        let tag = self.slice_from(start_idx).to_owned();
+        Ok(Token::Tag(tag))
     }
 
     fn parse_string(&mut self) -> Result<Token> {
-        self.pos += 1;
         let mut s = String::new();
-        while let Some(c) = self.get()? {
-            self.pos += 1;
-            match c {
-                '"' => return Ok(Token::String(s)),
-                '\\' => {
-                    match self.get()? {
-                        Some('n') => s.push('\n'),
-                        Some(c) => s.push(c),
-                        None => return Err(LexerError::UnterminatedString(self.line).into()),
-                    }
-                    self.pos += 1;
+        self.advance_one();
+        loop {
+            let start_idx = self.byte_idx;
+            self.advance_while(|c| !matches!(c, '\\' | '"'));
+            s.push_str(self.slice_from(start_idx));
+            match self.get()? {
+                Some('"') => {
+                    self.advance_one();
+                    return Ok(Token::String(s));
                 }
-                c => s.push(c),
+                Some('\\') => {
+                    self.advance_one();
+                    match self.get()? {
+                        Some('n') => {
+                            self.advance_one();
+                            s.push('\n');
+                        }
+                        Some(c) => {
+                            self.advance_one();
+                            s.push(c);
+                        }
+                        None => break,
+                    }
+                }
+                Some(_) => {}
+                None => break,
             }
         }
-        Err(LexerError::UnterminatedString(self.line).into())
+        Err(LexerError::UnterminatedString(self.line()).into())
     }
 
     fn parse_dot(&mut self) -> Result<Token> {
-        match self.get_next_char().map(CharCat::from) {
-            // next char is a number, parse this dot as part of that number
-            Some(CharCat::Number) => self.parse_number(),
-            // next char is a dot, parse this dot as part of a sequence of dots
-            Some(CharCat::Dot) => {
-                // we necessarily have at least two dots.
-                let mut n = 2;
-                self.pos += 2;
-                while let Some(c) = self.get()? {
-                    match CharCat::from(c) {
-                        // a dot? increment and continue
-                        CharCat::Dot => {
-                            self.pos += 1;
-                            n += 1;
-                        }
-                        // a number? rewind, the last dot should be parsed as part of that number
-                        CharCat::Number => {
-                            self.pos -= 1;
-                            n -= 1;
-                            break;
-                        }
-                        // something else? the dots have ended, we're done
-                        _ => break,
-                    }
-                }
-                Ok(Token::Tag(".".repeat(n)))
-            }
-            // next char is something else, this is a solo dot
-            _ => {
-                self.pos += 1;
-                Ok(Token::Dot)
-            }
+        let start_idx = self.byte_idx;
+        self.advance_while(|c| c == '.');
+        if let Some('0'..='9') = self.get_current_char() {
+            // the dot is part of a number
+            self.retreat_one();
+        }
+        match self.byte_idx - start_idx {
+            0 => self.parse_number(),
+            1 => Ok(Token::Dot),
+            _ => Ok(Token::Tag(self.slice_from(start_idx).to_owned())),
         }
     }
 
     fn parse_number(&mut self) -> Result<Token> {
-        let mut mantissa = 0_u64;
-        let mut sigfigs = 0_u8;
-        let mut exponent = 0_i32;
-        let mut has_decimal = false;
-        // parse the first 17 sigfigs. any more sigfigs after that are irrelevant
-        while sigfigs < 17 {
-            if let Some(c) = self.get()? {
-                match c {
-                    '0'..='9' => {
-                        self.pos += 1;
-                        mantissa *= 10;
-                        mantissa += c as u64 - '0' as u64;
-                        sigfigs += 1;
-                        // if we've matched a decimal, but we're still matching sigfigs, decrease
-                        // the exponent
-                        if has_decimal {
-                            exponent -= 1;
-                        }
-                    }
-                    // ignore underscores
-                    '_' => {
-                        self.pos += 1;
-                    }
-                    // if we haven't matched a decimal yet, well now we have. otherwise it's a
-                    // second dot, and we should quit
-                    '.' if !has_decimal => {
-                        self.pos += 1;
-                        has_decimal = true;
-                    }
-                    _ => break,
-                }
-            } else {
-                break;
-            }
+        use std::borrow::Cow;
+        let start_idx = self.byte_idx;
+        self.advance_while(|c| matches!(c, '0'..='9' | '_'));
+        if let Some('.') = self.get_current_char() {
+            self.advance_one();
+            self.advance_while(|c| matches!(c, '0'..='9' | '_'));
         }
-        while let Some(c) = self.get()? {
-            match c {
-                '0'..='9' => {
-                    self.pos += 1;
-                    // if we haven't matched a decimal yet, we're adding insignificant digits
-                    // before the decimal, so we're increasing the exponent
-                    if !has_decimal {
-                        exponent += 1;
-                    }
-                }
-                // ignore underscores
-                '_' => {
-                    self.pos += 1;
-                }
-                // if we haven't matched a decimal yet, well now we have. otherwise it's a
-                // second dot, and we should quit
-                '.' if !has_decimal => {
-                    self.pos += 1;
-                    has_decimal = true;
-                }
-                _ => break,
-            }
+        let mut s = Cow::Borrowed(self.slice_from(start_idx));
+        if s.contains('_') {
+            s.to_mut().retain(|c| c != '_');
         }
-
-        if mantissa == 0 {
-            Ok(Token::Number(0.0))
-        } else if exponent == 0 {
-            Ok(Token::Number(mantissa as f64))
-        } else {
-            Ok(Token::Number(10.0_f64.powi(exponent) * mantissa as f64))
-        }
+        let val: f64 = s.parse().map_err(|_| LexerError::InvalidFloat {
+            line: self.line(),
+            column: self.column(),
+        })?;
+        Ok(Token::Number(val))
     }
 
     fn parse_other(&mut self, cat: CharCat) -> Result<Token> {
-        let mut tag = String::new();
-        while let Some(c) = self.get()? {
-            if CharCat::from(c) == cat {
-                self.pos += 1;
-                tag.push(c);
-            } else {
-                break;
-            }
-        }
-        match tag.as_ref() {
+        let start_idx = self.byte_idx;
+        self.advance_while(|c| CharCat::from(c) == cat);
+        match self.slice_from(start_idx) {
             "=" => Ok(Token::Equal),
-            _ => Ok(Token::Tag(tag)),
+            tag => Ok(Token::Tag(tag.to_owned())),
         }
     }
 }
@@ -275,7 +239,7 @@ impl<R: BufRead> LexerExt for Lexer<R> {
     }
 
     fn line(&self) -> usize {
-        self.line
+        self.lines.len()
     }
 }
 

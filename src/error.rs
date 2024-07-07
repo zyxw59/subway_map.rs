@@ -131,6 +131,8 @@ pub enum LexerError {
     UnterminatedString(usize),
     #[error("Invalid UTF-8 at line {0}")]
     Unicode(usize),
+    #[error("Invalid float at line {line}, column {column}")]
+    InvalidFloat { line: usize, column: usize },
     #[error("IO error while reading line {1}: {0}")]
     Io(#[source] io::Error, usize),
 }
