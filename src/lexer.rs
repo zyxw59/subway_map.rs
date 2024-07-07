@@ -40,7 +40,7 @@ impl<R: BufRead> Lexer<R> {
         self.skip_whitespace_and_comments()?;
         if let Some(c) = self.get()? {
             match c.into() {
-                CharCat::Letter | CharCat::Underscore => self.parse_word(),
+                CharCat::Word => self.parse_word(),
                 CharCat::Number => self.parse_number(),
                 CharCat::Dot => self.parse_dot(),
                 CharCat::Quote => self.parse_string(),
@@ -88,13 +88,13 @@ impl<R: BufRead> Lexer<R> {
 
     fn skip_whitespace_and_comments(&mut self) -> Result<()> {
         while let Some(c) = self.get()? {
-            match c.into() {
-                // move along
-                CharCat::Whitespace => self.pos += 1,
+            match c {
                 // rest of line is a comment; retrieve new line
-                CharCat::Comment => {
+                '#' => {
                     self.fill_buffer()?;
                 }
+                // move along
+                c if c.is_whitespace() => self.pos += 1,
                 // stop skipping
                 _ => break,
             }
@@ -180,8 +180,8 @@ impl<R: BufRead> Lexer<R> {
         // parse the first 17 sigfigs. any more sigfigs after that are irrelevant
         while sigfigs < 17 {
             if let Some(c) = self.get()? {
-                match c.into() {
-                    CharCat::Number => {
+                match c {
+                    '0'..='9' => {
                         self.pos += 1;
                         mantissa *= 10;
                         mantissa += c as u64 - '0' as u64;
@@ -193,12 +193,12 @@ impl<R: BufRead> Lexer<R> {
                         }
                     }
                     // ignore underscores
-                    CharCat::Underscore => {
+                    '_' => {
                         self.pos += 1;
                     }
                     // if we haven't matched a decimal yet, well now we have. otherwise it's a
                     // second dot, and we should quit
-                    CharCat::Dot if !has_decimal => {
+                    '.' if !has_decimal => {
                         self.pos += 1;
                         has_decimal = true;
                     }
@@ -209,8 +209,8 @@ impl<R: BufRead> Lexer<R> {
             }
         }
         while let Some(c) = self.get()? {
-            match c.into() {
-                CharCat::Number => {
+            match c {
+                '0'..='9' => {
                     self.pos += 1;
                     // if we haven't matched a decimal yet, we're adding insignificant digits
                     // before the decimal, so we're increasing the exponent
@@ -219,12 +219,12 @@ impl<R: BufRead> Lexer<R> {
                     }
                 }
                 // ignore underscores
-                CharCat::Underscore => {
+                '_' => {
                     self.pos += 1;
                 }
                 // if we haven't matched a decimal yet, well now we have. otherwise it's a
                 // second dot, and we should quit
-                CharCat::Dot if !has_decimal => {
+                '.' if !has_decimal => {
                     self.pos += 1;
                     has_decimal = true;
                 }
@@ -281,8 +281,7 @@ impl<R: BufRead> LexerExt for Lexer<R> {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CharCat {
-    Letter,
-    Underscore,
+    Word,
     Number,
     Dot,
     Quote,
@@ -301,14 +300,13 @@ impl From<char> for CharCat {
         match c {
             '0'..='9' => Number,
             '.' => Dot,
-            '_' => Underscore,
             '"' => Quote,
             '(' | ')' | ',' | ';' => Singleton,
             '[' => LeftBracket,
             ']' => RightBracket,
             '#' => Comment,
             '<' | '=' | '>' => Comparison,
-            c if is_word_character(c) => Letter,
+            c if is_word_character(c) => Word,
             c if c.is_whitespace() => Whitespace,
             _ => Other,
         }
