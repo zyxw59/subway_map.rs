@@ -4,9 +4,7 @@ use crate::{
     error::{ParserError, Result},
     expressions::{Expression, Function, Variable},
     lexer::Token,
-    operators::{BinaryBuiltins, UnaryBuiltins},
     statement::{Segment, Statement, StatementKind, Stop},
-    values::Value,
 };
 
 pub trait LexerExt: Iterator<Item = Result<Token>> {
@@ -69,61 +67,8 @@ where
         self.tokens.line()
     }
 
-    fn parse_expression(&mut self, min_precedence: usize) -> Result<Expression> {
-        // initial left-hand side
-        let mut lhs = self.parse_primary()?;
-        // as long as we encounter operators with precedence >= min_precedence, we can accumulate
-        // them into `lhs`.
-        while let Some(tok) = self.next().transpose()? {
-            if let Some(op) = tok
-                .as_tag()
-                .and_then(|tag| BinaryBuiltins.get(tag))
-                .filter(|op| op.precedence >= min_precedence)
-            {
-                // we have an operator; now to get the right hand side, accumulating operators with
-                // greater precedence than the current one
-                let rhs = self.parse_expression(op.precedence + 1)?;
-                lhs = op.expression(lhs, rhs);
-            } else {
-                // the token wasn't an operator, so put it back on the stack
-                self.put_back(tok);
-                break;
-            }
-        }
-        Ok(lhs)
-    }
-
-    fn parse_primary(&mut self) -> Result<Expression> {
-        match self.next().transpose()? {
-            None => Err(ParserError::EndOfInput(self.line()).into()),
-            Some(Token::LeftParen) => self.parse_parentheses(),
-            Some(Token::Number(num)) => Ok(Expression::Value(Value::Number(num))),
-            Some(Token::Tag(tag)) => match UnaryBuiltins.get(&tag) {
-                Some(op) => Ok(op.expression(self.parse_expression(op.precedence)?)),
-                None => {
-                    let tag = self.parse_dotted_ident(tag)?;
-                    let next_tok = self.next().transpose()?;
-                    if let Some(Token::LeftParen) = next_tok {
-                        // function call
-                        let start_line = self.line();
-                        let args = self.parse_comma_list()?;
-                        match self.next().transpose()? {
-                            Some(Token::RightParen) => {}
-                            Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
-                            None => return Err(ParserError::Parentheses(start_line).into()),
-                        };
-                        Ok(Expression::Function(tag, args))
-                    } else {
-                        if let Some(tok) = next_tok {
-                            self.put_back(tok);
-                        }
-                        Ok(Expression::Variable(tag))
-                    }
-                }
-            },
-            Some(Token::String(string)) => Ok(Expression::Value(Value::String(string))),
-            Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
-        }
+    fn parse_expression(&mut self, _min_precedence: usize) -> Result<Expression> {
+        todo!();
     }
 
     fn parse_dotted_ident(&mut self, tag: String) -> Result<String> {
@@ -138,41 +83,6 @@ where
             }
         }
         Ok(arr.join("."))
-    }
-
-    fn parse_parentheses(&mut self) -> Result<Expression> {
-        let start_line = self.line();
-        let mut list = self.parse_comma_list()?;
-        let exp = match list.len() {
-            1 => list.pop().unwrap(),
-            2 => {
-                let y = list.pop().unwrap();
-                let x = list.pop().unwrap();
-                Expression::Point(Box::new((x, y)))
-            }
-            n => return Err(ParserError::ParenList(n, start_line).into()),
-        };
-        match self.next().transpose()? {
-            Some(Token::RightParen) => Ok(exp),
-            Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
-            None => Err(ParserError::Parentheses(start_line).into()),
-        }
-    }
-
-    fn parse_comma_list(&mut self) -> Result<Vec<Expression>> {
-        let mut list = Vec::new();
-        while let Some(tok) = self.next().transpose()? {
-            match tok {
-                Token::Comma => {}
-                Token::RightParen => {
-                    self.put_back(tok);
-                    break;
-                }
-                _ => self.put_back(tok),
-            }
-            list.push(self.parse_expression(0)?);
-        }
-        Ok(list)
     }
 
     /// Parses a function definition.
