@@ -1,11 +1,14 @@
 use std::io::BufRead;
 
+use expr_parser::Span;
 use regex_syntax::is_word_character;
 
 use crate::{
     error::{LexerError, Result},
     parser::LexerExt,
 };
+
+pub type Token = expr_parser::token::Token<TokenKind>;
 
 pub struct Lexer<R> {
     input: R,
@@ -37,18 +40,23 @@ impl<R: BufRead> Lexer<R> {
     fn get_next_token(&mut self) -> Result<Option<Token>> {
         self.skip_whitespace_and_comments()?;
         if let Some(c) = self.get()? {
-            match c.into() {
+            let start = self.char_idx;
+            let kind = match c.into() {
                 CharCat::Word => self.parse_word(),
                 CharCat::Number => self.parse_number(),
                 CharCat::Dot => self.parse_dot(),
                 CharCat::Quote => self.parse_string(),
                 CharCat::Singleton => {
                     self.advance_one();
-                    Ok(Token::singleton(c).unwrap())
+                    Ok(TokenKind::singleton(c).unwrap())
                 }
                 cat => self.parse_other(cat),
-            }
-            .map(Some)
+            }?;
+            let end = self.char_idx;
+            Ok(Some(Token {
+                span: Span { start, end },
+                kind,
+            }))
         } else {
             Ok(None)
         }
@@ -137,14 +145,14 @@ impl<R: BufRead> Lexer<R> {
         })
     }
 
-    fn parse_word(&mut self) -> Result<Token> {
+    fn parse_word(&mut self) -> Result<TokenKind> {
         let start_idx = self.byte_idx;
         self.advance_while(is_word_character);
         let tag = self.slice_from(start_idx).to_owned();
-        Ok(Token::Tag(tag))
+        Ok(TokenKind::Tag(tag))
     }
 
-    fn parse_string(&mut self) -> Result<Token> {
+    fn parse_string(&mut self) -> Result<TokenKind> {
         let mut s = String::new();
         self.advance_one();
         loop {
@@ -154,7 +162,7 @@ impl<R: BufRead> Lexer<R> {
             match self.get()? {
                 Some('"') => {
                     self.advance_one();
-                    return Ok(Token::String(s));
+                    return Ok(TokenKind::String(s));
                 }
                 Some('\\') => {
                     self.advance_one();
@@ -177,7 +185,7 @@ impl<R: BufRead> Lexer<R> {
         Err(LexerError::UnterminatedString(self.line()).into())
     }
 
-    fn parse_dot(&mut self) -> Result<Token> {
+    fn parse_dot(&mut self) -> Result<TokenKind> {
         let start_idx = self.byte_idx;
         self.advance_while(|c| c == '.');
         if let Some('0'..='9') = self.get_current_char() {
@@ -186,12 +194,12 @@ impl<R: BufRead> Lexer<R> {
         }
         match self.byte_idx - start_idx {
             0 => self.parse_number(),
-            1 => Ok(Token::Dot),
-            _ => Ok(Token::Tag(self.slice_from(start_idx).to_owned())),
+            1 => Ok(TokenKind::Dot),
+            _ => Ok(TokenKind::Tag(self.slice_from(start_idx).to_owned())),
         }
     }
 
-    fn parse_number(&mut self) -> Result<Token> {
+    fn parse_number(&mut self) -> Result<TokenKind> {
         let start_idx = self.byte_idx;
         self.advance_while(|c| matches!(c, '0'..='9' | '_'));
         if let Some('.') = self.get_current_char() {
@@ -203,15 +211,15 @@ impl<R: BufRead> Lexer<R> {
             s.to_mut().retain(|c| c != '_');
         }
         let val: f64 = s.parse().unwrap();
-        Ok(Token::Number(val))
+        Ok(TokenKind::Number(val))
     }
 
-    fn parse_other(&mut self, cat: CharCat) -> Result<Token> {
+    fn parse_other(&mut self, cat: CharCat) -> Result<TokenKind> {
         let start_idx = self.byte_idx;
         self.advance_while(|c| CharCat::from(c) == cat);
         match self.slice_from(start_idx) {
-            "=" => Ok(Token::Equal),
-            tag => Ok(Token::Tag(tag.to_owned())),
+            "=" => Ok(TokenKind::Equal),
+            tag => Ok(TokenKind::Tag(tag.to_owned())),
         }
     }
 }
@@ -265,7 +273,7 @@ impl From<char> for CharCat {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Token {
+pub enum TokenKind {
     /// A tag
     Tag(String),
     /// A literal number
@@ -286,20 +294,20 @@ pub enum Token {
     Equal,
 }
 
-impl Token {
-    fn singleton(c: char) -> Option<Token> {
+impl TokenKind {
+    fn singleton(c: char) -> Option<Self> {
         match c {
-            '(' => Some(Token::LeftParen),
-            ')' => Some(Token::RightParen),
-            ',' => Some(Token::Comma),
-            ';' => Some(Token::Semicolon),
+            '(' => Some(Self::LeftParen),
+            ')' => Some(Self::RightParen),
+            ',' => Some(Self::Comma),
+            ';' => Some(Self::Semicolon),
             _ => None,
         }
     }
 
-    pub fn as_tag(&self) -> Option<&String> {
+    pub fn as_tag(&self) -> Option<&str> {
         match self {
-            Token::Tag(tag) => Some(tag),
+            TokenKind::Tag(tag) => Some(tag),
             _ => None,
         }
     }
@@ -324,7 +332,10 @@ mod tests {
     #[test]
     fn tokens() {
         let lexer = Lexer::new("a,b.c.123".as_bytes());
-        let tokens = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+        let tokens = lexer
+            .map(|res| res.map(|tok| tok.kind))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(
             tokens,
             [
@@ -341,14 +352,20 @@ mod tests {
     #[test]
     fn number_dot() {
         let lexer = Lexer::new("1.1.1".as_bytes());
-        let tokens = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+        let tokens = lexer
+            .map(|res| res.map(|tok| tok.kind))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, [token!(1.1), token!(0.1)]);
     }
 
     #[test]
     fn dots() {
         let lexer = Lexer::new("...5...a".as_bytes());
-        let tokens = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+        let tokens = lexer
+            .map(|res| res.map(|tok| tok.kind))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(
             tokens,
             [token!(#".."), token!(0.5), token!(#"..."), token!(#"a")]
@@ -358,7 +375,10 @@ mod tests {
     #[test]
     fn strings() {
         let lexer = Lexer::new(r#""abc" "\"\\""#.as_bytes());
-        let tokens = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+        let tokens = lexer
+            .map(|res| res.map(|tok| tok.kind))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, [token!(@"abc"), token!(@r#""\"#)]);
     }
 
@@ -377,21 +397,30 @@ mod tests {
     #[test]
     fn string_multiline() {
         let lexer = Lexer::new("\"foo\nbar\"".as_bytes());
-        let tokens = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+        let tokens = lexer
+            .map(|res| res.map(|tok| tok.kind))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, [token!(@"foo\nbar")]);
     }
 
     #[test]
     fn equal() {
         let lexer = Lexer::new("a=b".as_bytes());
-        let tokens = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+        let tokens = lexer
+            .map(|res| res.map(|tok| tok.kind))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, [token!(#"a"), token!(=), token!(#"b")]);
     }
 
     #[test]
     fn equal_2() {
         let lexer = Lexer::new("a==b".as_bytes());
-        let tokens = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+        let tokens = lexer
+            .map(|res| res.map(|tok| tok.kind))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, [token!(#"a"), token!(#"=="), token!(#"b")]);
     }
 }

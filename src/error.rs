@@ -2,7 +2,7 @@ use std::{io, result};
 
 use thiserror::Error;
 
-use crate::{expressions::Variable, lexer::Token, values::Value};
+use crate::{expressions::Variable, lexer::TokenKind, values::Value};
 
 pub type Result<T, E = Error> = result::Result<T, E>;
 
@@ -21,7 +21,7 @@ pub enum ParserError {
     #[error("Unexpected end of input on line {0}")]
     EndOfInput(usize),
     #[error("Unexpected token {0:?} on line {1}")]
-    Token(Token, usize),
+    Token(TokenKind, usize),
     #[error("Unclosed parentheses starting on line {0}")]
     Parentheses(usize),
     #[error(

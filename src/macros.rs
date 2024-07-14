@@ -1,31 +1,31 @@
 #[cfg(test)]
 macro_rules! token {
     (.) => {
-        $crate::lexer::Token::Dot
+        $crate::lexer::TokenKind::Dot
     };
     ((l)) => {
-        $crate::lexer::Token::LeftParen
+        $crate::lexer::TokenKind::LeftParen
     };
     ((r)) => {
-        $crate::lexer::Token::RightParen
+        $crate::lexer::TokenKind::RightParen
     };
     (,) => {
-        $crate::lexer::Token::Comma
+        $crate::lexer::TokenKind::Comma
     };
     (;) => {
-        $crate::lexer::Token::Semicolon
+        $crate::lexer::TokenKind::Semicolon
     };
     (=) => {
-        $crate::lexer::Token::Equal
+        $crate::lexer::TokenKind::Equal
     };
     (#$tag:expr) => {
-        $crate::lexer::Token::Tag(String::from($tag))
+        $crate::lexer::TokenKind::Tag(String::from($tag))
     };
     ($value:expr) => {
-        $crate::lexer::Token::Number($value as f64)
+        $crate::lexer::TokenKind::Number($value as f64)
     };
     (@$str:expr) => {
-        $crate::lexer::Token::String(String::from($str))
+        $crate::lexer::TokenKind::String(String::from($str))
     };
 }
 

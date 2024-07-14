@@ -3,7 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use crate::{
     error::{ParserError, Result},
     expressions::{Expression, Function, Variable},
-    lexer::Token,
+    lexer::{Token, TokenKind},
     statement::{Segment, Statement, StatementKind, Stop},
 };
 
@@ -67,17 +67,21 @@ impl<T> Parser<T>
 where
     T: LexerExt,
 {
-    fn next(&mut self) -> Option<Result<Token>> {
+    fn next(&mut self) -> Option<Result<TokenKind>> {
+        self.next_token().map(|res| res.map(|tok| tok.kind))
+    }
+
+    fn next_token(&mut self) -> Option<Result<Token>> {
         self.peek.take().map(Ok).or_else(|| self.tokens.next())
     }
 
-    fn peek(&mut self) -> Result<Option<&Token>> {
-        self.peek = self.next().transpose()?;
-        Ok(self.peek.as_ref())
+    fn peek(&mut self) -> Result<Option<&TokenKind>> {
+        self.peek = self.next_token().transpose()?;
+        Ok(self.peek.as_ref().map(|tok| &tok.kind))
     }
 
-    fn take_peek(&mut self) -> Option<Token> {
-        self.peek.take()
+    fn take_peek(&mut self) -> Option<TokenKind> {
+        self.peek.take().map(|tok| tok.kind)
     }
 
     fn line(&self) -> usize {
@@ -90,9 +94,9 @@ where
 
     fn parse_dotted_ident(&mut self, tag: String) -> Result<String> {
         let mut arr = vec![tag];
-        while let Some(Token::Dot) = self.peek()? {
+        while let Some(TokenKind::Dot) = self.peek()? {
             self.take_peek();
-            arr.push(expect!(self, Token::Tag(tag) => tag));
+            arr.push(expect!(self, TokenKind::Tag(tag) => tag));
         }
         Ok(arr.join("."))
     }
@@ -101,8 +105,8 @@ where
     ///
     /// On success, returns a tuple of the function name and the function definition.
     fn parse_function_def(&mut self) -> Result<(Variable, Function)> {
-        let name = expect!(self, Token::Tag(name) => name);
-        expect!(self, Token::LeftParen);
+        let name = expect!(self, TokenKind::Tag(name) => name);
+        expect!(self, TokenKind::LeftParen);
         // maps argument names to their index in the function signature
         let mut args = HashMap::new();
         let mut index = 0;
@@ -110,7 +114,7 @@ where
         loop {
             match self.next().transpose()? {
                 // a named argument
-                Some(Token::Tag(arg)) => {
+                Some(TokenKind::Tag(arg)) => {
                     // insert the new argument into the hashmap
                     match args.entry(arg) {
                         // there's already an argument with this name
@@ -126,19 +130,19 @@ where
                     };
                     index += 1;
                     match self.next().transpose()? {
-                        Some(Token::Comma) => {}
-                        Some(Token::RightParen) => break,
+                        Some(TokenKind::Comma) => {}
+                        Some(TokenKind::RightParen) => break,
                         Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
                         None => return Err(ParserError::Parentheses(start_line).into()),
                     }
                 }
                 // end of the arguments
-                Some(Token::RightParen) => break,
+                Some(TokenKind::RightParen) => break,
                 Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
                 None => return Err(ParserError::Parentheses(start_line).into()),
             }
         }
-        expect!(self, Token::Equal);
+        expect!(self, TokenKind::Equal);
         // get the function body, as an expression tree
         let expression = self.parse_expression(0)?;
         Ok((
@@ -155,29 +159,27 @@ where
         let mut points = Vec::new();
         while let Some(tok) = self.next().transpose()? {
             let point = match tok {
-                Token::Comma => continue,
-                Token::LeftParen => {
+                TokenKind::Comma => continue,
+                TokenKind::LeftParen => {
                     let multiplier = self.parse_expression(0)?;
-                    expect!(self, Token::RightParen);
-                    let ident = expect!(self, Token::Tag(tag) => tag);
+                    expect!(self, TokenKind::RightParen);
+                    let ident = expect!(self, TokenKind::Tag(tag) => tag);
                     (Some(multiplier), ident)
                 }
-                Token::Tag(ident) => (None, ident),
+                TokenKind::Tag(ident) => (None, ident),
                 _ => return Err(ParserError::Token(tok, self.line()).into()),
             };
             points.push(point);
             match self.peek()? {
                 None => break,
-                Some(Token::Comma) => {
+                Some(TokenKind::Comma) => {
                     self.take_peek();
                 }
-                Some(Token::Semicolon) => {
+                Some(TokenKind::Semicolon) => {
                     break;
                 }
                 Some(_) => {
-                    return Err(
-                        ParserError::Token(self.take_peek().unwrap(), self.line()).into(),
-                    )
+                    return Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into())
                 }
             }
         }
@@ -186,16 +188,16 @@ where
 
     fn parse_route(&mut self) -> Result<Vec<Segment>> {
         let mut route = Vec::new();
-        let mut start = expect!(self, Token::Tag(tag) => tag);
+        let mut start = expect!(self, TokenKind::Tag(tag) => tag);
         while self.peek()?.is_some() {
             expect_peek! { self,
-                Token::Tag(ref tag) if tag == "--" => {},
-                Token::Semicolon => break,
+                TokenKind::Tag(ref tag) if tag == "--" => {},
+                TokenKind::Semicolon => break,
             };
-            expect!(self, Token::LeftParen);
+            expect!(self, TokenKind::LeftParen);
             let offset = self.parse_expression(0)?;
-            expect!(self, Token::RightParen);
-            let end = expect!(self, Token::Tag(tag) => tag);
+            expect!(self, TokenKind::RightParen);
+            let end = expect!(self, TokenKind::Tag(tag) => tag);
             let next = end.clone();
             route.push(Segment { start, end, offset });
             start = next;
@@ -206,7 +208,7 @@ where
     fn parse_statement(&mut self) -> Result<Option<StatementKind>> {
         match self.peek()? {
             // tag; start of an assignment expression or function definition
-            Some(Token::Tag(tag)) => {
+            Some(TokenKind::Tag(tag)) => {
                 match tag.as_ref() {
                     // function definition
                     "fn" => {
@@ -215,8 +217,8 @@ where
                     }
                     // single point
                     "point" => {
-                        let name = expect!(self, Token::Tag(tag) => tag);
-                        expect!(self, Token::Equal);
+                        let name = expect!(self, TokenKind::Tag(tag) => tag);
+                        expect!(self, TokenKind::Equal);
                         let expr = self.parse_expression(0)?;
                         Ok(Some(StatementKind::PointSingle(name, expr)))
                     }
@@ -225,8 +227,8 @@ where
                     // route
                     "route" => {
                         let styles = self.parse_dot_list()?;
-                        let name = expect!(self, Token::Tag(name) => name);
-                        expect!(self, Token::Tag(ref tag) if tag == ":");
+                        let name = expect!(self, TokenKind::Tag(name) => name);
+                        expect!(self, TokenKind::Tag(ref tag) if tag == ":");
                         let segments = self.parse_route()?;
                         Ok(Some(StatementKind::Route {
                             name,
@@ -239,29 +241,29 @@ where
                     // stylesheet
                     "style" => {
                         expect! { self,
-                            Token::String(style) => Ok(Some(StatementKind::Style(style)))
+                            TokenKind::String(style) => Ok(Some(StatementKind::Style(style)))
                         }
                     }
                     // title
                     "title" => {
                         expect! { self,
-                            Token::String(title) => Ok(Some(StatementKind::Title(title)))
+                            TokenKind::String(title) => Ok(Some(StatementKind::Title(title)))
                         }
                     }
                     // other (variable assignment)
                     _ => {
-                        let Some(Token::Tag(tag)) = self.take_peek() else { unreachable!() };
+                        let Some(TokenKind::Tag(tag)) = self.take_peek() else {
+                            unreachable!()
+                        };
                         let tag = self.parse_dotted_ident(tag)?;
-                        expect!(self, Token::Equal);
+                        expect!(self, TokenKind::Equal);
                         let expr = self.parse_expression(0)?;
                         Ok(Some(StatementKind::Variable(tag, expr)))
                     }
                 }
             }
             // semicolon; null statement
-            Some(Token::Semicolon) => {
-                Ok(Some(StatementKind::Null))
-            }
+            Some(TokenKind::Semicolon) => Ok(Some(StatementKind::Null)),
             // other token; unexpected
             Some(_) => Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into()),
             // empty statement, end of input
@@ -273,9 +275,9 @@ where
         let mut list = Vec::new();
         loop {
             match self.peek()? {
-                Some(Token::Dot) => {
+                Some(TokenKind::Dot) => {
                     self.take_peek();
-                    expect!(self, Token::Tag(tag) => list.push(tag));
+                    expect!(self, TokenKind::Tag(tag) => list.push(tag));
                 }
                 Some(_) => {
                     break;
@@ -287,14 +289,14 @@ where
     }
 
     fn parse_points_statement(&mut self) -> Result<Option<StatementKind>> {
-        expect!(self, Token::Tag(ref tag) if tag == "from");
-        let from = expect!(self, Token::Tag(tag) => tag);
-        let kind = expect!(self, Token::Tag(tag) => tag);
+        expect!(self, TokenKind::Tag(ref tag) if tag == "from");
+        let from = expect!(self, TokenKind::Tag(tag) => tag);
+        let kind = expect!(self, TokenKind::Tag(tag) => tag);
         match kind.as_ref() {
             // from ... spaced
             "spaced" => {
                 let spaced = self.parse_expression(0)?;
-                expect!(self, Token::Tag(ref tag) if tag == ":");
+                expect!(self, TokenKind::Tag(ref tag) if tag == ":");
                 let points = self.parse_comma_point_list()?;
                 Ok(Some(StatementKind::PointSpaced {
                     from,
@@ -306,7 +308,7 @@ where
             "to" => self.parse_points_extend_statement(from, false),
             // from ... past
             "past" => self.parse_points_extend_statement(from, true),
-            _ => Err(ParserError::Token(Token::Tag(kind), self.line()).into()),
+            _ => Err(ParserError::Token(TokenKind::Tag(kind), self.line()).into()),
         }
     }
 
@@ -316,15 +318,15 @@ where
         is_past: bool,
     ) -> Result<Option<StatementKind>> {
         let to = expect! { self,
-            Token::LeftParen => {
+            TokenKind::LeftParen => {
                 let multiplier = self.parse_expression(0)?;
-                expect!(self, Token::RightParen);
-                let ident = expect!(self, Token::Tag(tag) => tag);
+                expect!(self, TokenKind::RightParen);
+                let ident = expect!(self, TokenKind::Tag(tag) => tag);
                 (Some(multiplier), ident)
             },
-            Token::Tag(ident) => (None, ident),
+            TokenKind::Tag(ident) => (None, ident),
         };
-        expect!(self, Token::Tag(ref tag) if tag == ":");
+        expect!(self, TokenKind::Tag(ref tag) if tag == ":");
         let points = self.parse_comma_point_list()?;
         Ok(Some(StatementKind::PointExtend {
             from,
@@ -337,8 +339,8 @@ where
     fn parse_stop_statement(&mut self) -> Result<Option<StatementKind>> {
         let styles = self.parse_dot_list()?;
         let point = self.parse_expression(0)?;
-        expect!(self, Token::Tag(ref tag) if tag == "marker");
-        let marker_type = expect!(self, Token::Tag(tag) => tag);
+        expect!(self, TokenKind::Tag(ref tag) if tag == "marker");
+        let marker_type = expect!(self, TokenKind::Tag(tag) => tag);
         let marker_parameters = self.parse_marker_params()?;
         Ok(Some(StatementKind::Stop(Stop {
             point,
@@ -352,11 +354,15 @@ where
         let mut params = HashMap::new();
         while let Some(tok) = self.peek()? {
             match tok {
-                Token::Comma => {self.take_peek();},
-                Token::Semicolon => break,
-                Token::Tag(_) => {
-                    let Some(Token::Tag(tag)) = self.take_peek() else { unreachable!() };
-                    expect!(self, Token::Equal);
+                TokenKind::Comma => {
+                    self.take_peek();
+                }
+                TokenKind::Semicolon => break,
+                TokenKind::Tag(_) => {
+                    let Some(TokenKind::Tag(tag)) = self.take_peek() else {
+                        unreachable!()
+                    };
+                    expect!(self, TokenKind::Equal);
                     let expr = self.parse_expression(0)?;
                     match params.entry(tag) {
                         // there's already an argument with this name
@@ -387,7 +393,7 @@ where
     fn next(&mut self) -> Option<Result<Statement>> {
         self.parse_statement().transpose().map(|res| {
             res.and_then(|statement| {
-                expect!(self, Token::Semicolon);
+                expect!(self, TokenKind::Semicolon);
                 Ok(Statement {
                     statement,
                     line: self.line(),
