@@ -17,7 +17,6 @@ pub struct Lexer<R> {
     /// Character indices of the start of each line, used for mapping spans to (line, column)
     /// pairs.
     lines: Vec<usize>,
-    put_back: Option<Token>,
 }
 
 impl<R: BufRead> Lexer<R> {
@@ -28,7 +27,6 @@ impl<R: BufRead> Lexer<R> {
             byte_idx: 0,
             char_idx: 0,
             lines: vec![0],
-            put_back: None,
         }
     }
 
@@ -222,18 +220,11 @@ impl<R: BufRead> Iterator for Lexer<R> {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.put_back.take() {
-            Some(item) => Some(Ok(item)),
-            None => self.get_next_token().transpose(),
-        }
+        self.get_next_token().transpose()
     }
 }
 
 impl<R: BufRead> LexerExt for Lexer<R> {
-    fn put_back(&mut self, next: Token) {
-        self.put_back = Some(next)
-    }
-
     fn line(&self) -> usize {
         self.lines.len()
     }

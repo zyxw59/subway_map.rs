@@ -8,15 +8,16 @@ use crate::{
 };
 
 pub trait LexerExt: Iterator<Item = Result<Token>> {
-    fn put_back(&mut self, put_back: Token);
-
     fn line(&self) -> usize;
 
     fn into_parser(self) -> Parser<Self>
     where
         Self: Sized,
     {
-        Parser { tokens: self }
+        Parser {
+            tokens: self,
+            peek: None,
+        }
     }
 }
 
@@ -24,10 +25,6 @@ impl<'a, T> LexerExt for &'a mut T
 where
     T: LexerExt,
 {
-    fn put_back(&mut self, put_back: Token) {
-        (**self).put_back(put_back);
-    }
-
     fn line(&self) -> usize {
         (**self).line()
     }
@@ -47,8 +44,23 @@ macro_rules! expect {
     };
 }
 
+macro_rules! expect_peek {
+    ($self:ident, $token:pat $(if $guard:expr)?) => {
+        expect_peek!($self, $token $(if $guard)? => ())
+    };
+    ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {
+        match $self.peek()? {
+            $(Some($token) $(if $guard)? => $capture),*,
+            #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
+            Some(_) => return Err(ParserError::Token($self.take_peek().unwrap(), $self.line()).into()),
+            None => return Err(ParserError::EndOfInput($self.line()).into()),
+        }
+    };
+}
+
 pub struct Parser<T> {
     tokens: T,
+    peek: Option<Token>,
 }
 
 impl<T> Parser<T>
@@ -56,11 +68,16 @@ where
     T: LexerExt,
 {
     fn next(&mut self) -> Option<Result<Token>> {
-        self.tokens.next()
+        self.peek.take().map(Ok).or_else(|| self.tokens.next())
     }
 
-    fn put_back(&mut self, put_back: Token) {
-        self.tokens.put_back(put_back);
+    fn peek(&mut self) -> Result<Option<&Token>> {
+        self.peek = self.next().transpose()?;
+        Ok(self.peek.as_ref())
+    }
+
+    fn take_peek(&mut self) -> Option<Token> {
+        self.peek.take()
     }
 
     fn line(&self) -> usize {
@@ -73,14 +90,9 @@ where
 
     fn parse_dotted_ident(&mut self, tag: String) -> Result<String> {
         let mut arr = vec![tag];
-        while let Some(tok) = self.next().transpose()? {
-            match tok {
-                Token::Dot => arr.push(expect!(self, Token::Tag(tag) => tag)),
-                _ => {
-                    self.put_back(tok);
-                    break;
-                }
-            }
+        while let Some(Token::Dot) = self.peek()? {
+            self.take_peek();
+            arr.push(expect!(self, Token::Tag(tag) => tag));
         }
         Ok(arr.join("."))
     }
@@ -154,14 +166,19 @@ where
                 _ => return Err(ParserError::Token(tok, self.line()).into()),
             };
             points.push(point);
-            match self.next().transpose()? {
+            match self.peek()? {
                 None => break,
-                Some(Token::Comma) => continue,
+                Some(Token::Comma) => {
+                    self.take_peek();
+                }
                 Some(Token::Semicolon) => {
-                    self.put_back(Token::Semicolon);
                     break;
                 }
-                Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
+                Some(_) => {
+                    return Err(
+                        ParserError::Token(self.take_peek().unwrap(), self.line()).into(),
+                    )
+                }
             }
         }
         Ok(points)
@@ -170,14 +187,10 @@ where
     fn parse_route(&mut self) -> Result<Vec<Segment>> {
         let mut route = Vec::new();
         let mut start = expect!(self, Token::Tag(tag) => tag);
-        while let Some(tok) = self.next().transpose()? {
-            self.put_back(tok);
-            expect! { self,
+        while self.peek()?.is_some() {
+            expect_peek! { self,
                 Token::Tag(ref tag) if tag == "--" => {},
-                Token::Semicolon => {
-                    self.put_back(Token::Semicolon);
-                    break
-                },
+                Token::Semicolon => break,
             };
             expect!(self, Token::LeftParen);
             let offset = self.parse_expression(0)?;
@@ -191,7 +204,7 @@ where
     }
 
     fn parse_statement(&mut self) -> Result<Option<StatementKind>> {
-        match self.next().transpose()? {
+        match self.peek()? {
             // tag; start of an assignment expression or function definition
             Some(Token::Tag(tag)) => {
                 match tag.as_ref() {
@@ -237,6 +250,7 @@ where
                     }
                     // other (variable assignment)
                     _ => {
+                        let Some(Token::Tag(tag)) = self.take_peek() else { unreachable!() };
                         let tag = self.parse_dotted_ident(tag)?;
                         expect!(self, Token::Equal);
                         let expr = self.parse_expression(0)?;
@@ -246,11 +260,10 @@ where
             }
             // semicolon; null statement
             Some(Token::Semicolon) => {
-                self.put_back(Token::Semicolon);
                 Ok(Some(StatementKind::Null))
             }
             // other token; unexpected
-            Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
+            Some(_) => Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into()),
             // empty statement, end of input
             None => Ok(None),
         }
@@ -259,10 +272,12 @@ where
     fn parse_dot_list(&mut self) -> Result<Vec<Variable>> {
         let mut list = Vec::new();
         loop {
-            match self.next().transpose()? {
-                Some(Token::Dot) => expect!(self, Token::Tag(tag) => list.push(tag)),
-                Some(tok) => {
-                    self.put_back(tok);
+            match self.peek()? {
+                Some(Token::Dot) => {
+                    self.take_peek();
+                    expect!(self, Token::Tag(tag) => list.push(tag));
+                }
+                Some(_) => {
                     break;
                 }
                 _ => break,
@@ -335,14 +350,12 @@ where
 
     fn parse_marker_params(&mut self) -> Result<HashMap<String, Expression>> {
         let mut params = HashMap::new();
-        while let Some(tok) = self.next().transpose()? {
+        while let Some(tok) = self.peek()? {
             match tok {
-                Token::Comma => continue,
-                Token::Semicolon => {
-                    self.put_back(tok);
-                    break;
-                }
-                Token::Tag(tag) => {
+                Token::Comma => {self.take_peek();},
+                Token::Semicolon => break,
+                Token::Tag(_) => {
+                    let Some(Token::Tag(tag)) = self.take_peek() else { unreachable!() };
                     expect!(self, Token::Equal);
                     let expr = self.parse_expression(0)?;
                     match params.entry(tag) {
@@ -358,7 +371,7 @@ where
                         Entry::Vacant(e) => e.insert(expr),
                     };
                 }
-                tok => return Err(ParserError::Token(tok, self.line()).into()),
+                _ => return Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into()),
             }
         }
         Ok(params)
