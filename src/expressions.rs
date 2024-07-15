@@ -63,11 +63,8 @@ pub type Variable = String;
 pub enum Expression {
     Value(Value),
     Point(Box<(Expression, Expression)>),
-    BinaryOperator(
-        &'static BinaryOperator<'static>,
-        Box<(Expression, Expression)>,
-    ),
-    UnaryOperator(&'static UnaryOperator<'static>, Box<Expression>),
+    BinaryOperator(&'static BinaryOperator, Box<(Expression, Expression)>),
+    UnaryOperator(&'static UnaryOperator, Box<Expression>),
     Function(Variable, Vec<Expression>),
     Variable(Variable),
 }
@@ -95,4 +92,11 @@ impl Expression {
             },
         })
     }
+}
+
+#[allow(dead_code)]
+pub enum Term {
+    Number(f64),
+    String(String),
+    Variable(Variable),
 }

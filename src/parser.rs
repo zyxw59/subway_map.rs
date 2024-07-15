@@ -7,6 +7,8 @@ use crate::{
     statement::{Segment, Statement, StatementKind, Stop},
 };
 
+mod expression;
+
 pub trait LexerExt: Iterator<Item = Result<Token>> {
     fn line(&self) -> usize;
 

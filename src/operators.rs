@@ -7,7 +7,10 @@ use crate::{
     values::{Result, Value},
 };
 
-enum Precedence {
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Precedence {
+    /// The `,` operator
+    Comma,
     /// Comparison operators, such as `==`, `>`, `<>`, etc.
     Comparison,
     /// Additive operators, such as `+`, `-`, `++`, etc.
@@ -16,9 +19,11 @@ enum Precedence {
     Multiplicative,
     /// Exponential operators, such as `^`, as well as unary sine and cosine.
     Exponential,
+    /// The `.` operator
+    Dot,
 }
 
-mod builtins {
+pub mod builtins {
     use std::ops;
 
     use crate::values::Value;
@@ -27,9 +32,9 @@ mod builtins {
 
     macro_rules! bin_op {
         ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: BinaryOperator<'static> = BinaryOperator {
-                precedence: Precedence::$prec as usize,
-                function: &$fun,
+            pub const $name: BinaryOperator = BinaryOperator {
+                precedence: Precedence::$prec,
+                function: $fun,
                 name: $debug,
             };
         };
@@ -55,11 +60,13 @@ mod builtins {
     bin_op! {INTERSECT(Multiplicative, Value::intersect, "&")}
     bin_op! {LINE_OFFSET(Exponential, Value::line_offset, "^^")}
 
+    bin_op! {COMMA(Comma, Value::comma, ",")}
+
     macro_rules! unary_op {
         ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: UnaryOperator<'static> = UnaryOperator {
-                precedence: Precedence::$prec as usize,
-                function: &$fun,
+            pub const $name: UnaryOperator = UnaryOperator {
+                precedence: Precedence::$prec,
+                function: $fun,
                 name: $debug,
             };
         };
@@ -72,12 +79,15 @@ mod builtins {
     unary_op! {ANGLE(Exponential, Value::angle, "angle")}
     unary_op! {XPART(Multiplicative, Value::xpart, "xpart")}
     unary_op! {YPART(Multiplicative, Value::ypart, "ypart")}
+
+    unary_op! {COMMA_UNARY(Comma, Value::comma_unary, ",")}
+    unary_op! {PAREN_UNARY(Comma, Value::comma_unary, "()")}
 }
 
 pub struct BinaryBuiltins;
 
 impl BinaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static BinaryOperator<'static>> {
+    pub fn get(&self, key: &str) -> Option<&'static BinaryOperator> {
         match key {
             "==" => Some(&builtins::EQ),
             "!=" => Some(&builtins::NE),
@@ -106,7 +116,7 @@ impl BinaryBuiltins {
 pub struct UnaryBuiltins;
 
 impl UnaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static UnaryOperator<'static>> {
+    pub fn get(&self, key: &str) -> Option<&'static UnaryOperator> {
         match key {
             "-" => Some(&builtins::NEG),
             "cos" => Some(&builtins::COS),
@@ -121,13 +131,13 @@ impl UnaryBuiltins {
 }
 
 #[derive(Clone)]
-pub struct BinaryOperator<'a> {
-    pub precedence: usize,
-    function: &'a dyn Fn(Value, Value) -> Result<Value>,
+pub struct BinaryOperator {
+    pub precedence: Precedence,
+    function: fn(Value, Value) -> Result<Value>,
     name: &'static str,
 }
 
-impl<'a> BinaryOperator<'a> {
+impl BinaryOperator {
     pub fn apply(&self, lhs: Value, rhs: Value) -> Result<Value> {
         (self.function)(lhs, rhs)
     }
@@ -137,26 +147,26 @@ impl<'a> BinaryOperator<'a> {
     }
 }
 
-impl<'a> fmt::Debug for BinaryOperator<'a> {
+impl fmt::Debug for BinaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }
 
-impl<'a> PartialEq for BinaryOperator<'a> {
+impl PartialEq for BinaryOperator {
     fn eq(&self, other: &Self) -> bool {
         self.precedence == other.precedence && self.name == other.name
     }
 }
 
 #[derive(Clone)]
-pub struct UnaryOperator<'a> {
-    pub precedence: usize,
-    function: &'a dyn Fn(Value) -> Result<Value>,
+pub struct UnaryOperator {
+    pub precedence: Precedence,
+    function: fn(Value) -> Result<Value>,
     name: &'static str,
 }
 
-impl<'a> UnaryOperator<'a> {
+impl UnaryOperator {
     pub fn apply(&self, argument: Value) -> Result<Value> {
         (self.function)(argument)
     }
@@ -166,13 +176,13 @@ impl<'a> UnaryOperator<'a> {
     }
 }
 
-impl<'a> fmt::Debug for UnaryOperator<'a> {
+impl fmt::Debug for UnaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }
 
-impl<'a> PartialEq for UnaryOperator<'a> {
+impl PartialEq for UnaryOperator {
     fn eq(&self, other: &Self) -> bool {
         self.precedence == other.precedence && self.name == other.name
     }

@@ -286,6 +286,7 @@ pub enum Value {
     Point(Point, PointProvenance),
     Line(Point, Point, Option<(PointId, PointId)>),
     String(String),
+    List(Vec<Value>),
 }
 
 impl Value {
@@ -497,6 +498,37 @@ impl Value {
                 Err(MathError::Type(good.into(), bad.into()))
             }
             (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
+        }
+    }
+
+    pub fn comma(self, other: Value) -> Result {
+        Ok(match self {
+            Self::List(mut values) => {
+                values.push(other);
+                Self::List(values)
+            }
+            _ => Self::List(vec![self, other]),
+        })
+    }
+
+    pub fn comma_unary(self) -> Result {
+        Ok(self)
+    }
+
+    pub fn paren_unary(self) -> Result {
+        match self {
+            Self::List(mut values) => {
+                match <[_; 1]>::try_from(values) {
+                    Ok([value]) => return Ok(value),
+                    Err(err) => values = err,
+                }
+                match <[_; 2]>::try_from(values) {
+                    Ok([x, y]) => return Self::point(x, y),
+                    Err(err) => values = err,
+                }
+                todo!()
+            }
+            _ => Ok(self),
         }
     }
 }
