@@ -1,5 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
+use expr_parser::{parser::Parser as _, token::IterTokenizer};
+
 use crate::{
     error::{ParserError, Result},
     expressions::{Expression, Function, Variable},
@@ -90,11 +92,24 @@ where
         self.tokens.line()
     }
 
+    fn tokens_until<F: FnMut(&TokenKind) -> bool>(&mut self, until: F) -> TokensUntil<'_, T, F> {
+        TokensUntil {
+            parser: self,
+            until,
+        }
+    }
+
     fn parse_expression(&mut self) -> Result<Expression> {
+        let _ = expression::Parser.parse(IterTokenizer(
+            self.tokens_until(|t| t == &TokenKind::Semicolon),
+        ));
         todo!();
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
+        let _ = expression::Parser.parse_one_term(IterTokenizer(
+            self.tokens_until(|t| t == &TokenKind::Semicolon),
+        ));
         todo!();
     }
 
@@ -414,6 +429,26 @@ where
                 })
             })
         })
+    }
+}
+
+struct TokensUntil<'a, T, F> {
+    parser: &'a mut Parser<T>,
+    until: F,
+}
+
+impl<T, F> Iterator for TokensUntil<'_, T, F>
+where
+    T: LexerExt,
+    F: FnMut(&TokenKind) -> bool,
+{
+    type Item = Result<Token>;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.parser.peek() {
+            Ok(Some(tok)) if (self.until)(tok) => None,
+            Err(err) => Some(Err(err)),
+            _ => self.parser.next_token(),
+        }
     }
 }
 

@@ -1,12 +1,14 @@
 use expr_parser::{
     operator::Fixity,
-    parser::{Element, Parser, ParserElement, Postfix, Prefix},
+    parser::{self, Element, ParserElement, Postfix, Prefix},
 };
 
 use crate::{
     expressions::Term,
     lexer::TokenKind,
-    operators::{BinaryBuiltins, BinaryOperator, Precedence, UnaryBuiltins, UnaryOperator, builtins},
+    operators::{
+        builtins, BinaryBuiltins, BinaryOperator, Precedence, UnaryBuiltins, UnaryOperator,
+    },
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -24,9 +26,9 @@ pub enum Error {
     UnexpectedToken(TokenKind),
 }
 
-pub struct ExpressionParser;
+pub struct Parser;
 
-impl Parser<TokenKind> for ExpressionParser {
+impl parser::Parser<TokenKind> for Parser {
     type Precedence = Precedence;
     type Delimiter = Delimiter;
     type BinaryOperator = &'static BinaryOperator;
