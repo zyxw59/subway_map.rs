@@ -90,7 +90,11 @@ where
         self.tokens.line()
     }
 
-    fn parse_expression(&mut self, _min_precedence: usize) -> Result<Expression> {
+    fn parse_expression(&mut self) -> Result<Expression> {
+        todo!();
+    }
+
+    fn parse_delimited_expression(&mut self) -> Result<Expression> {
         todo!();
     }
 
@@ -146,7 +150,7 @@ where
         }
         expect!(self, TokenKind::Equal);
         // get the function body, as an expression tree
-        let expression = self.parse_expression(0)?;
+        let expression = self.parse_expression()?;
         Ok((
             name.clone(),
             Function {
@@ -159,17 +163,24 @@ where
 
     fn parse_comma_point_list(&mut self) -> Result<Vec<(Option<Expression>, Variable)>> {
         let mut points = Vec::new();
-        while let Some(tok) = self.next().transpose()? {
+        while let Some(tok) = self.peek()? {
             let point = match tok {
-                TokenKind::Comma => continue,
+                TokenKind::Comma => {
+                    self.take_peek();
+                    continue;
+                }
                 TokenKind::LeftParen => {
-                    let multiplier = self.parse_expression(0)?;
-                    expect!(self, TokenKind::RightParen);
+                    let multiplier = self.parse_delimited_expression()?;
                     let ident = expect!(self, TokenKind::Tag(tag) => tag);
                     (Some(multiplier), ident)
                 }
-                TokenKind::Tag(ident) => (None, ident),
-                _ => return Err(ParserError::Token(tok, self.line()).into()),
+                TokenKind::Tag(_) => {
+                    let Some(TokenKind::Tag(ident)) = self.take_peek() else {
+                        unreachable!()
+                    };
+                    (None, ident)
+                }
+                _ => return Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into()),
             };
             points.push(point);
             match self.peek()? {
@@ -196,9 +207,8 @@ where
                 TokenKind::Tag(ref tag) if tag == "--" => {},
                 TokenKind::Semicolon => break,
             };
-            expect!(self, TokenKind::LeftParen);
-            let offset = self.parse_expression(0)?;
-            expect!(self, TokenKind::RightParen);
+            expect_peek!(self, TokenKind::LeftParen);
+            let offset = self.parse_delimited_expression()?;
             let end = expect!(self, TokenKind::Tag(tag) => tag);
             let next = end.clone();
             route.push(Segment { start, end, offset });
@@ -221,7 +231,7 @@ where
                     "point" => {
                         let name = expect!(self, TokenKind::Tag(tag) => tag);
                         expect!(self, TokenKind::Equal);
-                        let expr = self.parse_expression(0)?;
+                        let expr = self.parse_expression()?;
                         Ok(Some(StatementKind::PointSingle(name, expr)))
                     }
                     // sequence of points
@@ -259,7 +269,7 @@ where
                         };
                         let tag = self.parse_dotted_ident(tag)?;
                         expect!(self, TokenKind::Equal);
-                        let expr = self.parse_expression(0)?;
+                        let expr = self.parse_expression()?;
                         Ok(Some(StatementKind::Variable(tag, expr)))
                     }
                 }
@@ -297,7 +307,7 @@ where
         match kind.as_ref() {
             // from ... spaced
             "spaced" => {
-                let spaced = self.parse_expression(0)?;
+                let spaced = self.parse_expression()?;
                 expect!(self, TokenKind::Tag(ref tag) if tag == ":");
                 let points = self.parse_comma_point_list()?;
                 Ok(Some(StatementKind::PointSpaced {
@@ -319,14 +329,16 @@ where
         from: Variable,
         is_past: bool,
     ) -> Result<Option<StatementKind>> {
-        let to = expect! { self,
+        let to = expect_peek! { self,
             TokenKind::LeftParen => {
-                let multiplier = self.parse_expression(0)?;
-                expect!(self, TokenKind::RightParen);
+                let multiplier = self.parse_delimited_expression()?;
                 let ident = expect!(self, TokenKind::Tag(tag) => tag);
                 (Some(multiplier), ident)
             },
-            TokenKind::Tag(ident) => (None, ident),
+            TokenKind::Tag(_) => {
+                let Some(TokenKind::Tag(ident)) = self.take_peek() else { unreachable!() };
+                (None, ident)
+            },
         };
         expect!(self, TokenKind::Tag(ref tag) if tag == ":");
         let points = self.parse_comma_point_list()?;
@@ -340,7 +352,7 @@ where
 
     fn parse_stop_statement(&mut self) -> Result<Option<StatementKind>> {
         let styles = self.parse_dot_list()?;
-        let point = self.parse_expression(0)?;
+        let point = self.parse_expression()?;
         expect!(self, TokenKind::Tag(ref tag) if tag == "marker");
         let marker_type = expect!(self, TokenKind::Tag(tag) => tag);
         let marker_parameters = self.parse_marker_params()?;
@@ -365,7 +377,7 @@ where
                         unreachable!()
                     };
                     expect!(self, TokenKind::Equal);
-                    let expr = self.parse_expression(0)?;
+                    let expr = self.parse_expression()?;
                     match params.entry(tag) {
                         // there's already an argument with this name
                         Entry::Occupied(e) => {
@@ -416,7 +428,7 @@ mod tests {
         ($text:expr, ($($expr:tt)+)) => {{
             let result = Lexer::new($text.as_bytes())
                 .into_parser()
-                .parse_expression(0)
+                .parse_expression()
                 .unwrap();
             assert_eq!(result, expression!($($expr)+));
         }};
