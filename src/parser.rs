@@ -102,17 +102,19 @@ where
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
-        let _ = expression::Parser.parse(IterTokenizer(
-            self.tokens_until(|t| t == &TokenKind::Semicolon),
-        ));
-        todo!();
+        expression::Parser
+            .parse(IterTokenizer(
+                self.tokens_until(|t| t == &TokenKind::Semicolon),
+            ))
+            .map_err(|_| todo!())
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
-        let _ = expression::Parser.parse_one_term(IterTokenizer(
-            self.tokens_until(|t| t == &TokenKind::Semicolon),
-        ));
-        todo!();
+        expression::Parser
+            .parse_one_term(IterTokenizer(
+                self.tokens_until(|t| t == &TokenKind::Semicolon),
+            ))
+            .map_err(|_| todo!())
     }
 
     fn parse_dotted_ident(&mut self, tag: String) -> Result<String> {
