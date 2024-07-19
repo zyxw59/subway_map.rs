@@ -1,8 +1,5 @@
 #[cfg(test)]
 macro_rules! token {
-    (.) => {
-        $crate::lexer::TokenKind::Dot
-    };
     ((l)) => {
         $crate::lexer::TokenKind::LeftParen
     };

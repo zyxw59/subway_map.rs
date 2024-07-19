@@ -19,8 +19,6 @@ pub enum Precedence {
     Multiplicative,
     /// Exponential operators, such as `^`, as well as unary sine and cosine.
     Exponential,
-    /// The `.` operator
-    Dot,
 }
 
 pub mod builtins {

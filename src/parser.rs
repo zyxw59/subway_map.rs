@@ -115,15 +115,6 @@ where
             .map_err(|_| todo!())
     }
 
-    fn parse_dotted_ident(&mut self, tag: String) -> Result<String> {
-        let mut arr = vec![tag];
-        while let Some(TokenKind::Dot) = self.peek()? {
-            self.take_peek();
-            arr.push(expect!(self, TokenKind::Tag(tag) => tag));
-        }
-        Ok(arr.join("."))
-    }
-
     /// Parses a function definition.
     ///
     /// On success, returns a tuple of the function name and the function definition.
@@ -284,7 +275,6 @@ where
                         let Some(TokenKind::Tag(tag)) = self.take_peek() else {
                             unreachable!()
                         };
-                        let tag = self.parse_dotted_ident(tag)?;
                         expect!(self, TokenKind::Equal);
                         let expr = self.parse_expression()?;
                         Ok(Some(StatementKind::Variable(tag, expr)))
@@ -301,20 +291,21 @@ where
     }
 
     fn parse_dot_list(&mut self) -> Result<Vec<Variable>> {
-        let mut list = Vec::new();
-        loop {
-            match self.peek()? {
-                Some(TokenKind::Dot) => {
-                    self.take_peek();
-                    expect!(self, TokenKind::Tag(tag) => list.push(tag));
-                }
-                Some(_) => {
-                    break;
-                }
-                _ => break,
-            }
-        }
-        Ok(list)
+        todo!();
+        // let mut list = Vec::new();
+        // loop {
+        //     match self.peek()? {
+        //         Some(TokenKind::Dot) => {
+        //             self.take_peek();
+        //             expect!(self, TokenKind::Tag(tag) => list.push(tag));
+        //         }
+        //         Some(_) => {
+        //             break;
+        //         }
+        //         _ => break,
+        //     }
+        // }
+        // Ok(list)
     }
 
     fn parse_points_statement(&mut self) -> Result<Option<StatementKind>> {
