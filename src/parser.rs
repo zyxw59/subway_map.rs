@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use std::collections::{hash_map::Entry, HashMap};
 
 use expr_parser::{parser::Parser as _, token::IterTokenizer};
@@ -458,16 +456,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use expr_parser::expression::ExpressionKind;
-
     use crate::{
-        expressions::{
-            tests::{b, u, var},
-            Term,
-        },
+        expressions::tests::{b, u, var},
         lexer::Lexer,
-        operators::{BinaryBuiltins, BinaryOperator, UnaryBuiltins, UnaryOperator},
-        statement::{StatementKind, Stop},
+        // statement::{StatementKind, Stop},
     };
 
     macro_rules! assert_expression {
@@ -572,16 +564,16 @@ mod tests {
         assert_expression!(r#""foobar""#, ["foobar"]);
     }
 
-    macro_rules! assert_statement {
-        ($text:expr, $statement:expr) => {{
-            let result = Lexer::new($text.as_bytes())
-                .into_parser()
-                .parse_statement()
-                .unwrap()
-                .unwrap();
-            assert_eq!(result, $statement);
-        }};
-    }
+    // macro_rules! assert_statement {
+    //     ($text:expr, $statement:expr) => {{
+    //         let result = Lexer::new($text.as_bytes())
+    //             .into_parser()
+    //             .parse_statement()
+    //             .unwrap()
+    //             .unwrap();
+    //         assert_eq!(result, $statement);
+    //     }};
+    // }
 
     // #[test]
     // fn variable_assignment() {

@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use expr_parser::{
     operator::Fixity,
     parser::{self, Element, ParserElement, Postfix, Prefix},
