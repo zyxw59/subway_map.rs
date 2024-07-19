@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+
+pub use expr_parser::expression::Expression as ExpressionBit;
 
 use crate::{
     error::MathError,
@@ -11,7 +13,7 @@ use crate::{
 pub struct Function {
     pub name: Variable,
     pub args: HashMap<Variable, usize>,
-    pub expression: Expression,
+    pub expression: Expression2,
 }
 
 impl Function {
@@ -59,6 +61,19 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
 
 pub type Variable = String;
 
+pub type Expression2 =
+    VecDeque<ExpressionBit<&'static BinaryOperator, &'static UnaryOperator, Term>>;
+
+pub trait ExpressionExt {
+    fn evaluate(&self, context: &impl EvaluationContext) -> Result<Value>;
+}
+
+impl ExpressionExt for Expression2 {
+    fn evaluate(&self, _context: &impl EvaluationContext) -> Result<Value> {
+        todo!();
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
     Value(Value),
@@ -94,9 +109,75 @@ impl Expression {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Term {
     Number(f64),
     String(String),
     Variable(Variable),
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use expr_parser::expression::ExpressionKind;
+
+    use crate::{
+        expressions::Term,
+        operators::{BinaryBuiltins, BinaryOperator, UnaryBuiltins, UnaryOperator},
+    };
+
+    macro_rules! expression {
+        ($($x:expr),* $(,)?) => {
+            [$(::expr_parser::expression::ExpressionKind::from(
+                    $crate::expressions::tests::Expr::from($x),
+            )),*]
+        };
+    }
+
+    pub(crate) use expression;
+
+    pub enum Expr {
+        Term(Term),
+        UnaryOperator(&'static UnaryOperator),
+        BinaryOperator(&'static BinaryOperator),
+    }
+
+    impl From<Expr> for ExpressionKind<&'static BinaryOperator, &'static UnaryOperator, Term> {
+        fn from(expr: Expr) -> Self {
+            match expr {
+                Expr::Term(t) => Self::Term(t),
+                Expr::UnaryOperator(u) => Self::UnaryOperator(u),
+                Expr::BinaryOperator(b) => Self::BinaryOperator(b),
+            }
+        }
+    }
+
+    impl From<f64> for Expr {
+        fn from(x: f64) -> Self {
+            Self::Term(Term::Number(x))
+        }
+    }
+
+    impl From<i32> for Expr {
+        fn from(x: i32) -> Self {
+            Self::Term(Term::Number(x as _))
+        }
+    }
+
+    impl From<&str> for Expr {
+        fn from(s: &str) -> Self {
+            Self::Term(Term::String(s.into()))
+        }
+    }
+
+    pub fn b(s: &str) -> Expr {
+        Expr::BinaryOperator(BinaryBuiltins.get(s).unwrap())
+    }
+
+    pub fn u(s: &str) -> Expr {
+        Expr::UnaryOperator(UnaryBuiltins.get(s).unwrap())
+    }
+
+    pub fn var(s: &str) -> Expr {
+        Expr::Term(Term::Variable(s.into()))
+    }
 }
