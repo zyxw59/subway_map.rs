@@ -24,64 +24,62 @@ pub enum Precedence {
 }
 
 pub mod builtins {
-    use std::ops;
-
     use crate::values::Value;
 
     use super::{BinaryOperator, Precedence, UnaryOperator};
 
     macro_rules! bin_op {
-        ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
+        ($name:ident ( $prec:ident, $fun:ident, $debug:literal )) => {
             pub const $name: BinaryOperator = BinaryOperator {
                 precedence: Precedence::$prec,
-                function: $fun,
+                function: Value::$fun,
                 name: $debug,
             };
         };
     }
 
-    bin_op! {EQ(Comparison, Value::eq, "==")}
-    bin_op! {NE(Comparison, Value::ne, "!=")}
-    bin_op! {LT(Comparison, Value::lt, ">")}
-    bin_op! {LE(Comparison, Value::le, ">=")}
-    bin_op! {GT(Comparison, Value::gt, "<")}
-    bin_op! {GE(Comparison, Value::ge, "<=")}
-    bin_op! {MAX(Comparison, Value::max, "max")}
-    bin_op! {MIN(Comparison, Value::min, "min")}
-    bin_op! {ADD(Additive, ops::Add::add, "+")}
-    bin_op! {SUB(Additive, ops::Sub::sub, "-")}
-    bin_op! {HYPOT(Additive, Value::hypot, "++")}
-    bin_op! {HYPOT_SUB(Additive, Value::hypot_sub, "+-+")}
-    bin_op! {MUL(Multiplicative, ops::Mul::mul, "*")}
-    bin_op! {DIV(Multiplicative, ops::Div::div, "/")}
-    bin_op! {POW(Exponential, Value::pow, "^")}
-    bin_op! {LINE_BETWEEN(Exponential, Value::line_between, "<>")}
-    bin_op! {LINE_VECTOR(Exponential, Value::line_vector, ">>")}
-    bin_op! {INTERSECT(Multiplicative, Value::intersect, "&")}
-    bin_op! {LINE_OFFSET(Exponential, Value::line_offset, "^^")}
+    bin_op! {EQ(Comparison, eq, "==")}
+    bin_op! {NE(Comparison, ne, "!=")}
+    bin_op! {LT(Comparison, lt, ">")}
+    bin_op! {LE(Comparison, le, ">=")}
+    bin_op! {GT(Comparison, gt, "<")}
+    bin_op! {GE(Comparison, ge, "<=")}
+    bin_op! {MAX(Comparison, max, "max")}
+    bin_op! {MIN(Comparison, min, "min")}
+    bin_op! {ADD(Additive, add, "+")}
+    bin_op! {SUB(Additive, sub, "-")}
+    bin_op! {HYPOT(Additive, hypot, "++")}
+    bin_op! {HYPOT_SUB(Additive, hypot_sub, "+-+")}
+    bin_op! {MUL(Multiplicative, mul, "*")}
+    bin_op! {DIV(Multiplicative, div, "/")}
+    bin_op! {POW(Exponential, pow, "^")}
+    bin_op! {LINE_BETWEEN(Exponential, line_between, "<>")}
+    bin_op! {LINE_VECTOR(Exponential, line_vector, ">>")}
+    bin_op! {INTERSECT(Multiplicative, intersect, "&")}
+    bin_op! {LINE_OFFSET(Exponential, line_offset, "^^")}
 
-    bin_op! {COMMA(Comma, Value::comma, ",")}
+    bin_op! {COMMA(Comma, comma, ",")}
 
     macro_rules! unary_op {
-        ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
+        ($name:ident ( $prec:ident, $fun:ident, $debug:literal )) => {
             pub const $name: UnaryOperator = UnaryOperator {
                 precedence: Precedence::$prec,
-                function: $fun,
+                function: Value::$fun,
                 name: $debug,
             };
         };
     }
 
-    unary_op! {NEG(Multiplicative, ops::Neg::neg, "-")}
-    unary_op! {COS(Exponential, Value::cos, "cos")}
-    unary_op! {SIN(Exponential, Value::sin, "sin")}
-    unary_op! {DIR(Exponential, Value::dir, "dir")}
-    unary_op! {ANGLE(Exponential, Value::angle, "angle")}
-    unary_op! {XPART(Multiplicative, Value::xpart, "xpart")}
-    unary_op! {YPART(Multiplicative, Value::ypart, "ypart")}
+    unary_op! {NEG(Multiplicative, neg, "-")}
+    unary_op! {COS(Exponential, cos, "cos")}
+    unary_op! {SIN(Exponential, sin, "sin")}
+    unary_op! {DIR(Exponential, dir, "dir")}
+    unary_op! {ANGLE(Exponential, angle, "angle")}
+    unary_op! {XPART(Multiplicative, xpart, "xpart")}
+    unary_op! {YPART(Multiplicative, ypart, "ypart")}
 
-    unary_op! {COMMA_UNARY(Comma, Value::comma_unary, ",")}
-    unary_op! {PAREN_UNARY(Comma, Value::comma_unary, "()")}
+    unary_op! {COMMA_UNARY(Comma, comma_unary, ",")}
+    unary_op! {PAREN_UNARY(Comma, comma_unary, "()")}
 }
 
 pub struct BinaryBuiltins;

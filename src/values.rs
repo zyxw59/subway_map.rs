@@ -523,26 +523,15 @@ impl Value {
                     Err(err) => values = err,
                 }
                 match <[_; 2]>::try_from(values) {
-                    Ok([x, y]) => return Self::point(x, y),
-                    Err(err) => values = err,
+                    Ok([x, y]) => Self::point(x, y),
+                    Err(_err) => todo!(),
                 }
-                todo!()
             }
             _ => Ok(self),
         }
     }
-}
 
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
-        self.eq_bool(other).unwrap_or(false)
-    }
-}
-
-impl ops::Add for Value {
-    type Output = Result;
-
-    fn add(self, rhs: Value) -> Result {
+    pub fn add(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a + b),
@@ -555,12 +544,8 @@ impl ops::Add for Value {
             (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Sub for Value {
-    type Output = Result;
-
-    fn sub(self, rhs: Value) -> Result {
+    pub fn sub(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a - b),
@@ -571,12 +556,8 @@ impl ops::Sub for Value {
             (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Mul for Value {
-    type Output = Result;
-
-    fn mul(self, rhs: Value) -> Result {
+    pub fn mul(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a * b),
@@ -589,12 +570,8 @@ impl ops::Mul for Value {
             (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Div for Value {
-    type Output = Result;
-
-    fn div(self, rhs: Value) -> Result {
+    pub fn div(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (_, Number(x)) if x == 0.0 => return Err(MathError::DivisionByZero),
@@ -603,18 +580,20 @@ impl ops::Div for Value {
             (bad, Number(..)) | (_, bad) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Neg for Value {
-    type Output = Result;
-
-    fn neg(self) -> Result {
+    pub fn neg(self) -> Result {
         use self::Value::*;
         Ok(match self {
             Number(x) => Number(-x),
             Point(p, _) => Point(-p, PointProvenance::None),
             _ => return Err(MathError::Type(Type::Number, self.into())),
         })
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        self.eq_bool(other).unwrap_or(false)
     }
 }
 
