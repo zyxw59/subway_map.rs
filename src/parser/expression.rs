@@ -63,6 +63,14 @@ impl parser::Parser<TokenKind> for Parser {
                 };
                 Element { prefix, postfix }
             }
+            TokenKind::Dot => Element {
+                prefix: Prefix::None,
+                postfix: Postfix::BinaryOperator {
+                    fixity: Fixity::Left(Precedence::Dot),
+                    operator: todo!(), // field access
+                    no_rhs: None,
+                },
+            },
             TokenKind::Comma => Element {
                 prefix: Prefix::None,
                 postfix: Postfix::BinaryOperator {

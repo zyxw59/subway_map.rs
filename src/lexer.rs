@@ -147,17 +147,7 @@ impl<R: BufRead> Lexer<R> {
 
     fn parse_word(&mut self) -> Result<TokenKind> {
         let start_idx = self.byte_idx;
-        loop {
-            self.advance_while(is_word_character);
-            if let Some('.') = self.get_current_char() {
-                self.advance_one();
-                if let Some(CharCat::Word) = self.get_current_char().map(From::from) {
-                    continue;
-                }
-                self.retreat_one();
-            }
-            break;
-        }
+        self.advance_while(is_word_character);
         let tag = self.slice_from(start_idx).to_owned();
         Ok(TokenKind::Tag(tag))
     }
@@ -202,10 +192,10 @@ impl<R: BufRead> Lexer<R> {
             // the dot is part of a number
             self.retreat_one();
         }
-        if self.byte_idx == start_idx {
-            self.parse_number()
-        } else {
-            Ok(TokenKind::Tag(self.slice_from(start_idx).to_owned()))
+        match self.byte_idx - start_idx {
+            0 => self.parse_number(),
+            1 => Ok(TokenKind::Dot),
+            _ => Ok(TokenKind::Tag(self.slice_from(start_idx).to_owned())),
         }
     }
 
@@ -290,6 +280,8 @@ pub enum TokenKind {
     Number(f64),
     /// A literal string
     String(String),
+    /// A single dot
+    Dot,
     /// A left parenthesis
     LeftParen,
     /// A right parenthesis
@@ -349,7 +341,9 @@ mod tests {
             [
                 token!(#"a"),
                 token!(,),
-                token!(#"b.c"),
+                token!(#"b"),
+                token!(.),
+                token!(#"c"),
                 token!(0.123)
             ]
         );
