@@ -1,6 +1,6 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use expr_parser::{parser::Parser as _, token::IterTokenizer};
+use expr_parser::{parser::Parser as _, token::IterTokenizer, Span};
 
 use crate::{
     error::{ParserError, Result},
@@ -39,13 +39,22 @@ macro_rules! expect {
         expect!($self, $token $(if $guard)? => ())
     };
     ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {
-        match $self.next().transpose()? {
-            $(Some($token) $(if $guard)? => $capture),*,
-            #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
-            Some(tok) => return Err(ParserError::Token(tok, $self.line()).into()),
-            None => return Err(ParserError::EndOfInput($self.line()).into()),
-        }
+        expect_token!($self, $(Token { span: _, kind: $token } $(if $guard)? => $capture),*)
     };
+}
+
+macro_rules! expect_token {
+    ($self:ident, $token:pat $(if $guard:expr)?) => {
+        expect!($self, $token $(if $guard)? => ())
+    };
+    ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {{
+        let token = $self.next_token().ok_or_else(|| ParserError::EndOfInput($self.line()))??;
+        match token {
+            $($token $(if $guard)? => $capture),*,
+            #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
+            tok => return Err(ParserError::Token(tok.kind, $self.line()).into()),
+        }
+    }};
 }
 
 macro_rules! expect_peek {
@@ -88,40 +97,40 @@ where
         self.peek.take().map(|tok| tok.kind)
     }
 
+    fn take_peek_token(&mut self) -> Option<Token> {
+        self.peek.take()
+    }
+
     fn line(&self) -> usize {
         self.tokens.line()
     }
 
-    fn tokens_until<F: FnMut(&TokenKind) -> bool>(&mut self, until: F) -> TokensUntil<'_, T, F> {
-        TokensUntil {
-            parser: self,
-            until,
-        }
+    fn expr_tokens(&mut self) -> ExprTokens<'_, T> {
+        ExprTokens { parser: self }
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
         expression::Parser
-            .parse(IterTokenizer(
-                self.tokens_until(|t| t == &TokenKind::Semicolon),
-            ))
+            .parse(IterTokenizer(self.expr_tokens()))
             .map_err(|_| todo!())
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
         expression::Parser
-            .parse_one_term(IterTokenizer(
-                self.tokens_until(|t| t == &TokenKind::Semicolon),
-            ))
+            .parse_one_term(IterTokenizer(self.expr_tokens()))
             .map_err(|_| todo!())
     }
 
-    fn parse_dotted_ident(&mut self, tag: String) -> Result<String> {
+    fn parse_dotted_ident(&mut self, tag: String, mut span: Span) -> Result<(String, Span)> {
         let mut arr = vec![tag];
         while let Some(TokenKind::Dot) = self.peek()? {
             self.take_peek();
-            arr.push(expect!(self, TokenKind::Tag(tag) => tag));
+            let (tag, new_span) =
+                expect_token!(self, Token { span, kind: TokenKind::Tag(tag) } => (tag, span));
+            span.end = new_span.end;
+            arr.push(tag);
         }
-        Ok(arr.join("."))
+        Ok((arr.join("."), span))
     }
 
     /// Parses a function definition.
@@ -281,10 +290,11 @@ where
                     }
                     // other (variable assignment)
                     _ => {
-                        let Some(TokenKind::Tag(tag)) = self.take_peek() else {
+                        let token = self.take_peek_token().unwrap();
+                        let TokenKind::Tag(tag) = token.kind else {
                             unreachable!()
                         };
-                        let tag = self.parse_dotted_ident(tag)?;
+                        let (tag, _span) = self.parse_dotted_ident(tag, token.span)?;
                         expect!(self, TokenKind::Equal);
                         let expr = self.parse_expression()?;
                         Ok(Some(StatementKind::Variable(tag, expr)))
@@ -434,22 +444,30 @@ where
     }
 }
 
-struct TokensUntil<'a, T, F> {
+struct ExprTokens<'a, T> {
     parser: &'a mut Parser<T>,
-    until: F,
 }
 
-impl<T, F> Iterator for TokensUntil<'_, T, F>
-where
-    T: LexerExt,
-    F: FnMut(&TokenKind) -> bool,
-{
+impl<T: LexerExt> Iterator for ExprTokens<'_, T> {
     type Item = Result<Token>;
     fn next(&mut self) -> Option<Self::Item> {
         match self.parser.peek() {
-            Ok(Some(tok)) if (self.until)(tok) => None,
-            Err(err) => Some(Err(err)),
-            _ => self.parser.next_token(),
+            Ok(Some(TokenKind::Semicolon)) => return None,
+            Err(err) => return Some(Err(err)),
+            _ => {}
+        }
+        let token = self.parser.take_peek_token()?;
+        if let TokenKind::Tag(tag) = token.kind {
+            Some(
+                self.parser
+                    .parse_dotted_ident(tag, token.span)
+                    .map(|(tag, span)| Token {
+                        kind: TokenKind::Tag(tag),
+                        span,
+                    }),
+            )
+        } else {
+            Some(Ok(token))
         }
     }
 }
@@ -555,8 +573,7 @@ mod tests {
 
     #[test]
     fn dotted_variable() {
-        // TODO: dot operator
-        // assert_expression!("3*x.y", ("*", 3, (#"x.y")));
+        assert_expression!("3*x.y", [3, var("x.y"), b("*")]);
     }
 
     #[test]
