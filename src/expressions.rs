@@ -17,7 +17,7 @@ pub struct Function {
 }
 
 impl Function {
-    fn apply(&self, args: &[Expression], context: &impl EvaluationContext) -> Result<Value> {
+    pub fn apply(&self, args: Vec<Value>, context: &dyn EvaluationContext) -> Result<Value> {
         let expected = self.args.len();
         let actual = args.len();
         if expected != actual {
@@ -30,10 +30,7 @@ impl Function {
         let locals = FunctionEvaluator {
             parent: context,
             arg_order: &self.args,
-            args: args
-                .iter()
-                .map(|arg| arg.evaluate(context))
-                .collect::<Result<Vec<Value>>>()?,
+            args,
         };
         self.expression.evaluate(&locals)
     }
@@ -74,35 +71,31 @@ impl ExpressionExt for Expression2 {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expression {
-    Value(Value),
-    Point(Box<(Expression, Expression)>),
-    Function(Variable, Vec<Expression>),
-    Variable(Variable),
-}
+pub enum Expression {}
 
 impl Expression {
-    pub fn evaluate(&self, context: &impl EvaluationContext) -> Result<Value> {
-        Ok(match self {
-            Expression::Value(v) => v.clone(),
-            Expression::Point(p) => {
-                let (x, y) = p.as_ref();
-                Value::point(x.evaluate(context)?, y.evaluate(context)?)?
-            }
-            // Expression::BinaryOperator(op, args) => {
-            //     let (lhs, rhs) = args.as_ref();
-            //     op.apply(lhs.evaluate(context)?, rhs.evaluate(context)?)?
-            // }
-            // Expression::UnaryOperator(op, arg) => op.apply(arg.evaluate(context)?)?,
-            Expression::Function(func_name, args) => match context.get_function(func_name) {
-                None => return Err(MathError::Function(func_name.clone())),
-                Some(func) => func.apply(args, context)?,
-            },
-            Expression::Variable(var) => match context.get_variable(var) {
-                None => return Err(MathError::Variable(var.clone())),
-                Some(val) => val,
-            },
-        })
+    pub fn evaluate(&self, _context: &impl EvaluationContext) -> Result<Value> {
+        todo!();
+        // Ok(match self {
+        //     Expression::Value(v) => v.clone(),
+        //     Expression::Point(p) => {
+        //         let (x, y) = p.as_ref();
+        //         Value::point(x.evaluate(context)?, y.evaluate(context)?)?
+        //     }
+        //     // Expression::BinaryOperator(op, args) => {
+        //     //     let (lhs, rhs) = args.as_ref();
+        //     //     op.apply(lhs.evaluate(context)?, rhs.evaluate(context)?)?
+        //     // }
+        //     // Expression::UnaryOperator(op, arg) => op.apply(arg.evaluate(context)?)?,
+        //     Expression::Function(func_name, args) => match context.get_function(func_name) {
+        //         None => return Err(MathError::Function(func_name.clone())),
+        //         Some(func) => func.apply(args, context)?,
+        //     },
+        //     Expression::Variable(var) => match context.get_variable(var) {
+        //         None => return Err(MathError::Variable(var.clone())),
+        //         Some(val) => val,
+        //     },
+        // })
     }
 }
 
