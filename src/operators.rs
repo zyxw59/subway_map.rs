@@ -53,9 +53,9 @@ pub const PAREN_UNARY: UnaryOperator = UnaryOperator {
 };
 
 macro_rules! get_binary_builtin {
-    (match $key:ident { $($name:literal => ($prec:ident, $fn:ident)),* $(,)? }) => {
+    (match $key:ident { $($name:literal => ($fixity:expr, $fn:ident)),* $(,)? }) => {
         match $key {
-            $($name => Some((Precedence::$prec, Operator {
+            $($name => Some(($fixity, Operator {
                 function: as_binary_operator!(Value::$fn),
                 name: $name,
             })),)*
@@ -91,27 +91,29 @@ impl<F> fmt::Debug for Operator<F> {
 pub type BinaryOperator = Operator<fn(Value, Value, &dyn EvaluationContext) -> Result>;
 
 impl BinaryOperator {
-    pub fn get(key: &str) -> Option<(Precedence, Self)> {
+    pub fn get(key: &str) -> Option<(expr_parser::operator::Fixity<Precedence>, Self)> {
+        use self::Precedence::*;
+        use expr_parser::operator::Fixity::*;
         get_binary_builtin!(match key {
-            "==" => (Comparison, eq),
-            "!=" => (Comparison, ne),
-            "<" => (Comparison, lt),
-            "<=" => (Comparison, le),
-            ">" => (Comparison, gt),
-            ">=" => (Comparison, ge),
-            "max" => (Comparison, max),
-            "min" => (Comparison, min),
-            "+" => (Additive, add),
-            "-" => (Additive, sub),
-            "++" => (Additive, hypot),
-            "+-+" => (Additive, hypot_sub),
-            "*" => (Multiplicative, mul),
-            "/" => (Multiplicative, div),
-            "&" => (Multiplicative, intersect),
-            "^" => (Exponential, pow),
-            "<>" => (Exponential, line_between),
-            ">>" => (Exponential, line_vector),
-            "^^" => (Exponential, line_offset),
+            "==" => (Left(Comparison), eq),
+            "!=" => (Left(Comparison), ne),
+            "<" => (Left(Comparison), lt),
+            "<=" => (Left(Comparison), le),
+            ">" => (Left(Comparison), gt),
+            ">=" => (Left(Comparison), ge),
+            "max" => (Left(Comparison), max),
+            "min" => (Left(Comparison), min),
+            "+" => (Left(Additive), add),
+            "-" => (Left(Additive), sub),
+            "++" => (Left(Additive), hypot),
+            "+-+" => (Left(Additive), hypot_sub),
+            "*" => (Left(Multiplicative), mul),
+            "/" => (Left(Multiplicative), div),
+            "&" => (Left(Multiplicative), intersect),
+            "^" => (Right(Exponential), pow),
+            "<>" => (Left(Exponential), line_between),
+            ">>" => (Left(Exponential), line_vector),
+            "^^" => (Left(Exponential), line_offset),
         })
     }
 }

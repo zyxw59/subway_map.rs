@@ -39,9 +39,9 @@ impl parser::Parser<TokenKind> for Parser {
     fn parse_token(&self, token: TokenKind) -> Result<ParserElement<Self, TokenKind>, Self::Error> {
         Ok(match token {
             TokenKind::Tag(tag) => {
-                let postfix = if let Some((precedence, op)) = BinaryOperator::get(&tag) {
+                let postfix = if let Some((fixity, op)) = BinaryOperator::get(&tag) {
                     Postfix::BinaryOperator {
-                        fixity: Fixity::Left(precedence), // TODO: allow right-associative ops?
+                        fixity,
                         operator: op,
                         no_rhs: None,
                     }

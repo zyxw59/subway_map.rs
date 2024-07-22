@@ -522,7 +522,7 @@ mod tests {
 
     #[test]
     fn pow() {
-        assert_expression!("3^4", [3, 4, b("^")]);
+        assert_expression!("3^4^5", [3, 4, 5, b("^"), b("^")]);
     }
 
     #[test]
