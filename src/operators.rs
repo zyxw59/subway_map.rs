@@ -85,27 +85,27 @@ pub mod builtins {
 pub struct BinaryBuiltins;
 
 impl BinaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static BinaryOperator> {
+    pub fn get(&self, key: &str) -> Option<BinaryOperator> {
         match key {
-            "==" => Some(&builtins::EQ),
-            "!=" => Some(&builtins::NE),
-            "<" => Some(&builtins::LT),
-            "<=" => Some(&builtins::LE),
-            ">" => Some(&builtins::GT),
-            ">=" => Some(&builtins::GE),
-            "+" => Some(&builtins::ADD),
-            "-" => Some(&builtins::SUB),
-            "++" => Some(&builtins::HYPOT),
-            "+-+" => Some(&builtins::HYPOT_SUB),
-            "*" => Some(&builtins::MUL),
-            "/" => Some(&builtins::DIV),
-            "^" => Some(&builtins::POW),
-            "max" => Some(&builtins::MAX),
-            "min" => Some(&builtins::MIN),
-            "<>" => Some(&builtins::LINE_BETWEEN),
-            ">>" => Some(&builtins::LINE_VECTOR),
-            "&" => Some(&builtins::INTERSECT),
-            "^^" => Some(&builtins::LINE_OFFSET),
+            "==" => Some(builtins::EQ),
+            "!=" => Some(builtins::NE),
+            "<" => Some(builtins::LT),
+            "<=" => Some(builtins::LE),
+            ">" => Some(builtins::GT),
+            ">=" => Some(builtins::GE),
+            "+" => Some(builtins::ADD),
+            "-" => Some(builtins::SUB),
+            "++" => Some(builtins::HYPOT),
+            "+-+" => Some(builtins::HYPOT_SUB),
+            "*" => Some(builtins::MUL),
+            "/" => Some(builtins::DIV),
+            "^" => Some(builtins::POW),
+            "max" => Some(builtins::MAX),
+            "min" => Some(builtins::MIN),
+            "<>" => Some(builtins::LINE_BETWEEN),
+            ">>" => Some(builtins::LINE_VECTOR),
+            "&" => Some(builtins::INTERSECT),
+            "^^" => Some(builtins::LINE_OFFSET),
             _ => None,
         }
     }
@@ -114,21 +114,21 @@ impl BinaryBuiltins {
 pub struct UnaryBuiltins;
 
 impl UnaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static UnaryOperator> {
+    pub fn get(&self, key: &str) -> Option<UnaryOperator> {
         match key {
-            "-" => Some(&builtins::NEG),
-            "cos" => Some(&builtins::COS),
-            "sin" => Some(&builtins::SIN),
-            "dir" => Some(&builtins::DIR),
-            "angle" => Some(&builtins::ANGLE),
-            "xpart" => Some(&builtins::XPART),
-            "ypart" => Some(&builtins::YPART),
+            "-" => Some(builtins::NEG),
+            "cos" => Some(builtins::COS),
+            "sin" => Some(builtins::SIN),
+            "dir" => Some(builtins::DIR),
+            "angle" => Some(builtins::ANGLE),
+            "xpart" => Some(builtins::XPART),
+            "ypart" => Some(builtins::YPART),
             _ => None,
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct BinaryOperator {
     pub precedence: Precedence,
     function: fn(Value, Value) -> Result<Value>,
@@ -140,7 +140,7 @@ impl BinaryOperator {
         (self.function)(lhs, rhs)
     }
 
-    pub fn expression(&'static self, lhs: Expression, rhs: Expression) -> Expression {
+    pub fn expression(self, lhs: Expression, rhs: Expression) -> Expression {
         Expression::BinaryOperator(self, Box::new((lhs, rhs)))
     }
 }
@@ -157,7 +157,7 @@ impl PartialEq for BinaryOperator {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct UnaryOperator {
     pub precedence: Precedence,
     function: fn(Value) -> Result<Value>,
@@ -169,7 +169,7 @@ impl UnaryOperator {
         (self.function)(argument)
     }
 
-    pub fn expression(&'static self, argument: Expression) -> Expression {
+    pub fn expression(self, argument: Expression) -> Expression {
         Expression::UnaryOperator(self, Box::new(argument))
     }
 }

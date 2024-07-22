@@ -62,7 +62,7 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
 pub type Variable = String;
 
 pub type Expression2 =
-    VecDeque<ExpressionBit<&'static BinaryOperator, &'static UnaryOperator, Term>>;
+    VecDeque<ExpressionBit<BinaryOperator, UnaryOperator, Term>>;
 
 pub trait ExpressionExt {
     fn evaluate(&self, context: &impl EvaluationContext) -> Result<Value>;
@@ -78,8 +78,8 @@ impl ExpressionExt for Expression2 {
 pub enum Expression {
     Value(Value),
     Point(Box<(Expression, Expression)>),
-    BinaryOperator(&'static BinaryOperator, Box<(Expression, Expression)>),
-    UnaryOperator(&'static UnaryOperator, Box<Expression>),
+    BinaryOperator(BinaryOperator, Box<(Expression, Expression)>),
+    UnaryOperator(UnaryOperator, Box<Expression>),
     Function(Variable, Vec<Expression>),
     Variable(Variable),
 }
@@ -137,11 +137,11 @@ pub(crate) mod tests {
 
     pub enum Expr {
         Term(Term),
-        UnaryOperator(&'static UnaryOperator),
-        BinaryOperator(&'static BinaryOperator),
+        UnaryOperator(UnaryOperator),
+        BinaryOperator(BinaryOperator),
     }
 
-    impl From<Expr> for ExpressionKind<&'static BinaryOperator, &'static UnaryOperator, Term> {
+    impl From<Expr> for ExpressionKind<BinaryOperator, UnaryOperator, Term> {
         fn from(expr: Expr) -> Self {
             match expr {
                 Expr::Term(t) => Self::Term(t),
