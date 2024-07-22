@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
+use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
+
 use crate::{
     document::Document,
     error::{EvaluatorError, MathError, Result},
-    expressions::{ExpressionExt, Variable},
+    expressions::{ExpressionBit, Term, Variable},
+    operators::{BinaryOperator, UnaryOperator},
     points::PointCollection,
     statement::{Statement, StatementKind},
     stops::{Stop, StopCollection},
@@ -12,6 +15,45 @@ use crate::{
 
 pub trait EvaluationContext {
     fn get_variable(&self, name: &str) -> Option<Value>;
+}
+
+pub fn evaluate_expression(
+    ctx: &dyn EvaluationContext,
+    expr: impl IntoIterator<Item = ExpressionBit>,
+) -> Result<Value, MathError> {
+    EvaluatorTrait::evaluate(ctx, expr)
+}
+
+impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + 'a {
+    type Value = Value;
+    type Error = MathError;
+
+    fn evaluate_binary_operator(
+        &self,
+        _span: Span,
+        operator: BinaryOperator,
+        lhs: Value,
+        rhs: Value,
+    ) -> Result<Value, MathError> {
+        (operator.function)(lhs, rhs, self)
+    }
+
+    fn evaluate_unary_operator(
+        &self,
+        _span: Span,
+        operator: UnaryOperator,
+        argument: Value,
+    ) -> Result<Value, MathError> {
+        (operator.function)(argument, self)
+    }
+
+    fn evaluate_term(&self, _span: Span, term: Term) -> Result<Value, MathError> {
+        match term {
+            Term::Number(x) => Ok(Value::Number(x)),
+            Term::String(s) => Ok(Value::String(s)),
+            Term::Variable(v) => self.get_variable(&v).ok_or(MathError::Variable(v)),
+        }
+    }
 }
 
 #[derive(Default, Debug)]
@@ -39,8 +81,7 @@ impl Evaluator {
         match statement {
             StatementKind::Null => {}
             StatementKind::Variable(name, expr) => {
-                let value = expr
-                    .evaluate(self)
+                let value = evaluate_expression(self, expr)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 if &name == "line_sep" {
                     let value =
@@ -75,8 +116,7 @@ impl Evaluator {
                     }
                     .into());
                 }
-                let (point, provenance) = expr
-                    .evaluate(self)
+                let (point, provenance) = evaluate_expression(self, expr)
                     .and_then(<(Point, PointProvenance)>::try_from)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 self.points.insert_point(name, point, provenance, line)?;
@@ -86,8 +126,7 @@ impl Evaluator {
                 spaced,
                 points,
             } => {
-                let spacing = spaced
-                    .evaluate(self)
+                let spacing = evaluate_expression(self, spaced)
                     .and_then(Point::try_from)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 if !self.points.contains(&from) {
@@ -97,7 +136,7 @@ impl Evaluator {
                     .into_iter()
                     .map(|(multiplier, name)| {
                         multiplier
-                            .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                            .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                             .unwrap_or(Ok(1.0))
                             .map_err(|err| EvaluatorError::Math(err, line))
                             .map(|distance| (name, distance))
@@ -116,7 +155,7 @@ impl Evaluator {
                     .into_iter()
                     .map(|(multiplier, name)| {
                         total_distance += multiplier
-                            .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                            .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                             .unwrap_or(Ok(1.0))
                             .map_err(|err| EvaluatorError::Math(err, line))?;
                         Ok((name, total_distance))
@@ -124,7 +163,7 @@ impl Evaluator {
                     .collect::<Result<Vec<_>, EvaluatorError>>()?;
                 if is_past {
                     let past_multiplier = to_multiplier
-                        .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                         .unwrap_or(Ok(1.0))
                         .map_err(|err| EvaluatorError::Math(err, line))?;
                     self.points.extend_line(
@@ -137,7 +176,7 @@ impl Evaluator {
                     )?;
                 } else {
                     total_distance += to_multiplier
-                        .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                         .unwrap_or(Ok(1.0))
                         .map_err(|err| EvaluatorError::Math(err, line))?;
                     self.points.extend_line(
@@ -170,9 +209,7 @@ impl Evaluator {
                 for segment in segments {
                     // if offset evaluates to a number, coerce it to an integer
                     // TODO: add warning if it's not an integer
-                    let offset = segment
-                        .offset
-                        .evaluate(self)
+                    let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)
                         .map_err(|err| EvaluatorError::Math(err, line))?
                         as isize;
@@ -184,15 +221,13 @@ impl Evaluator {
                 }
             }
             StatementKind::Stop(stop) => {
-                let point = stop
-                    .point
-                    .evaluate(&*self)
+                let point = evaluate_expression(self, stop.point)
                     .and_then(Point::try_from)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 let marker_parameters = stop
                     .marker_parameters
                     .into_iter()
-                    .map(|(key, expr)| Ok((key, expr.evaluate(&*self)?)))
+                    .map(|(key, expr)| Ok((key, evaluate_expression(self, expr)?)))
                     .collect::<Result<_, _>>()
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 self.stops.push(Stop {

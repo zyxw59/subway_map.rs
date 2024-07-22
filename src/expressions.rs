@@ -1,10 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 
-pub use expr_parser::expression::Expression as ExpressionBit;
+pub use expr_parser::expression;
 
 use crate::{
     error::MathError,
-    evaluator::EvaluationContext,
+    evaluator::{evaluate_expression, EvaluationContext},
     operators::{BinaryOperator, UnaryOperator},
     values::{Result, Value},
 };
@@ -13,7 +13,7 @@ use crate::{
 pub struct Function {
     pub name: Variable,
     pub args: HashMap<Variable, usize>,
-    pub expression: Expression2,
+    pub expression: Expression,
 }
 
 impl Function {
@@ -32,7 +32,7 @@ impl Function {
             arg_order: &self.args,
             args,
         };
-        self.expression.evaluate(&locals)
+        evaluate_expression(&locals, self.expression.iter().cloned())
     }
 }
 
@@ -54,46 +54,8 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
 
 pub type Variable = String;
 
-pub type Expression2 = VecDeque<ExpressionBit<BinaryOperator, UnaryOperator, Term>>;
-
-pub trait ExpressionExt {
-    fn evaluate(&self, context: &impl EvaluationContext) -> Result<Value>;
-}
-
-impl ExpressionExt for Expression2 {
-    fn evaluate(&self, _context: &impl EvaluationContext) -> Result<Value> {
-        todo!();
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Expression {}
-
-impl Expression {
-    pub fn evaluate(&self, _context: &impl EvaluationContext) -> Result<Value> {
-        todo!();
-        // Ok(match self {
-        //     Expression::Value(v) => v.clone(),
-        //     Expression::Point(p) => {
-        //         let (x, y) = p.as_ref();
-        //         Value::point(x.evaluate(context)?, y.evaluate(context)?)?
-        //     }
-        //     // Expression::BinaryOperator(op, args) => {
-        //     //     let (lhs, rhs) = args.as_ref();
-        //     //     op.apply(lhs.evaluate(context)?, rhs.evaluate(context)?)?
-        //     // }
-        //     // Expression::UnaryOperator(op, arg) => op.apply(arg.evaluate(context)?)?,
-        //     Expression::Function(func_name, args) => match context.get_function(func_name) {
-        //         None => return Err(MathError::Function(func_name.clone())),
-        //         Some(func) => func.apply(args, context)?,
-        //     },
-        //     Expression::Variable(var) => match context.get_variable(var) {
-        //         None => return Err(MathError::Variable(var.clone())),
-        //         Some(val) => val,
-        //     },
-        // })
-    }
-}
+pub type ExpressionBit = expression::Expression<BinaryOperator, UnaryOperator, Term>;
+pub type Expression = VecDeque<ExpressionBit>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {

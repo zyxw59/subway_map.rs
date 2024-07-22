@@ -4,7 +4,7 @@ use expr_parser::{parser::Parser as _, token::IterTokenizer, Span};
 
 use crate::{
     error::{ParserError, Result},
-    expressions::{Expression2 as Expression, Function, Variable},
+    expressions::{Expression, Function, Variable},
     lexer::{Token, TokenKind},
     statement::{Segment, Statement, StatementKind, Stop},
 };

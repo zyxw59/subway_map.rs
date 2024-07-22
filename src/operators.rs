@@ -88,8 +88,8 @@ macro_rules! get_unary_builtin {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Operator<F> {
-    function: F,
-    name: &'static str,
+    pub function: F,
+    pub name: &'static str,
 }
 
 impl<F> fmt::Debug for Operator<F> {

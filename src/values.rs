@@ -673,15 +673,16 @@ fn vector_parallel_float_eq(v1: Point, v2: Point) -> bool {
 
 #[cfg(test)]
 mod tests {
-    // TODO: these tests probably want to live in `evaluator.rs`
+    use crate::evaluator::evaluate_expression;
+
     macro_rules! assert_eval {
         (($($expr:tt)+), ($($val:tt)*)) => {{
             let expr = expression!($($expr)+);
-            assert_eq!(expr.evaluate(&()).unwrap(), value!($($val)*));
+            assert_eq!(evaluate_expression(&(), expr).unwrap(), value!($($val)*));
         }};
         (($($expr:tt)+), $($val:tt)*) => {{
             let expr = expression!($($expr)+);
-            assert_eq!(expr.evaluate(&()).unwrap(), value!($($val)*));
+            assert_eq!(evaluate_expression(&(), expr).unwrap(), value!($($val)*));
         }};
     }
 

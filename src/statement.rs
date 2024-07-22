@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::expressions::{Expression2 as Expression, Function, Variable};
+use crate::expressions::{Expression, Function, Variable};
 
 /// A statement, annotated with a line number.
 #[derive(Clone, Debug)]
