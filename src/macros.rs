@@ -30,61 +30,13 @@ macro_rules! token {
 }
 
 #[cfg(test)]
-/// Macro for building Expressions
-macro_rules! expression {
-    ($op:tt, ($($x:tt)+), ($($y:tt)+)) => {{
-        #[allow(clippy::redundant_closure_call)]
-        (|| -> $crate::expressions::Expression { todo!() })()
-    }};
-    ($op:tt, ($($x:tt)+), $y:expr) => {
-        expression!($op, ($($x)+), ($y))
-    };
-    ($op:tt, ($($x:tt)+)) => {{
-        #[allow(clippy::redundant_closure_call)]
-        (|| -> $crate::expressions::Expression { todo!() })()
-    }};
-    ($op:tt, $x:expr, ($($y:tt)+)) => {
-        expression!($op, ($x), ($($y)+))
-    };
-    ($op:tt, $x:expr, $y:expr) => {
-        expression!($op, ($x), ($y))
-    };
-    ($op:tt, $x:expr) => {
-        expression!($op, ($x))
-    };
-    ($fn:tt[$(($($x:tt)+)),*]) => {
-        $crate::expressions::Expression::Function(
-            $crate::expressions::Variable::from($fn),
-            vec![$(expression!($($x)+)),*],
-        )
-    };
-    (@($($x:tt)+), ($($y:tt)+)) => {
-        $crate::expressions::Expression::Point(
-            Box::new((expression!($($x)+), expression!($($y)+))),
-        )
-    };
-    (@$x:expr, ($($y:tt)+)) => {
-        expression!(@($x), ($($y)+))
-    };
-    (@($($x:tt)+), $y:expr) => {
-        expression!(@($($x)+), ($y))
-    };
-    (@$x:expr, $y:expr) => {
-        expression!(@($x), ($y))
-    };
-    (#$var:expr) => {
-        $crate::expressions::Expression::Variable($crate::expressions::Variable::from($var))
-    };
-    ($x:expr) => {
-        $crate::expressions::Expression::Value($crate::values::Value::Number($x as f64))
-    };
-    (@$s:expr) => {
-        $crate::expressions::Expression::Value($crate::values::Value::String($s.into()))
-    };
-}
-
-#[cfg(test)]
 macro_rules! value {
+    (($x:expr, $y:expr)) => {
+        value!($x, $y)
+    };
+    (($x:expr, $y:expr, $id:expr)) => {
+        value!($x, $y, $id)
+    };
     ($x:expr) => {
         $crate::values::Value::Number($x as f64)
     };
