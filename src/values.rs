@@ -5,8 +5,8 @@ use svg::node::element::path::Parameters;
 
 use crate::{
     error::{MathError, Type},
-    points::PointId,
     evaluator::EvaluationContext,
+    points::PointId,
 };
 
 pub type Result<T = Value, E = MathError> = result::Result<T, E>;

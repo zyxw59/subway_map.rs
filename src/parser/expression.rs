@@ -89,8 +89,8 @@ impl parser::Parser<TokenKind> for Parser {
                 },
                 postfix: Postfix::LeftDelimiter {
                     delimiter: Delimiter::Paren,
-                    operator: todo!(), // function call
-                    empty: None,
+                    operator: operators::FN_CALL,
+                    empty: Some(operators::FN_CALL_UNARY),
                 },
             },
             TokenKind::RightParen => Element {

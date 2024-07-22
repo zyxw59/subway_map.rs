@@ -477,6 +477,7 @@ mod tests {
     use crate::{
         expressions::tests::{b, u, var},
         lexer::Lexer,
+        operators::{COMMA, COMMA_UNARY, FN_CALL, FN_CALL_UNARY, PAREN_UNARY},
         // statement::{StatementKind, Stop},
     };
 
@@ -527,32 +528,41 @@ mod tests {
 
     #[test]
     fn parentheses() {
-        // TODO: paren operator
-        // assert_expression!("(1+2)*3+4", ("+", ("*", ("+", 1, 2), 3), 4));
+        assert_expression!(
+            "(1+2)*3+4",
+            [1, 2, b("+"), PAREN_UNARY, 3, b("*"), 4, b("+")]
+        );
     }
 
     #[test]
     fn points() {
-        // TODO: paren operator
-        // assert_expression!("(1,2) + (3,4)", ("+", (@1, 2), (@3, 4)));
+        assert_expression!(
+            "(1,2) + (3,4)",
+            [1, 2, COMMA, PAREN_UNARY, 3, 4, COMMA, PAREN_UNARY, b("+")]
+        );
+    }
+
+    #[test]
+    fn trailing_comma() {
+        assert_expression!("(1, 2,)", [1, 2, COMMA, COMMA_UNARY, PAREN_UNARY]);
     }
 
     #[test]
     fn dot_product() {
-        // TODO: paren operator
-        // assert_expression!("(1,2) * (3,4)", ("*", (@1, 2), (@3, 4)));
+        assert_expression!(
+            "(1,2) * (3,4)",
+            [1, 2, COMMA, PAREN_UNARY, 3, 4, COMMA, PAREN_UNARY, b("*")]
+        );
     }
 
     #[test]
     fn scalar_product() {
-        // TODO: paren operator
-        // assert_expression!("3 * (1,2)", ("*", 3, (@1, 2)));
+        assert_expression!("3 * (1,2)", [3, 1, 2, COMMA, PAREN_UNARY, b("*")]);
     }
 
     #[test]
     fn angle() {
-        // TODO: paren operator
-        // assert_expression!("angle (3, 3)", ("angle", (@3, 3)));
+        assert_expression!("angle (3, 3)", [3, 3, COMMA, PAREN_UNARY, u("angle")]);
     }
 
     #[test]
@@ -561,9 +571,22 @@ mod tests {
     }
 
     #[test]
-    fn unary_minus_3() {
-        // TODO: paren operator
-        // assert_expression!("-(1,2)*(3,4)", ("-", ("*", (@1, 2), (@3, 4))));
+    fn unary_minus_2() {
+        assert_expression!(
+            "-(1,2)*(3,4)",
+            [
+                1,
+                2,
+                COMMA,
+                PAREN_UNARY,
+                u("-"),
+                3,
+                4,
+                COMMA,
+                PAREN_UNARY,
+                b("*"),
+            ]
+        );
     }
 
     #[test]
@@ -579,6 +602,27 @@ mod tests {
     #[test]
     fn string() {
         assert_expression!(r#""foobar""#, ["foobar"]);
+    }
+
+    #[test]
+    fn function_call() {
+        assert_expression!(
+            "a() + b(1) + c(2, 3)",
+            [
+                var("a"),
+                FN_CALL_UNARY,
+                var("b"),
+                1,
+                FN_CALL,
+                b("+"),
+                var("c"),
+                2,
+                3,
+                COMMA,
+                FN_CALL,
+                b("+"),
+            ]
+        )
     }
 
     // macro_rules! assert_statement {

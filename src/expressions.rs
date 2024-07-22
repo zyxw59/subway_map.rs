@@ -160,6 +160,18 @@ pub(crate) mod tests {
         }
     }
 
+    impl From<BinaryOperator> for Expr {
+        fn from(op: BinaryOperator) -> Self {
+            Self::BinaryOperator(op)
+        }
+    }
+
+    impl From<UnaryOperator> for Expr {
+        fn from(op: UnaryOperator) -> Self {
+            Self::UnaryOperator(op)
+        }
+    }
+
     impl From<&str> for Expr {
         fn from(s: &str) -> Self {
             Self::Term(Term::String(s.into()))
