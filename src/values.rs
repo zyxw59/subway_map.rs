@@ -656,6 +656,7 @@ fn vector_parallel_float_eq(v1: Point, v2: Point) -> bool {
 
 #[cfg(test)]
 mod tests {
+    // TODO: these tests probably want to live in `evaluator.rs`
     macro_rules! assert_eval {
         (($($expr:tt)+), ($($val:tt)*)) => {{
             let expr = expression!($($expr)+);

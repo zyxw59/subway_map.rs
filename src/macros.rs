@@ -33,19 +33,15 @@ macro_rules! token {
 /// Macro for building Expressions
 macro_rules! expression {
     ($op:tt, ($($x:tt)+), ($($y:tt)+)) => {{
-        $crate::expressions::Expression::BinaryOperator(
-            $crate::operators::BinaryBuiltins.get($op).unwrap(),
-            Box::new((expression!($($x)+), expression!($($y)+))),
-        )
+        #[allow(clippy::redundant_closure_call)]
+        (|| -> $crate::expressions::Expression { todo!() })()
     }};
     ($op:tt, ($($x:tt)+), $y:expr) => {
         expression!($op, ($($x)+), ($y))
     };
     ($op:tt, ($($x:tt)+)) => {{
-        $crate::expressions::Expression::UnaryOperator(
-            $crate::operators::UnaryBuiltins.get($op).unwrap(),
-            Box::new(expression!($($x)+)),
-        )
+        #[allow(clippy::redundant_closure_call)]
+        (|| -> $crate::expressions::Expression { todo!() })()
     }};
     ($op:tt, $x:expr, ($($y:tt)+)) => {
         expression!($op, ($x), ($($y)+))

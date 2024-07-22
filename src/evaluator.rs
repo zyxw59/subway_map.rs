@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     document::Document,
     error::{EvaluatorError, MathError, Result},
-    expressions::{Function, Variable, ExpressionExt},
+    expressions::{ExpressionExt, Function, Variable},
     points::PointCollection,
     statement::{Statement, StatementKind},
     stops::{Stop, StopCollection},

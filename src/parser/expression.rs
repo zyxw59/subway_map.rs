@@ -8,9 +8,7 @@ use expr_parser::{
 use crate::{
     expressions::Term,
     lexer::TokenKind,
-    operators::{
-        builtins, BinaryBuiltins, BinaryOperator, Precedence, UnaryBuiltins, UnaryOperator,
-    },
+    operators::{builtins, BinaryOperator, Precedence, UnaryOperator},
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -41,18 +39,18 @@ impl parser::Parser<TokenKind> for Parser {
     fn parse_token(&self, token: TokenKind) -> Result<ParserElement<Self, TokenKind>, Self::Error> {
         Ok(match token {
             TokenKind::Tag(tag) => {
-                let postfix = if let Some(op) = BinaryBuiltins.get(&tag) {
+                let postfix = if let Some((precedence, op)) = BinaryOperator::get(&tag) {
                     Postfix::BinaryOperator {
-                        fixity: Fixity::Left(op.precedence),
+                        fixity: Fixity::Left(precedence), // TODO: allow right-associative ops?
                         operator: op,
                         no_rhs: None,
                     }
                 } else {
                     Postfix::None
                 };
-                let prefix = if let Some(op) = UnaryBuiltins.get(&tag) {
+                let prefix = if let Some((precedence, op)) = UnaryOperator::get(&tag) {
                     Prefix::UnaryOperator {
-                        precedence: op.precedence,
+                        precedence,
                         operator: op,
                         no_rhs: None,
                     }

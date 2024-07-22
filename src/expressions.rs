@@ -61,8 +61,7 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
 
 pub type Variable = String;
 
-pub type Expression2 =
-    VecDeque<ExpressionBit<BinaryOperator, UnaryOperator, Term>>;
+pub type Expression2 = VecDeque<ExpressionBit<BinaryOperator, UnaryOperator, Term>>;
 
 pub trait ExpressionExt {
     fn evaluate(&self, context: &impl EvaluationContext) -> Result<Value>;
@@ -78,8 +77,6 @@ impl ExpressionExt for Expression2 {
 pub enum Expression {
     Value(Value),
     Point(Box<(Expression, Expression)>),
-    BinaryOperator(BinaryOperator, Box<(Expression, Expression)>),
-    UnaryOperator(UnaryOperator, Box<Expression>),
     Function(Variable, Vec<Expression>),
     Variable(Variable),
 }
@@ -92,11 +89,11 @@ impl Expression {
                 let (x, y) = p.as_ref();
                 Value::point(x.evaluate(context)?, y.evaluate(context)?)?
             }
-            Expression::BinaryOperator(op, args) => {
-                let (lhs, rhs) = args.as_ref();
-                op.apply(lhs.evaluate(context)?, rhs.evaluate(context)?)?
-            }
-            Expression::UnaryOperator(op, arg) => op.apply(arg.evaluate(context)?)?,
+            // Expression::BinaryOperator(op, args) => {
+            //     let (lhs, rhs) = args.as_ref();
+            //     op.apply(lhs.evaluate(context)?, rhs.evaluate(context)?)?
+            // }
+            // Expression::UnaryOperator(op, arg) => op.apply(arg.evaluate(context)?)?,
             Expression::Function(func_name, args) => match context.get_function(func_name) {
                 None => return Err(MathError::Function(func_name.clone())),
                 Some(func) => func.apply(args, context)?,
@@ -122,7 +119,7 @@ pub(crate) mod tests {
 
     use crate::{
         expressions::Term,
-        operators::{BinaryBuiltins, BinaryOperator, UnaryBuiltins, UnaryOperator},
+        operators::{BinaryOperator, UnaryOperator},
     };
 
     macro_rules! expression {
@@ -170,11 +167,11 @@ pub(crate) mod tests {
     }
 
     pub fn b(s: &str) -> Expr {
-        Expr::BinaryOperator(BinaryBuiltins.get(s).unwrap())
+        Expr::BinaryOperator(BinaryOperator::get(s).unwrap().1)
     }
 
     pub fn u(s: &str) -> Expr {
-        Expr::UnaryOperator(UnaryBuiltins.get(s).unwrap())
+        Expr::UnaryOperator(UnaryOperator::get(s).unwrap().1)
     }
 
     pub fn var(s: &str) -> Expr {
