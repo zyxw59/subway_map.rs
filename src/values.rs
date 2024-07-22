@@ -824,7 +824,7 @@ mod tests {
                 COMMA,
                 PAREN_UNARY,
                 b("<>"),
-                u("&")
+                b("&")
             ],
             (2, 3)
         )

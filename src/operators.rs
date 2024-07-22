@@ -58,7 +58,7 @@ pub const FN_CALL_UNARY: UnaryOperator = UnaryOperator {
 };
 
 pub const PAREN_UNARY: UnaryOperator = UnaryOperator {
-    function: as_unary_operator!(Value::comma_unary),
+    function: as_unary_operator!(Value::paren_unary),
     name: "()",
 };
 
