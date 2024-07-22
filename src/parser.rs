@@ -475,10 +475,10 @@ impl<T: LexerExt> Iterator for ExprTokens<'_, T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        expressions::tests::{b, u, var},
+        expressions::tests::{b, expression_full, u, var},
         lexer::Lexer,
         operators::{COMMA, COMMA_UNARY, FN_CALL, FN_CALL_UNARY, PAREN_UNARY},
-        // statement::{StatementKind, Stop},
+        statement::{StatementKind, Stop},
     };
 
     macro_rules! assert_expression {
@@ -625,143 +625,157 @@ mod tests {
         )
     }
 
-    // macro_rules! assert_statement {
-    //     ($text:expr, $statement:expr) => {{
-    //         let result = Lexer::new($text.as_bytes())
-    //             .into_parser()
-    //             .parse_statement()
-    //             .unwrap()
-    //             .unwrap();
-    //         assert_eq!(result, $statement);
-    //     }};
-    // }
+    macro_rules! assert_statement {
+        ($text:expr, $statement:expr) => {{
+            let result = Lexer::new($text.as_bytes())
+                .into_parser()
+                .parse_statement()
+                .unwrap()
+                .unwrap();
+            assert_eq!(result, $statement);
+        }};
+    }
 
-    // #[test]
-    // fn variable_assignment() {
-    //     assert_statement!(
-    //         "a = b",
-    //         StatementKind::Variable("a".into(), expression!(#"b"))
-    //     );
-    // }
+    #[test]
+    fn variable_assignment() {
+        assert_statement!(
+            "a = b",
+            StatementKind::Variable("a".into(), expression_full![var("b")].into())
+        );
+    }
 
-    // #[test]
-    // fn dotted_variable_assignment() {
-    //     assert_statement!(
-    //         "a.b = c",
-    //         StatementKind::Variable("a.b".into(), expression!(#"c"))
-    //     );
-    // }
+    #[test]
+    fn dotted_variable_assignment() {
+        assert_statement!(
+            "a.b = c",
+            StatementKind::Variable("a.b".into(), expression_full![var("c")].into())
+        );
+    }
 
-    // #[test]
-    // fn point_single() {
-    //     assert_statement!(
-    //         "point a = b",
-    //         StatementKind::PointSingle("a".into(), expression!(#"b"))
-    //     );
-    // }
+    #[test]
+    fn point_single() {
+        assert_statement!(
+            "point a = b",
+            StatementKind::PointSingle("a".into(), expression_full![var("b")].into())
+        );
+    }
 
-    // #[test]
-    // fn points_spaced() {
-    //     assert_statement!(
-    //         "points from a spaced x: (1/2) b, c, (1/2) d",
-    //         StatementKind::PointSpaced {
-    //             from: "a".into(),
-    //             spaced: expression!(#"x"),
-    //             points: vec![
-    //                 (Some(expression!("/", 1, 2)), "b".into()),
-    //                 (None, "c".into()),
-    //                 (Some(expression!("/", 1, 2)), "d".into()),
-    //             ],
-    //         }
-    //     );
-    // }
+    #[test]
+    fn points_spaced() {
+        assert_statement!(
+            "points from a spaced x: (1/2) b, c, (1/2) d",
+            StatementKind::PointSpaced {
+                from: "a".into(),
+                spaced: expression_full![var("x")].into(),
+                points: vec![
+                    (
+                        Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
+                        "b".into()
+                    ),
+                    (None, "c".into()),
+                    (
+                        Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
+                        "d".into()
+                    ),
+                ],
+            }
+        );
+    }
 
-    // #[test]
-    // fn points_between() {
-    //     assert_statement!(
-    //         "points from a to (1/2) d: (1/2) b, c",
-    //         StatementKind::PointExtend {
-    //             from: "a".into(),
-    //             to: (Some(expression!("/", 1, 2)), "d".into()),
-    //             points: vec![
-    //                 (Some(expression!("/", 1, 2)), "b".into()),
-    //                 (None, "c".into()),
-    //             ],
-    //             is_past: false,
-    //         }
-    //     );
-    // }
+    #[test]
+    fn points_between() {
+        assert_statement!(
+            "points from a to (1/2) d: (1/2) b, c",
+            StatementKind::PointExtend {
+                from: "a".into(),
+                to: (
+                    Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
+                    "d".into()
+                ),
+                points: vec![
+                    (
+                        Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
+                        "b".into()
+                    ),
+                    (None, "c".into()),
+                ],
+                is_past: false,
+            }
+        );
+    }
 
-    // #[test]
-    // fn route() {
-    //     assert_statement!(
-    //         "route red: a --(1) b --(1) c",
-    //         StatementKind::Route {
-    //             styles: vec![],
-    //             name: "red".into(),
-    //             segments: vec![segment!("a", "b", 1), segment!("b", "c", 1),],
-    //         }
-    //     )
-    // }
+    #[test]
+    fn route() {
+        assert_statement!(
+            "route red: a --(1) b --(1) c",
+            StatementKind::Route {
+                styles: vec![],
+                name: "red".into(),
+                segments: vec![segment!("a", "b", [1]), segment!("b", "c", [1]),],
+            }
+        )
+    }
 
-    // #[test]
-    // fn route_with_style() {
-    //     assert_statement!(
-    //         "route.narrow red: a --(1) b --(1) c",
-    //         StatementKind::Route {
-    //             styles: vec!["narrow".into()],
-    //             name: "red".into(),
-    //             segments: vec![segment!("a", "b", 1), segment!("b", "c", 1),],
-    //         }
-    //     )
-    // }
+    #[test]
+    fn route_with_style() {
+        assert_statement!(
+            "route.narrow red: a --(1) b --(1) c",
+            StatementKind::Route {
+                styles: vec!["narrow".into()],
+                name: "red".into(),
+                segments: vec![segment!("a", "b", [1]), segment!("b", "c", [1]),],
+            }
+        )
+    }
 
-    // #[test]
-    // fn stop() {
-    //     assert_statement!(
-    //         r#"stop a marker circle r=10"#,
-    //         StatementKind::Stop(Stop {
-    //             styles: vec![],
-    //             point: expression!(#"a"),
-    //             marker_type: "circle".into(),
-    //             marker_parameters: [("r".to_owned(), expression!(10))].into_iter().collect(),
-    //         })
-    //     )
-    // }
+    #[test]
+    fn stop() {
+        assert_statement!(
+            r#"stop a marker circle r=10"#,
+            StatementKind::Stop(Stop {
+                styles: vec![],
+                point: expression_full![var("a")].into(),
+                marker_type: "circle".into(),
+                marker_parameters: [("r".to_owned(), expression_full![10].into())]
+                    .into_iter()
+                    .collect(),
+            })
+        )
+    }
 
-    // #[test]
-    // fn stop_with_style() {
-    //     assert_statement!(
-    //         r#"stop.terminus a marker double_tick length=20, angle=45"#,
-    //         StatementKind::Stop(Stop {
-    //             styles: vec!["terminus".into()],
-    //             point: expression!(#"a"),
-    //             marker_type: "double_tick".into(),
-    //             marker_parameters: [
-    //                 ("length".to_owned(), expression!(20)),
-    //                 ("angle".to_owned(), expression!(45))
-    //             ]
-    //             .into_iter()
-    //             .collect(),
-    //         })
-    //     )
-    // }
+    #[test]
+    fn stop_with_style() {
+        assert_statement!(
+            r#"stop.terminus a marker double_tick length=20, angle=45"#,
+            StatementKind::Stop(Stop {
+                styles: vec!["terminus".into()],
+                point: expression_full![var("a")].into(),
+                marker_type: "double_tick".into(),
+                marker_parameters: [
+                    ("length".to_owned(), expression_full![20].into()),
+                    ("angle".to_owned(), expression_full![45].into())
+                ]
+                .into_iter()
+                .collect(),
+            })
+        )
+    }
 
-    // #[test]
-    // fn stop_with_text() {
-    //     assert_statement!(
-    //         r#"stop.terminus a marker text text="A station", angle=0"#,
-    //         StatementKind::Stop(Stop {
-    //             styles: vec!["terminus".into()],
-    //             point: expression!(#"a"),
-    //             marker_type: "text".into(),
-    //             marker_parameters: [
-    //                 ("text".to_owned(), expression!(@"A station")),
-    //                 ("angle".to_owned(), expression!(0))
-    //             ]
-    //             .into_iter()
-    //             .collect(),
-    //         })
-    //     )
-    // }
+    #[test]
+    fn stop_with_text() {
+        assert_statement!(
+            r#"stop.terminus a marker text text="A station", angle=0"#,
+            StatementKind::Stop(Stop {
+                styles: vec!["terminus".into()],
+                point: expression_full![var("a")].into(),
+                marker_type: "text".into(),
+                marker_parameters: [
+                    ("text".to_owned(), expression_full!["A station"].into()),
+                    ("angle".to_owned(), expression_full![0].into())
+                ]
+                .into_iter()
+                .collect(),
+            })
+        )
+    }
 }

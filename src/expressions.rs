@@ -73,15 +73,33 @@ pub(crate) mod tests {
         operators::{BinaryOperator, UnaryOperator},
     };
 
-    macro_rules! expression {
-        ($($x:expr),* $(,)?) => {
-            [$(::expr_parser::expression::ExpressionKind::from(
+    macro_rules! expression_map {
+        ($id:ident => $mapped:expr; $($x:expr),* $(,)?) => {
+            [$({
+                let $id = ::expr_parser::expression::ExpressionKind::from(
                     $crate::expressions::tests::Expr::from($x),
-            )),*]
+                );
+                $mapped
+            }),*]
         };
     }
 
-    pub(crate) use expression;
+    macro_rules! expression {
+        ($($x:expr),* $(,)?) => {
+            $crate::expressions::tests::expression_map!(expr => expr; $($x),*)
+        };
+    }
+
+    macro_rules! expression_full {
+        ($($x:expr),* $(,)?) => {
+            $crate::expressions::tests::expression_map!(kind => ::expr_parser::expression::Expression {
+                kind,
+                span: ::expr_parser::Span::new(0..0),
+            }; $($x),*)
+        };
+    }
+
+    pub(crate) use {expression, expression_full, expression_map};
 
     pub enum Expr {
         Term(Term),

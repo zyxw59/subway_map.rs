@@ -64,13 +64,13 @@ macro_rules! value {
     };
 }
 
-// #[cfg(test)]
-// macro_rules! segment {
-//     ($start:expr, $end:expr, $($expr:tt)*) => {
-//         $crate::statement::Segment {
-//             start: $crate::expressions::Variable::from($start),
-//             end: $crate::expressions::Variable::from($end),
-//             offset: expression!($($expr)*),
-//         }
-//     }
-// }
+#[cfg(test)]
+macro_rules! segment {
+    ($start:expr, $end:expr, [$($expr:expr),*$(,)?]) => {
+        $crate::statement::Segment {
+            start: $crate::expressions::Variable::from($start),
+            end: $crate::expressions::Variable::from($end),
+            offset: $crate::expressions::tests::expression_full![$($expr),*].into(),
+        }
+    }
+}

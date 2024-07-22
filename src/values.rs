@@ -673,8 +673,6 @@ fn vector_parallel_float_eq(v1: Point, v2: Point) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use expr_parser::{expression::Expression, Span};
-
     use crate::{
         evaluator::evaluate_expression,
         expressions::tests::{b, u},
@@ -683,10 +681,7 @@ mod tests {
 
     macro_rules! assert_eval {
         ([$($expr:expr),*$(,)?], $($val:tt)*) => {{
-            let expr = crate::expressions::tests::expression![$($expr),*].into_iter().map(|kind| Expression {
-                kind,
-                span: Span::new(0..0),
-            });
+            let expr = crate::expressions::tests::expression_full![$($expr),*];
             assert_eq!(evaluate_expression(&(), expr).unwrap(), value!($($val)*));
         }};
     }
