@@ -1,6 +1,9 @@
 use std::fmt;
 
-use crate::values::{Result, Value};
+use crate::{
+    evaluator::EvaluationContext,
+    values::{Result, Value},
+};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -18,32 +21,56 @@ pub enum Precedence {
     Dot,
 }
 
-pub mod builtins {
-    use crate::values::Value;
-
-    use super::{BinaryOperator, UnaryOperator};
-
-    pub const COMMA: BinaryOperator = BinaryOperator {
-        function: Value::comma,
-        name: ",",
-    };
-
-    pub const COMMA_UNARY: UnaryOperator = UnaryOperator {
-        function: Value::comma_unary,
-        name: ",",
-    };
-
-    pub const PAREN_UNARY: UnaryOperator = UnaryOperator {
-        function: Value::comma_unary,
-        name: "()",
-    };
+macro_rules! as_binary_operator {
+    ($fn:path) => {{
+        fn _f(a: Value, b: Value, _: &dyn EvaluationContext) -> Result {
+            $fn(a, b)
+        }
+        _f
+    }};
 }
 
-macro_rules! get_builtin {
+macro_rules! as_unary_operator {
+    ($fn:path) => {{
+        fn _f(a: Value, _: &dyn EvaluationContext) -> Result {
+            $fn(a)
+        }
+        _f
+    }};
+}
+
+pub const COMMA: BinaryOperator = BinaryOperator {
+    function: as_binary_operator!(Value::comma),
+    name: ",",
+};
+
+pub const COMMA_UNARY: UnaryOperator = UnaryOperator {
+    function: as_unary_operator!(Value::comma_unary),
+    name: ",",
+};
+
+pub const PAREN_UNARY: UnaryOperator = UnaryOperator {
+    function: as_unary_operator!(Value::comma_unary),
+    name: "()",
+};
+
+macro_rules! get_binary_builtin {
     (match $key:ident { $($name:literal => ($prec:ident, $fn:ident)),* $(,)? }) => {
         match $key {
             $($name => Some((Precedence::$prec, Operator {
-                function: Value::$fn,
+                function: as_binary_operator!(Value::$fn),
+                name: $name,
+            })),)*
+            _ => None,
+        }
+    }
+}
+
+macro_rules! get_unary_builtin {
+    (match $key:ident { $($name:literal => ($prec:ident, $fn:ident)),* $(,)? }) => {
+        match $key {
+            $($name => Some((Precedence::$prec, Operator {
+                function: as_unary_operator!(Value::$fn),
                 name: $name,
             })),)*
             _ => None,
@@ -63,11 +90,11 @@ impl<F> fmt::Debug for Operator<F> {
     }
 }
 
-pub type BinaryOperator = Operator<fn(Value, Value) -> Result>;
+pub type BinaryOperator = Operator<fn(Value, Value, &dyn EvaluationContext) -> Result>;
 
 impl BinaryOperator {
     pub fn get(key: &str) -> Option<(Precedence, Self)> {
-        get_builtin!(match key {
+        get_binary_builtin!(match key {
             "==" => (Comparison, eq),
             "!=" => (Comparison, ne),
             "<" => (Comparison, lt),
@@ -91,11 +118,11 @@ impl BinaryOperator {
     }
 }
 
-pub type UnaryOperator = Operator<fn(Value) -> Result>;
+pub type UnaryOperator = Operator<fn(Value, &dyn EvaluationContext) -> Result>;
 
 impl UnaryOperator {
     pub fn get(key: &str) -> Option<(Precedence, Self)> {
-        get_builtin!(match key {
+        get_unary_builtin!(match key {
             "-" => (Multiplicative, neg),
             "xpart" => (Multiplicative, xpart),
             "ypart" => (Multiplicative, ypart),

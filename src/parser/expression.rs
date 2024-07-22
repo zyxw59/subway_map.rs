@@ -8,7 +8,7 @@ use expr_parser::{
 use crate::{
     expressions::Term,
     lexer::TokenKind,
-    operators::{builtins, BinaryOperator, Precedence, UnaryOperator},
+    operators::{self, BinaryOperator, Precedence, UnaryOperator},
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -65,8 +65,8 @@ impl parser::Parser<TokenKind> for Parser {
                 prefix: Prefix::None,
                 postfix: Postfix::BinaryOperator {
                     fixity: Fixity::Left(Precedence::Comma),
-                    operator: builtins::COMMA,
-                    no_rhs: Some(builtins::COMMA_UNARY),
+                    operator: operators::COMMA,
+                    no_rhs: Some(operators::COMMA_UNARY),
                 },
             },
             TokenKind::Number(number) => Element {
@@ -84,7 +84,7 @@ impl parser::Parser<TokenKind> for Parser {
             TokenKind::LeftParen => Element {
                 prefix: Prefix::LeftDelimiter {
                     delimiter: Delimiter::Paren,
-                    operator: Some(builtins::PAREN_UNARY),
+                    operator: Some(operators::PAREN_UNARY),
                     empty: None,
                 },
                 postfix: Postfix::LeftDelimiter {
