@@ -107,6 +107,7 @@ pub enum Type {
     Line,
     String,
     List,
+    Function,
 }
 
 impl From<Value> for Type {
@@ -123,6 +124,7 @@ impl From<&'_ Value> for Type {
             Value::Line(..) => Type::Line,
             Value::String(..) => Type::String,
             Value::List(..) => Type::List,
+            Value::Function(..) => Type::Function,
         }
     }
 }

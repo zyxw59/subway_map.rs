@@ -47,6 +47,16 @@ pub const COMMA_UNARY: UnaryOperator = UnaryOperator {
     name: ",",
 };
 
+pub const FN_CALL: BinaryOperator = BinaryOperator {
+    function: Value::fn_call,
+    name: "()",
+};
+
+pub const FN_CALL_UNARY: UnaryOperator = UnaryOperator {
+    function: Value::fn_call_unary,
+    name: "()",
+};
+
 pub const PAREN_UNARY: UnaryOperator = UnaryOperator {
     function: as_unary_operator!(Value::comma_unary),
     name: "()",

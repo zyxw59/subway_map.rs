@@ -6,6 +6,7 @@ use svg::node::element::path::Parameters;
 use crate::{
     error::{MathError, Type},
     points::PointId,
+    evaluator::EvaluationContext,
 };
 
 pub type Result<T = Value, E = MathError> = result::Result<T, E>;
@@ -287,6 +288,7 @@ pub enum Value {
     Line(Point, Point, Option<(PointId, PointId)>),
     String(String),
     List(Vec<Value>),
+    Function(crate::expressions::Function),
 }
 
 impl Value {
@@ -588,6 +590,21 @@ impl Value {
             Point(p, _) => Point(-p, PointProvenance::None),
             _ => return Err(MathError::Type(Type::Number, self.into())),
         })
+    }
+
+    pub fn fn_call(self, args: Self, ctx: &dyn EvaluationContext) -> Result {
+        match (self, args) {
+            (Self::Function(f), Self::List(args)) => todo!(),
+            (Self::Function(f), arg) => todo!(),
+            (bad, _) => Err(MathError::Type(Type::Function, bad.into())),
+        }
+    }
+
+    pub fn fn_call_unary(self, ctx: &dyn EvaluationContext) -> Result {
+        match self {
+            Self::Function(f) => todo!(),
+            bad => Err(MathError::Type(Type::Function, bad.into())),
+        }
     }
 }
 
