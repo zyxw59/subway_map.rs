@@ -50,10 +50,6 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
             .cloned()
             .or_else(|| self.parent.get_variable(name))
     }
-
-    fn get_function(&self, name: &str) -> Option<&Function> {
-        self.parent.get_function(name)
-    }
 }
 
 pub type Variable = String;

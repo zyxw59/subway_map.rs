@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     document::Document,
     error::{EvaluatorError, MathError, Result},
-    expressions::{ExpressionExt, Function, Variable},
+    expressions::{ExpressionExt, Variable},
     points::PointCollection,
     statement::{Statement, StatementKind},
     stops::{Stop, StopCollection},
@@ -12,14 +12,11 @@ use crate::{
 
 pub trait EvaluationContext {
     fn get_variable(&self, name: &str) -> Option<Value>;
-
-    fn get_function(&self, name: &str) -> Option<&Function>;
 }
 
 #[derive(Default, Debug)]
 pub struct Evaluator {
     variables: HashMap<Variable, Value>,
-    functions: HashMap<Variable, Function>,
     points: PointCollection,
     stops: StopCollection,
     stylesheets: Vec<String>,
@@ -66,7 +63,7 @@ impl Evaluator {
                 self.variables.insert(name, value);
             }
             StatementKind::Function(name, function) => {
-                self.functions.insert(name, function);
+                self.variables.insert(name, Value::Function(function));
             }
             StatementKind::PointSingle(name, expr) => {
                 // named points can't be redefined, since lines are defined in terms of them
@@ -265,18 +262,10 @@ impl EvaluationContext for Evaluator {
             self.variables.get(name).cloned()
         }
     }
-
-    fn get_function(&self, name: &str) -> Option<&Function> {
-        self.functions.get(name)
-    }
 }
 
 impl EvaluationContext for () {
     fn get_variable(&self, _name: &str) -> Option<Value> {
-        None
-    }
-
-    fn get_function(&self, _name: &str) -> Option<&Function> {
         None
     }
 }
