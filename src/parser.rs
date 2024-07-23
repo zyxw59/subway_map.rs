@@ -112,13 +112,13 @@ where
     fn parse_expression(&mut self) -> Result<Expression> {
         expression::Parser
             .parse(IterTokenizer(self.expr_tokens()))
-            .map_err(|_| todo!())
+            .map_err(|e| panic!("{e}"))
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
         expression::Parser
             .parse_one_term(IterTokenizer(self.expr_tokens()))
-            .map_err(|_| todo!())
+            .map_err(|e| panic!("{e}"))
     }
 
     fn parse_dotted_ident(&mut self, tag: String, mut span: Span) -> Result<(String, Span)> {
@@ -230,7 +230,7 @@ where
         let mut start = expect!(self, TokenKind::Tag(tag) => tag);
         while self.peek()?.is_some() {
             expect_peek! { self,
-                TokenKind::Tag(ref tag) if tag == "--" => {},
+                TokenKind::Tag(ref tag) if tag == "--" => self.take_peek(),
                 TokenKind::Semicolon => break,
             };
             expect_peek!(self, TokenKind::LeftParen);
@@ -250,11 +250,13 @@ where
                 match tag.as_ref() {
                     // function definition
                     "fn" => {
+                        self.take_peek();
                         let (func_name, func) = self.parse_function_def()?;
                         Ok(Some(StatementKind::Function(func_name, func)))
                     }
                     // single point
                     "point" => {
+                        self.take_peek();
                         let name = expect!(self, TokenKind::Tag(tag) => tag);
                         expect!(self, TokenKind::Equal);
                         let expr = self.parse_expression()?;
@@ -264,6 +266,7 @@ where
                     "points" => self.parse_points_statement(),
                     // route
                     "route" => {
+                        self.take_peek();
                         let styles = self.parse_dot_list()?;
                         let name = expect!(self, TokenKind::Tag(name) => name);
                         expect!(self, TokenKind::Tag(ref tag) if tag == ":");
@@ -278,12 +281,14 @@ where
                     "stop" => self.parse_stop_statement(),
                     // stylesheet
                     "style" => {
+                        self.take_peek();
                         expect! { self,
                             TokenKind::String(style) => Ok(Some(StatementKind::Style(style)))
                         }
                     }
                     // title
                     "title" => {
+                        self.take_peek();
                         expect! { self,
                             TokenKind::String(title) => Ok(Some(StatementKind::Title(title)))
                         }
@@ -328,13 +333,14 @@ where
     }
 
     fn parse_points_statement(&mut self) -> Result<Option<StatementKind>> {
+        self.take_peek();
         expect!(self, TokenKind::Tag(ref tag) if tag == "from");
         let from = expect!(self, TokenKind::Tag(tag) => tag);
         let kind = expect!(self, TokenKind::Tag(tag) => tag);
         match kind.as_ref() {
             // from ... spaced
             "spaced" => {
-                let spaced = self.parse_expression()?;
+                let spaced = self.parse_delimited_expression()?;
                 expect!(self, TokenKind::Tag(ref tag) if tag == ":");
                 let points = self.parse_comma_point_list()?;
                 Ok(Some(StatementKind::PointSpaced {
@@ -378,8 +384,9 @@ where
     }
 
     fn parse_stop_statement(&mut self) -> Result<Option<StatementKind>> {
+        self.take_peek();
         let styles = self.parse_dot_list()?;
-        let point = self.parse_expression()?;
+        let point = self.parse_delimited_expression()?;
         expect!(self, TokenKind::Tag(ref tag) if tag == "marker");
         let marker_type = expect!(self, TokenKind::Tag(tag) => tag);
         let marker_parameters = self.parse_marker_params()?;
@@ -403,8 +410,8 @@ where
                     let Some(TokenKind::Tag(tag)) = self.take_peek() else {
                         unreachable!()
                     };
-                    expect!(self, TokenKind::Equal);
-                    let expr = self.parse_expression()?;
+                    expect_peek!(self, TokenKind::LeftParen);
+                    let expr = self.parse_delimited_expression()?;
                     match params.entry(tag) {
                         // there's already an argument with this name
                         Entry::Occupied(e) => {
@@ -711,7 +718,10 @@ mod tests {
             StatementKind::Route {
                 styles: vec![],
                 name: "red".into(),
-                segments: vec![segment!("a", "b", [1]), segment!("b", "c", [1]),],
+                segments: vec![
+                    segment!("a", "b", [1, PAREN_UNARY]),
+                    segment!("b", "c", [1, PAREN_UNARY]),
+                ],
             }
         )
     }
@@ -723,7 +733,10 @@ mod tests {
             StatementKind::Route {
                 styles: vec!["narrow".into()],
                 name: "red".into(),
-                segments: vec![segment!("a", "b", [1]), segment!("b", "c", [1]),],
+                segments: vec![
+                    segment!("a", "b", [1, PAREN_UNARY]),
+                    segment!("b", "c", [1, PAREN_UNARY]),
+                ],
             }
         )
     }
@@ -731,12 +744,12 @@ mod tests {
     #[test]
     fn stop() {
         assert_statement!(
-            r#"stop a marker circle r=10"#,
+            r#"stop a marker circle r(10)"#,
             StatementKind::Stop(Stop {
                 styles: vec![],
                 point: expression_full![var("a")].into(),
                 marker_type: "circle".into(),
-                marker_parameters: [("r".to_owned(), expression_full![10].into())]
+                marker_parameters: [("r".to_owned(), expression_full![10, PAREN_UNARY].into())]
                     .into_iter()
                     .collect(),
             })
@@ -746,14 +759,17 @@ mod tests {
     #[test]
     fn stop_with_style() {
         assert_statement!(
-            r#"stop.terminus a marker double_tick length=20, angle=45"#,
+            r#"stop.terminus a marker double_tick length(20), angle(45)"#,
             StatementKind::Stop(Stop {
                 styles: vec!["terminus".into()],
                 point: expression_full![var("a")].into(),
                 marker_type: "double_tick".into(),
                 marker_parameters: [
-                    ("length".to_owned(), expression_full![20].into()),
-                    ("angle".to_owned(), expression_full![45].into())
+                    (
+                        "length".to_owned(),
+                        expression_full![20, PAREN_UNARY].into()
+                    ),
+                    ("angle".to_owned(), expression_full![45, PAREN_UNARY].into())
                 ]
                 .into_iter()
                 .collect(),
@@ -764,14 +780,17 @@ mod tests {
     #[test]
     fn stop_with_text() {
         assert_statement!(
-            r#"stop.terminus a marker text text="A station", angle=0"#,
+            r#"stop.terminus a marker text text("A station") angle(0)"#,
             StatementKind::Stop(Stop {
                 styles: vec!["terminus".into()],
                 point: expression_full![var("a")].into(),
                 marker_type: "text".into(),
                 marker_parameters: [
-                    ("text".to_owned(), expression_full!["A station"].into()),
-                    ("angle".to_owned(), expression_full![0].into())
+                    (
+                        "text".to_owned(),
+                        expression_full!["A station", PAREN_UNARY].into()
+                    ),
+                    ("angle".to_owned(), expression_full![0, PAREN_UNARY].into())
                 ]
                 .into_iter()
                 .collect(),

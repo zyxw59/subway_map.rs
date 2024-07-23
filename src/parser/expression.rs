@@ -22,7 +22,9 @@ impl expr_parser::parser::Delimiter for Delimiter {
     }
 }
 
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Unexpected token: {0:?}")]
     UnexpectedToken(TokenKind),
 }
 
