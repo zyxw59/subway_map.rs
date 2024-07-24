@@ -14,6 +14,8 @@ mod expression;
 pub trait LexerExt: Iterator<Item = Result<Token>> {
     fn line(&self) -> usize;
 
+    fn line_column(&self, idx: usize) -> (usize, usize);
+
     fn into_parser(self) -> Parser<Self>
     where
         Self: Sized,
@@ -31,6 +33,10 @@ where
 {
     fn line(&self) -> usize {
         (**self).line()
+    }
+
+    fn line_column(&self, idx: usize) -> (usize, usize) {
+        (**self).line_column(idx)
     }
 }
 

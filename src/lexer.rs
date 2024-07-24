@@ -1,6 +1,7 @@
 use std::io::BufRead;
 
 use expr_parser::Span;
+use itertools::Itertools;
 use regex_syntax::is_word_character;
 
 use crate::{
@@ -235,6 +236,18 @@ impl<R: BufRead> Iterator for Lexer<R> {
 impl<R: BufRead> LexerExt for Lexer<R> {
     fn line(&self) -> usize {
         self.lines.len()
+    }
+
+    fn line_column(&self, idx: usize) -> (usize, usize) {
+        // we're almost always going to be calling this on a recent index, so it's probably fastest
+        // to do a linear search from the end.
+        let (lines_from_end, line_start) = self
+            .lines
+            .iter()
+            .rev()
+            .find_position(|start| **start <= idx)
+            .unwrap();
+        (self.lines.len() - lines_from_end, idx + 1 - line_start)
     }
 }
 
