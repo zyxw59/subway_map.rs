@@ -106,19 +106,26 @@ where
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
-        self.parse_expression_until(|tok| tok == &TokenKind::Semicolon)
+        expression::Parser
+            .parse(IterTokenizer(ExprTokens {
+                parser: self,
+                until: |tok: &TokenKind| tok == &TokenKind::Semicolon,
+            }))
+            .map_err(|e| panic!("{e}"))
     }
 
     fn parse_expression_until(
         &mut self,
-        until: impl for<'a> FnMut(&'a TokenKind) -> bool,
+        mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
     ) -> Result<Expression> {
-        expression::Parser
+        let expr = expression::Parser
             .parse(IterTokenizer(ExprTokens {
                 parser: self,
-                until,
+                until: &mut until,
             }))
-            .map_err(|e| panic!("{e}"))
+            .map_err(|e| -> crate::error::Error { panic!("{e}") })?;
+        expect!(self, tok if until(&tok));
+        Ok(expr)
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
@@ -350,7 +357,6 @@ where
             // from ... spaced
             "spaced" => {
                 let spaced = self.parse_expression_until(|tok| tok.as_tag() == Some(":"))?;
-                expect!(self, TokenKind::Tag(ref tag) if tag == ":");
                 let points = self.parse_comma_point_list()?;
                 Ok(Some(StatementKind::PointSpaced {
                     from,
@@ -396,7 +402,6 @@ where
         self.take_peek();
         let styles = self.parse_dot_list()?;
         let point = self.parse_expression_until(|tok| tok.as_tag() == Some("marker"))?;
-        expect!(self, TokenKind::Tag(ref tag) if tag == "marker");
         let marker_type = expect!(self, TokenKind::Tag(tag) => tag);
         let marker_parameters = self.parse_marker_params()?;
         Ok(Some(StatementKind::Stop(Stop {
