@@ -103,7 +103,7 @@ impl parser::Parser<TokenKind> for Parser {
                     delimiter: Delimiter::Paren,
                 },
             },
-            TokenKind::Semicolon | TokenKind::Equal | TokenKind::Dot => {
+            TokenKind::Semicolon | TokenKind::DotTag(_) => {
                 return Err(Error::UnexpectedToken(token));
             }
         })

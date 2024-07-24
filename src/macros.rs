@@ -1,7 +1,7 @@
 #[cfg(test)]
 macro_rules! token {
-    (.) => {
-        $crate::lexer::TokenKind::Dot
+    (.$tag:expr) => {
+        $crate::lexer::TokenKind::DotTag(String::from($tag))
     };
     ((l)) => {
         $crate::lexer::TokenKind::LeftParen
@@ -14,9 +14,6 @@ macro_rules! token {
     };
     (;) => {
         $crate::lexer::TokenKind::Semicolon
-    };
-    (=) => {
-        $crate::lexer::TokenKind::Equal
     };
     (#$tag:expr) => {
         $crate::lexer::TokenKind::Tag(String::from($tag))

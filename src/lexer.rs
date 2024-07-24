@@ -43,7 +43,6 @@ impl<R: BufRead> Lexer<R> {
         if let Some(c) = self.get()? {
             let start = self.char_idx;
             let kind = match c.into() {
-                CharCat::Word => self.parse_word(),
                 CharCat::Number => self.parse_number(),
                 CharCat::Dot => self.parse_dot(),
                 CharCat::Quote => self.parse_string(),
@@ -51,7 +50,7 @@ impl<R: BufRead> Lexer<R> {
                     self.advance_one();
                     Ok(TokenKind::singleton(c).unwrap())
                 }
-                cat => self.parse_other(cat),
+                cat => self.parse_tag(cat).map(|s| TokenKind::Tag(s.to_owned())),
             }?;
             let end = self.char_idx;
             Ok(Some(Token {
@@ -146,11 +145,18 @@ impl<R: BufRead> Lexer<R> {
         })
     }
 
-    fn parse_word(&mut self) -> Result<TokenKind> {
+    fn parse_tag(&mut self, cat: CharCat) -> Result<&str> {
+        assert!(cat.is_tag());
+        match cat {
+            CharCat::Word => self.parse_word(),
+            cat => self.parse_other(cat),
+        }
+    }
+
+    fn parse_word(&mut self) -> Result<&str> {
         let start_idx = self.byte_idx;
         self.advance_while(is_word_character);
-        let tag = self.slice_from(start_idx).to_owned();
-        Ok(TokenKind::Tag(tag))
+        Ok(self.slice_from(start_idx))
     }
 
     fn parse_string(&mut self) -> Result<TokenKind> {
@@ -193,9 +199,12 @@ impl<R: BufRead> Lexer<R> {
             // the dot is part of a number
             self.retreat_one();
         }
-        match self.byte_idx - start_idx {
-            0 => self.parse_number(),
-            1 => Ok(TokenKind::Dot),
+        let next_cat = self.get_current_char().map(CharCat::from);
+        match (self.byte_idx - start_idx, next_cat) {
+            (0, _) => self.parse_number(),
+            (1, Some(cat)) if cat.is_tag() => {
+                self.parse_tag(cat).map(|s| TokenKind::DotTag(s.to_owned()))
+            }
             _ => Ok(TokenKind::Tag(self.slice_from(start_idx).to_owned())),
         }
     }
@@ -215,13 +224,10 @@ impl<R: BufRead> Lexer<R> {
         Ok(TokenKind::Number(val))
     }
 
-    fn parse_other(&mut self, cat: CharCat) -> Result<TokenKind> {
+    fn parse_other(&mut self, cat: CharCat) -> Result<&str> {
         let start_idx = self.byte_idx;
         self.advance_while(|c| CharCat::from(c) == cat);
-        match self.slice_from(start_idx) {
-            "=" => Ok(TokenKind::Equal),
-            tag => Ok(TokenKind::Tag(tag.to_owned())),
-        }
+        Ok(self.slice_from(start_idx))
     }
 }
 
@@ -266,6 +272,20 @@ enum CharCat {
     Other,
 }
 
+impl CharCat {
+    fn is_tag(self) -> bool {
+        matches!(
+            self,
+            Self::Word
+                | Self::Dot
+                | Self::LeftBracket
+                | Self::RightBracket
+                | Self::Comparison
+                | Self::Other
+        )
+    }
+}
+
 impl From<char> for CharCat {
     fn from(c: char) -> CharCat {
         use self::CharCat::*;
@@ -293,8 +313,8 @@ pub enum TokenKind {
     Number(f64),
     /// A literal string
     String(String),
-    /// A single dot
-    Dot,
+    /// A tag preceded by a single dot
+    DotTag(String),
     /// A left parenthesis
     LeftParen,
     /// A right parenthesis
@@ -303,8 +323,6 @@ pub enum TokenKind {
     Comma,
     /// A semicolon
     Semicolon,
-    /// A single equals sign
-    Equal,
 }
 
 impl TokenKind {
@@ -355,8 +373,7 @@ mod tests {
                 token!(#"a"),
                 token!(,),
                 token!(#"b"),
-                token!(.),
-                token!(#"c"),
+                token!(."c"),
                 token!(0.123)
             ]
         );
@@ -424,7 +441,7 @@ mod tests {
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(tokens, [token!(#"a"), token!(=), token!(#"b")]);
+        assert_eq!(tokens, [token!(#"a"), token!(#"="), token!(#"b")]);
     }
 
     #[test]

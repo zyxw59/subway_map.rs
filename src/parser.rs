@@ -145,11 +145,12 @@ where
 
     fn parse_dotted_ident(&mut self, tag: String, mut span: Span) -> Result<(String, Span)> {
         let mut arr = vec![tag];
-        while let Some(TokenKind::Dot) = self.peek()? {
-            self.take_peek();
-            let (tag, new_span) =
-                expect_token!(self, Token { span, kind: TokenKind::Tag(tag) } => (tag, span));
-            span.end = new_span.end;
+        while let Some(TokenKind::DotTag(_)) = self.peek()? {
+            let token = self.take_peek_token().unwrap();
+            let TokenKind::DotTag(tag) = token.kind else {
+                unreachable!()
+            };
+            span.end = token.span.end;
             arr.push(tag);
         }
         Ok((arr.join("."), span))
@@ -196,7 +197,7 @@ where
                 None => return Err(ParserError::Parentheses(start_line).into()),
             }
         }
-        expect!(self, TokenKind::Equal);
+        expect!(self, TokenKind::Tag(ref tag) if tag == "=");
         // get the function body, as an expression tree
         let expression = self.parse_expression()?;
         Ok((
@@ -280,7 +281,7 @@ where
                     "point" => {
                         self.take_peek();
                         let name = expect!(self, TokenKind::Tag(tag) => tag);
-                        expect!(self, TokenKind::Equal);
+                        expect!(self, TokenKind::Tag(ref tag) if tag == "=");
                         let expr = self.parse_expression()?;
                         Ok(Some(StatementKind::PointSingle(name, expr)))
                     }
@@ -322,7 +323,7 @@ where
                             unreachable!()
                         };
                         let (tag, _span) = self.parse_dotted_ident(tag, token.span)?;
-                        expect!(self, TokenKind::Equal);
+                        expect!(self, TokenKind::Tag(ref tag) if tag == "=");
                         let expr = self.parse_expression()?;
                         Ok(Some(StatementKind::Variable(tag, expr)))
                     }
@@ -341,9 +342,11 @@ where
         let mut list = Vec::new();
         loop {
             match self.peek()? {
-                Some(TokenKind::Dot) => {
-                    self.take_peek();
-                    expect!(self, TokenKind::Tag(tag) => list.push(tag));
+                Some(TokenKind::DotTag(_)) => {
+                    let Some(TokenKind::DotTag(tag)) = self.take_peek() else {
+                        unreachable!();
+                    };
+                    list.push(tag);
                 }
                 Some(_) => {
                     break;
