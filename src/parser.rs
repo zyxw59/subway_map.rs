@@ -105,19 +105,28 @@ where
         self.tokens.line()
     }
 
-    fn expr_tokens(&mut self) -> ExprTokens<'_, T> {
-        ExprTokens { parser: self }
+    fn parse_expression(&mut self) -> Result<Expression> {
+        self.parse_expression_until(|tok| tok == &TokenKind::Semicolon)
     }
 
-    fn parse_expression(&mut self) -> Result<Expression> {
+    fn parse_expression_until(
+        &mut self,
+        until: impl for<'a> FnMut(&'a TokenKind) -> bool,
+    ) -> Result<Expression> {
         expression::Parser
-            .parse(IterTokenizer(self.expr_tokens()))
+            .parse(IterTokenizer(ExprTokens {
+                parser: self,
+                until,
+            }))
             .map_err(|e| panic!("{e}"))
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
         expression::Parser
-            .parse_one_term(IterTokenizer(self.expr_tokens()))
+            .parse_one_term(IterTokenizer(ExprTokens {
+                parser: self,
+                until: |_: &_| false,
+            }))
             .map_err(|e| panic!("{e}"))
     }
 
@@ -340,7 +349,7 @@ where
         match kind.as_ref() {
             // from ... spaced
             "spaced" => {
-                let spaced = self.parse_delimited_expression()?;
+                let spaced = self.parse_expression_until(|tok| tok.as_tag() == Some(":"))?;
                 expect!(self, TokenKind::Tag(ref tag) if tag == ":");
                 let points = self.parse_comma_point_list()?;
                 Ok(Some(StatementKind::PointSpaced {
@@ -386,7 +395,7 @@ where
     fn parse_stop_statement(&mut self) -> Result<Option<StatementKind>> {
         self.take_peek();
         let styles = self.parse_dot_list()?;
-        let point = self.parse_delimited_expression()?;
+        let point = self.parse_expression_until(|tok| tok.as_tag() == Some("marker"))?;
         expect!(self, TokenKind::Tag(ref tag) if tag == "marker");
         let marker_type = expect!(self, TokenKind::Tag(tag) => tag);
         let marker_parameters = self.parse_marker_params()?;
@@ -451,15 +460,20 @@ where
     }
 }
 
-struct ExprTokens<'a, T> {
+struct ExprTokens<'a, T, F> {
     parser: &'a mut Parser<T>,
+    until: F,
 }
 
-impl<T: LexerExt> Iterator for ExprTokens<'_, T> {
+impl<T, F> Iterator for ExprTokens<'_, T, F>
+where
+    T: LexerExt,
+    F: for<'a> FnMut(&'a TokenKind) -> bool,
+{
     type Item = Result<Token>;
     fn next(&mut self) -> Option<Self::Item> {
         match self.parser.peek() {
-            Ok(Some(TokenKind::Semicolon)) => return None,
+            Ok(Some(tok)) if (self.until)(tok) => return None,
             Err(err) => return Some(Err(err)),
             _ => {}
         }
