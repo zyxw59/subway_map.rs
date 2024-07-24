@@ -67,9 +67,9 @@ fn main() -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, io, fs::File};
+    use std::{fs::File, io, path::Path};
 
-    use crate::{lexer::Lexer, parser::LexerExt, evaluator::Evaluator};
+    use crate::{evaluator::Evaluator, lexer::Lexer, parser::LexerExt};
 
     fn test_example(input_file: impl AsRef<Path>) -> anyhow::Result<()> {
         let input = io::BufReader::new(File::open(input_file)?);
