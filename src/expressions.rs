@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 pub use expr_parser::expression;
 use smol_str::SmolStr;
@@ -56,7 +56,7 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
 pub type Variable = SmolStr;
 
 pub type ExpressionBit = expression::Expression<BinaryOperator, UnaryOperator, Term>;
-pub type Expression = VecDeque<ExpressionBit>;
+pub type Expression = Vec<ExpressionBit>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {
