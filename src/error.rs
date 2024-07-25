@@ -107,6 +107,7 @@ pub enum Type {
     Line,
     String,
     List,
+    Struct,
     Function,
 }
 
@@ -124,6 +125,7 @@ impl From<&'_ Value> for Type {
             Value::Line(..) => Type::Line,
             Value::String(..) => Type::String,
             Value::List(..) => Type::List,
+            Value::Struct(..) => Type::Struct,
             Value::Function(..) => Type::Function,
         }
     }

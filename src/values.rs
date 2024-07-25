@@ -1,4 +1,4 @@
-use std::{fmt, ops, result};
+use std::{collections::HashMap, fmt, ops, result};
 
 use serde::Serialize;
 use svg::node::element::path::Parameters;
@@ -6,6 +6,7 @@ use svg::node::element::path::Parameters;
 use crate::{
     error::{MathError, Type},
     evaluator::EvaluationContext,
+    expressions::Variable,
     points::PointId,
 };
 
@@ -288,6 +289,7 @@ pub enum Value {
     Line(Point, Point, Option<(PointId, PointId)>),
     String(String),
     List(Vec<Value>),
+    Struct(HashMap<Variable, Value>),
     Function(crate::expressions::Function),
 }
 
