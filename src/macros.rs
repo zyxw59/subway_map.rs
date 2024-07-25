@@ -1,7 +1,7 @@
 #[cfg(test)]
 macro_rules! token {
     (.$tag:expr) => {
-        $crate::lexer::TokenKind::DotTag(String::from($tag))
+        $crate::lexer::TokenKind::DotTag(smol_str::SmolStr::from($tag))
     };
     ((l)) => {
         $crate::lexer::TokenKind::LeftParen
@@ -16,7 +16,7 @@ macro_rules! token {
         $crate::lexer::TokenKind::Semicolon
     };
     (#$tag:expr) => {
-        $crate::lexer::TokenKind::Tag(String::from($tag))
+        $crate::lexer::TokenKind::Tag(smol_str::SmolStr::from($tag))
     };
     ($value:expr) => {
         $crate::lexer::TokenKind::Number($value as f64)

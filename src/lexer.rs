@@ -3,6 +3,7 @@ use std::io::BufRead;
 use expr_parser::Span;
 use itertools::Itertools;
 use regex_syntax::is_word_character;
+use smol_str::SmolStr;
 
 use crate::{
     error::{LexerError, Result},
@@ -50,7 +51,7 @@ impl<R: BufRead> Lexer<R> {
                     self.advance_one();
                     Ok(TokenKind::singleton(c).unwrap())
                 }
-                cat => self.parse_tag(cat).map(|s| TokenKind::Tag(s.to_owned())),
+                cat => self.parse_tag(cat).map(|s| TokenKind::Tag(s.into())),
             }?;
             let end = self.char_idx;
             Ok(Some(Token {
@@ -203,9 +204,9 @@ impl<R: BufRead> Lexer<R> {
         match (self.byte_idx - start_idx, next_cat) {
             (0, _) => self.parse_number(),
             (1, Some(cat)) if cat.is_tag() => {
-                self.parse_tag(cat).map(|s| TokenKind::DotTag(s.to_owned()))
+                self.parse_tag(cat).map(|s| TokenKind::DotTag(s.into()))
             }
-            _ => Ok(TokenKind::Tag(self.slice_from(start_idx).to_owned())),
+            _ => Ok(TokenKind::Tag(self.slice_from(start_idx).into())),
         }
     }
 
@@ -308,13 +309,13 @@ impl From<char> for CharCat {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
     /// A tag
-    Tag(String),
+    Tag(SmolStr),
+    /// A tag preceded by a single dot
+    DotTag(SmolStr),
     /// A literal number
     Number(f64),
     /// A literal string
     String(String),
-    /// A tag preceded by a single dot
-    DotTag(String),
     /// A left parenthesis
     LeftParen,
     /// A right parenthesis

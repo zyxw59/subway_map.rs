@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 pub use expr_parser::expression;
+use smol_str::SmolStr;
 
 use crate::{
     error::MathError,
@@ -52,7 +53,7 @@ impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
     }
 }
 
-pub type Variable = String;
+pub type Variable = SmolStr;
 
 pub type ExpressionBit = expression::Expression<BinaryOperator, UnaryOperator, Term>;
 pub type Expression = VecDeque<ExpressionBit>;

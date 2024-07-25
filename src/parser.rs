@@ -143,7 +143,7 @@ where
             .map_err(|e| panic!("{e}"))
     }
 
-    fn parse_dotted_ident(&mut self, tag: String, mut span: Span) -> Result<(String, Span)> {
+    fn parse_dotted_ident(&mut self, tag: Variable, mut span: Span) -> Result<(String, Span)> {
         let mut arr = vec![tag];
         while let Some(TokenKind::DotTag(_)) = self.peek()? {
             let token = self.take_peek_token().unwrap();
@@ -322,7 +322,7 @@ where
                         let TokenKind::Tag(tag) = token.kind else {
                             unreachable!()
                         };
-                        let (tag, _span) = self.parse_dotted_ident(tag, token.span)?;
+                        let field = self.parse_dot_list()?;
                         expect!(self, TokenKind::Tag(ref tag) if tag == "=");
                         let expr = self.parse_expression()?;
                         Ok(Some(StatementKind::Variable(tag, expr)))
@@ -421,7 +421,7 @@ where
         })))
     }
 
-    fn parse_marker_params(&mut self) -> Result<HashMap<String, Expression>> {
+    fn parse_marker_params(&mut self) -> Result<HashMap<Variable, Expression>> {
         let mut params = HashMap::new();
         while let Some(tok) = self.peek()? {
             match tok {
@@ -440,7 +440,7 @@ where
                         Entry::Occupied(e) => {
                             return Err(ParserError::Argument {
                                 argument: e.remove_entry().0,
-                                function: "marker".to_owned(),
+                                function: "marker".into(),
                                 line: self.line(),
                             }
                             .into());
@@ -491,19 +491,7 @@ where
             Err(err) => return Some(Err(err)),
             _ => {}
         }
-        let token = self.parser.take_peek_token()?;
-        if let TokenKind::Tag(tag) = token.kind {
-            Some(
-                self.parser
-                    .parse_dotted_ident(tag, token.span)
-                    .map(|(tag, span)| Token {
-                        kind: TokenKind::Tag(tag),
-                        span,
-                    }),
-            )
-        } else {
-            Some(Ok(token))
-        }
+        self.parser.take_peek_token().map(Ok)
     }
 }
 
@@ -777,7 +765,7 @@ mod tests {
                 styles: vec![],
                 point: expression_full![var("a")].into(),
                 marker_type: "circle".into(),
-                marker_parameters: [("r".to_owned(), expression_full![10, PAREN_UNARY].into())]
+                marker_parameters: [("r".into(), expression_full![10, PAREN_UNARY].into())]
                     .into_iter()
                     .collect(),
             })
@@ -793,11 +781,8 @@ mod tests {
                 point: expression_full![var("a")].into(),
                 marker_type: "double_tick".into(),
                 marker_parameters: [
-                    (
-                        "length".to_owned(),
-                        expression_full![20, PAREN_UNARY].into()
-                    ),
-                    ("angle".to_owned(), expression_full![45, PAREN_UNARY].into())
+                    ("length".into(), expression_full![20, PAREN_UNARY].into()),
+                    ("angle".into(), expression_full![45, PAREN_UNARY].into())
                 ]
                 .into_iter()
                 .collect(),
@@ -815,10 +800,10 @@ mod tests {
                 marker_type: "text".into(),
                 marker_parameters: [
                     (
-                        "text".to_owned(),
+                        "text".into(),
                         expression_full!["A station", PAREN_UNARY].into()
                     ),
-                    ("angle".to_owned(), expression_full![0, PAREN_UNARY].into())
+                    ("angle".into(), expression_full![0, PAREN_UNARY].into())
                 ]
                 .into_iter()
                 .collect(),

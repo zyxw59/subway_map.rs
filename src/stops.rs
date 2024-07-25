@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use smol_str::SmolStr;
 use svg::node::{
     element::{Circle, Group, Text},
     Node,
@@ -17,11 +18,11 @@ pub struct Stop {
     /// Location of the stop
     pub point: Point,
     /// Styles applying to the stop
-    pub styles: Vec<String>,
+    pub styles: Vec<SmolStr>,
     /// Type of marker to use for the stop
-    pub marker_type: String,
+    pub marker_type: SmolStr,
     /// The parameters for the marker
-    pub marker_parameters: HashMap<String, Value>,
+    pub marker_parameters: HashMap<SmolStr, Value>,
     /// The input line the stop is defined on
     pub input_line: usize,
 }
