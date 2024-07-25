@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::{
     evaluator::EvaluationContext,
+    expressions::Variable,
     values::{Result, Value},
 };
 
@@ -17,6 +18,8 @@ pub enum Precedence {
     Multiplicative,
     /// Exponential operators, such as `^`, as well as unary sine and cosine.
     Exponential,
+    /// Field access operators
+    Field,
 }
 
 macro_rules! as_binary_operator {
@@ -33,33 +36,33 @@ macro_rules! as_unary_operator {
         fn _f(a: Value, _: &dyn EvaluationContext) -> Result {
             $fn(a)
         }
-        _f
+        UnaryOperatorFn::Function(_f)
     }};
 }
 
 pub const COMMA: BinaryOperator = BinaryOperator {
     function: as_binary_operator!(Value::comma),
-    name: ",",
+    name: Variable::new_static(","),
 };
 
 pub const COMMA_UNARY: UnaryOperator = UnaryOperator {
     function: as_unary_operator!(Value::comma_unary),
-    name: ",",
+    name: Variable::new_static(","),
 };
 
 pub const FN_CALL: BinaryOperator = BinaryOperator {
     function: Value::fn_call,
-    name: "()",
+    name: Variable::new_static("()"),
 };
 
 pub const FN_CALL_UNARY: UnaryOperator = UnaryOperator {
-    function: Value::fn_call_unary,
-    name: "()",
+    function: UnaryOperatorFn::Function(Value::fn_call_unary),
+    name: Variable::new_static("()"),
 };
 
 pub const PAREN_UNARY: UnaryOperator = UnaryOperator {
     function: as_unary_operator!(Value::paren_unary),
-    name: "()",
+    name: Variable::new_static("()"),
 };
 
 macro_rules! get_binary_builtin {
@@ -67,7 +70,7 @@ macro_rules! get_binary_builtin {
         match $key {
             $($name => Some(($fixity, Operator {
                 function: as_binary_operator!(Value::$fn),
-                name: $name,
+                name: $name.into(),
             })),)*
             _ => None,
         }
@@ -79,22 +82,22 @@ macro_rules! get_unary_builtin {
         match $key {
             $($name => Some((Precedence::$prec, Operator {
                 function: as_unary_operator!(Value::$fn),
-                name: $name,
+                name: $name.into(),
             })),)*
             _ => None,
         }
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Operator<F> {
     pub function: F,
-    pub name: &'static str,
+    pub name: Variable,
 }
 
 impl<F> fmt::Debug for Operator<F> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.name)
+        f.write_str(&self.name)
     }
 }
 
@@ -128,7 +131,22 @@ impl BinaryOperator {
     }
 }
 
-pub type UnaryOperator = Operator<fn(Value, &dyn EvaluationContext) -> Result>;
+#[derive(Clone, Eq, PartialEq)]
+pub enum UnaryOperatorFn {
+    Function(fn(Value, &dyn EvaluationContext) -> Result),
+    FieldAccess(Variable),
+}
+
+impl UnaryOperatorFn {
+    pub fn call(&self, value: Value, ctx: &dyn EvaluationContext) -> Result {
+        match self {
+            Self::Function(f) => f(value, ctx),
+            Self::FieldAccess(field) => todo!(),
+        }
+    }
+}
+
+pub type UnaryOperator = Operator<UnaryOperatorFn>;
 
 impl UnaryOperator {
     pub fn get(key: &str) -> Option<(Precedence, Self)> {
@@ -141,5 +159,12 @@ impl UnaryOperator {
             "dir" => (Exponential, dir),
             "angle" => (Exponential, angle),
         })
+    }
+
+    pub fn field_access(name: Variable) -> Self {
+        Self {
+            name: smol_str::format_smolstr!(".{name}"),
+            function: UnaryOperatorFn::FieldAccess(name),
+        }
     }
 }

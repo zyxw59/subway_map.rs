@@ -44,7 +44,7 @@ impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationC
         operator: UnaryOperator,
         argument: Value,
     ) -> Result<Value, MathError> {
-        (operator.function)(argument, self)
+        operator.function.call(argument, self)
     }
 
     fn evaluate_term(&self, _span: Span, term: Term) -> Result<Value, MathError> {

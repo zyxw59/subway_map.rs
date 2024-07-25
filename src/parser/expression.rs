@@ -63,6 +63,13 @@ impl parser::Parser<TokenKind> for Parser {
                 };
                 Element { prefix, postfix }
             }
+            TokenKind::DotTag(tag) => Element {
+                prefix: Prefix::None,
+                postfix: Postfix::PostfixOperator {
+                    precedence: Precedence::Field,
+                    operator: UnaryOperator::field_access(tag),
+                },
+            },
             TokenKind::Comma => Element {
                 prefix: Prefix::None,
                 postfix: Postfix::BinaryOperator {
@@ -103,7 +110,7 @@ impl parser::Parser<TokenKind> for Parser {
                     delimiter: Delimiter::Paren,
                 },
             },
-            TokenKind::Semicolon | TokenKind::DotTag(_) => {
+            TokenKind::Semicolon => {
                 return Err(Error::UnexpectedToken(token));
             }
         })
