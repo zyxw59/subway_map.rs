@@ -1,6 +1,6 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use expr_parser::{parser::Parser as _, token::IterTokenizer, Span};
+use expr_parser::{parser::Parser as _, token::IterTokenizer};
 
 use crate::{
     error::{ParserError, Result},
@@ -141,19 +141,6 @@ where
                 until: |_: &_| false,
             }))
             .map_err(|e| panic!("{e}"))
-    }
-
-    fn parse_dotted_ident(&mut self, tag: Variable, mut span: Span) -> Result<(String, Span)> {
-        let mut arr = vec![tag];
-        while let Some(TokenKind::DotTag(_)) = self.peek()? {
-            let token = self.take_peek_token().unwrap();
-            let TokenKind::DotTag(tag) = token.kind else {
-                unreachable!()
-            };
-            span.end = token.span.end;
-            arr.push(tag);
-        }
-        Ok((arr.join("."), span))
     }
 
     /// Parses a function definition.
