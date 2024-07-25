@@ -129,7 +129,6 @@ checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 [[package]]
 name = "expr-parser"
 version = "0.1.0"
-source = "git+https://github.com/zyxw59/expr-parser?branch=extensibility-helpers#5c4e06d1af85f1d7a216d3eee9f3cbf7c6656c45"
 dependencies = [
  "bstr",
  "bytes",
