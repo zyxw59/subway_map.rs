@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 pub use expr_parser::expression;
 use smol_str::SmolStr;
 
@@ -10,7 +12,7 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub expression: Expression,
+    pub expression: Rc<[ExpressionBit]>,
     pub num_args: usize,
 }
 

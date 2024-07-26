@@ -186,7 +186,7 @@ where
         }
         expect!(self, TokenKind::Tag(ref tag) if tag == "=");
         // get the function body, as an expression tree
-        let expression = self.parse_expression(args)?;
+        let expression = self.parse_expression(args)?.into();
         Ok((
             name,
             Function {
