@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
 
@@ -52,7 +52,7 @@ impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationC
     fn evaluate_term(&self, _span: Span, term: Term) -> Result<Value, MathError> {
         match term {
             Term::Number(x) => Ok(Value::Number(x)),
-            Term::String(s) => Ok(Value::String(s)),
+            Term::String(s) => Ok(Value::String(Rc::new(s))),
             Term::Variable(v) => self.get_variable(&v).ok_or(MathError::Variable(v)),
             Term::FnArg(idx) => Ok(self
                 .get_fn_arg(idx)

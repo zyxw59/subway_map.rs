@@ -15,7 +15,7 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn apply(&self, args: Vec<Value>, context: &dyn EvaluationContext) -> Result<Value> {
+    pub fn apply(&self, args: &[Value], context: &dyn EvaluationContext) -> Result<Value> {
         let expected = self.num_args;
         let actual = args.len();
         if expected != actual {
@@ -31,7 +31,7 @@ impl Function {
 
 pub struct FunctionEvaluator<'a> {
     parent: &'a dyn EvaluationContext,
-    args: Vec<Value>,
+    args: &'a [Value],
 }
 
 impl<'a> EvaluationContext for FunctionEvaluator<'a> {

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt, ops, result};
+use std::{collections::BTreeMap, fmt, ops, rc::Rc, result};
 
 use serde::Serialize;
 use svg::node::element::path::Parameters;
@@ -213,17 +213,6 @@ impl TryFrom<&'_ Value> for f64 {
     }
 }
 
-impl TryFrom<Value> for String {
-    type Error = MathError;
-
-    fn try_from(value: Value) -> Result<String> {
-        match value {
-            Value::String(s) => Ok(s),
-            _ => Err(MathError::Type(Type::String, value.into())),
-        }
-    }
-}
-
 impl<'a> TryFrom<&'a Value> for &'a str {
     type Error = MathError;
 
@@ -287,9 +276,9 @@ pub enum Value {
     Number(f64),
     Point(Point, PointProvenance),
     Line(Point, Point, Option<(PointId, PointId)>),
-    String(String),
-    List(Vec<Value>),
-    Struct(BTreeMap<Variable, Value>),
+    String(Rc<String>),
+    List(Rc<Vec<Value>>),
+    Struct(Rc<BTreeMap<Variable, Value>>),
     Function(crate::expressions::Function),
 }
 
@@ -508,10 +497,10 @@ impl Value {
     pub fn comma(self, other: Value) -> Result {
         Ok(match self {
             Self::List(mut values) => {
-                values.push(other);
+                Rc::make_mut(&mut values).push(other);
                 Self::List(values)
             }
-            _ => Self::List(vec![self, other]),
+            _ => Self::List(Rc::new(vec![self, other])),
         })
     }
 
@@ -521,16 +510,11 @@ impl Value {
 
     pub fn paren_unary(self) -> Result {
         match self {
-            Self::List(mut values) => {
-                match <[_; 1]>::try_from(values) {
-                    Ok([value]) => return Ok(value),
-                    Err(err) => values = err,
-                }
-                match <[_; 2]>::try_from(values) {
-                    Ok([x, y]) => Self::point(x, y),
-                    Err(_err) => todo!(),
-                }
-            }
+            Self::List(values) => match &**values {
+                [value] => Ok(value.clone()),
+                [x, y] => Self::point(x.clone(), y.clone()),
+                _ => todo!(),
+            },
             _ => Ok(self),
         }
     }
@@ -540,7 +524,7 @@ impl Value {
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a + b),
             (Point(p1, _), Point(p2, _)) => Point(p1 + p2, PointProvenance::None),
-            (String(s1), String(s2)) => String(s1 + &s2),
+            (String(s1), String(s2)) => String(Rc::new(Rc::unwrap_or_clone(s1) + &s2)),
             (bad, good @ (Number(..) | Point(..) | String(..)))
             | (good @ (Number(..) | Point(..) | String(..)), bad) => {
                 return Err(MathError::Type(good.into(), bad.into()))
@@ -596,15 +580,15 @@ impl Value {
 
     pub fn fn_call(self, args: Self, ctx: &dyn EvaluationContext) -> Result {
         match (self, args) {
-            (Self::Function(f), Self::List(args)) => f.apply(args, ctx),
-            (Self::Function(f), arg) => f.apply(vec![arg], ctx),
+            (Self::Function(f), Self::List(args)) => f.apply(&args, ctx),
+            (Self::Function(f), arg) => f.apply(&[arg], ctx),
             (bad, _) => Err(MathError::Type(Type::Function, bad.into())),
         }
     }
 
     pub fn fn_call_unary(self, ctx: &dyn EvaluationContext) -> Result {
         match self {
-            Self::Function(f) => f.apply(Vec::new(), ctx),
+            Self::Function(f) => f.apply(&[], ctx),
             bad => Err(MathError::Type(Type::Function, bad.into())),
         }
     }

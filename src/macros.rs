@@ -57,7 +57,7 @@ macro_rules! value {
         )
     };
     (@$s:expr) => {
-        $crate::values::Value::String($s.into())
+        $crate::values::Value::String(std::rc::Rc::new($s.into()))
     };
 }
 
