@@ -36,7 +36,7 @@ macro_rules! as_unary_operator {
         fn _f(a: Value, _: &dyn EvaluationContext) -> Result {
             $fn(a)
         }
-        UnaryOperatorFn::Function(_f)
+        _f
     }};
 }
 
@@ -45,30 +45,30 @@ pub const COMMA: BinaryOperator = BinaryOperator {
     name: Variable::new_static(","),
 };
 
-pub const COMMA_UNARY: UnaryOperator = UnaryOperator {
+pub const COMMA_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
     function: as_unary_operator!(Value::comma_unary),
     name: Variable::new_static(","),
-};
+});
 
 pub const FN_CALL: BinaryOperator = BinaryOperator {
     function: Value::fn_call,
     name: Variable::new_static("()"),
 };
 
-pub const FN_CALL_UNARY: UnaryOperator = UnaryOperator {
-    function: UnaryOperatorFn::Function(Value::fn_call_unary),
+pub const FN_CALL_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
+    function: Value::fn_call_unary,
     name: Variable::new_static("()"),
-};
+});
 
-pub const PAREN_UNARY: UnaryOperator = UnaryOperator {
+pub const PAREN_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
     function: as_unary_operator!(Value::paren_unary),
     name: Variable::new_static("()"),
-};
+});
 
 macro_rules! get_binary_builtin {
     (match $key:ident { $($name:literal => ($fixity:expr, $fn:ident)),* $(,)? }) => {
         match $key {
-            $($name => Some(($fixity, Operator {
+            $($name => Some(($fixity, BinaryOperator {
                 function: as_binary_operator!(Value::$fn),
                 name: $name.into(),
             })),)*
@@ -80,28 +80,28 @@ macro_rules! get_binary_builtin {
 macro_rules! get_unary_builtin {
     (match $key:ident { $($name:literal => ($prec:ident, $fn:ident)),* $(,)? }) => {
         match $key {
-            $($name => Some((Precedence::$prec, Operator {
+            $($name => Some((Precedence::$prec, UnaryOperator::Function(NamedFunction {
                 function: as_unary_operator!(Value::$fn),
                 name: $name.into(),
-            })),)*
+            }))),)*
             _ => None,
         }
     }
 }
 
 #[derive(Clone, Eq, PartialEq)]
-pub struct Operator<F> {
+pub struct NamedFunction<F> {
     pub function: F,
     pub name: Variable,
 }
 
-impl<F> fmt::Debug for Operator<F> {
+impl<F> fmt::Debug for NamedFunction<F> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(&self.name)
     }
 }
 
-pub type BinaryOperator = Operator<fn(Value, Value, &dyn EvaluationContext) -> Result>;
+pub type BinaryOperator = NamedFunction<fn(Value, Value, &dyn EvaluationContext) -> Result>;
 
 impl BinaryOperator {
     pub fn get(key: &str) -> Option<(expr_parser::operator::Fixity<Precedence>, Self)> {
@@ -132,23 +132,19 @@ impl BinaryOperator {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-pub enum UnaryOperatorFn {
-    Function(fn(Value, &dyn EvaluationContext) -> Result),
+pub enum UnaryOperator {
+    Function(NamedFunction<fn(Value, &dyn EvaluationContext) -> Result>),
     FieldAccess(Variable),
 }
 
-impl UnaryOperatorFn {
+impl UnaryOperator {
     pub fn call(&self, value: Value, ctx: &dyn EvaluationContext) -> Result {
         match self {
-            Self::Function(f) => f(value, ctx),
+            Self::Function(f) => (f.function)(value, ctx),
             Self::FieldAccess(field) => todo!(),
         }
     }
-}
 
-pub type UnaryOperator = Operator<UnaryOperatorFn>;
-
-impl UnaryOperator {
     pub fn get(key: &str) -> Option<(Precedence, Self)> {
         get_unary_builtin!(match key {
             "-" => (Multiplicative, neg),
@@ -162,9 +158,15 @@ impl UnaryOperator {
     }
 
     pub fn field_access(name: Variable) -> Self {
-        Self {
-            name: smol_str::format_smolstr!(".{name}"),
-            function: UnaryOperatorFn::FieldAccess(name),
+        Self::FieldAccess(name)
+    }
+}
+
+impl fmt::Debug for UnaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Function(func) => fmt::Debug::fmt(func, f),
+            Self::FieldAccess(field) => write!(f, ".{field}"),
         }
     }
 }
