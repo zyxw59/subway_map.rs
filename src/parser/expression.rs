@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use expr_parser::{
     operator::Fixity,
     parser::{self, Element, ParserElement, Postfix, Prefix},
 };
 
 use crate::{
-    expressions::Term,
+    expressions::{Term, Variable},
     lexer::TokenKind,
     operators::{self, BinaryOperator, Precedence, UnaryOperator},
 };
@@ -26,7 +28,20 @@ pub enum Error {
     UnexpectedToken(TokenKind),
 }
 
-pub struct Parser;
+#[derive(Clone, Default)]
+pub struct Parser {
+    fn_args: HashMap<Variable, usize>,
+}
+
+impl Parser {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn new_with_args(fn_args: HashMap<Variable, usize>) -> Self {
+        Self { fn_args }
+    }
+}
 
 impl parser::Parser<TokenKind> for Parser {
     type Precedence = Precedence;
@@ -53,6 +68,10 @@ impl parser::Parser<TokenKind> for Parser {
                         precedence,
                         operator: op,
                         no_rhs: None,
+                    }
+                } else if let Some(&idx) = self.fn_args.get(&tag) {
+                    Prefix::Term {
+                        term: Term::FnArg(idx),
                     }
                 } else {
                     Prefix::Term {

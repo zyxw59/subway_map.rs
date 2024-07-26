@@ -15,6 +15,8 @@ use crate::{
 
 pub trait EvaluationContext {
     fn get_variable(&self, name: &str) -> Option<Value>;
+
+    fn get_fn_arg(&self, idx: usize) -> Option<Value>;
 }
 
 pub fn evaluate_expression(
@@ -52,6 +54,7 @@ impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationC
             Term::Number(x) => Ok(Value::Number(x)),
             Term::String(s) => Ok(Value::String(s)),
             Term::Variable(v) => self.get_variable(&v).ok_or(MathError::Variable(v)),
+            Term::FnArg(idx) => Ok(self.get_fn_arg(idx).expect("invalid function argument index")),
         }
     }
 }
@@ -297,10 +300,18 @@ impl EvaluationContext for Evaluator {
             self.variables.get(name).cloned()
         }
     }
+
+    fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
+        None
+    }
 }
 
 impl EvaluationContext for () {
     fn get_variable(&self, _name: &str) -> Option<Value> {
+        None
+    }
+
+    fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
         None
     }
 }

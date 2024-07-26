@@ -112,7 +112,7 @@ where
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
-        expression::Parser
+        expression::Parser::new()
             .parse(IterTokenizer(ExprTokens {
                 parser: self,
                 until: |tok: &TokenKind| tok == &TokenKind::Semicolon,
@@ -124,7 +124,7 @@ where
         &mut self,
         mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
     ) -> Result<Expression> {
-        let expr = expression::Parser
+        let expr = expression::Parser::new()
             .parse(IterTokenizer(ExprTokens {
                 parser: self,
                 until: &mut until,
@@ -135,7 +135,7 @@ where
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
-        expression::Parser
+        expression::Parser::new()
             .parse_one_term(IterTokenizer(ExprTokens {
                 parser: self,
                 until: |_: &_| false,

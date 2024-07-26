@@ -30,26 +30,24 @@ impl Function {
         }
         let locals = FunctionEvaluator {
             parent: context,
-            arg_order: &self.args,
             args,
         };
         evaluate_expression(&locals, self.expression.iter().cloned())
     }
 }
 
-pub struct FunctionEvaluator<'a, 'b> {
+pub struct FunctionEvaluator<'a> {
     parent: &'a dyn EvaluationContext,
-    arg_order: &'b HashMap<Variable, usize>,
     args: Vec<Value>,
 }
 
-impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
+impl<'a> EvaluationContext for FunctionEvaluator<'a> {
     fn get_variable(&self, name: &str) -> Option<Value> {
-        self.arg_order
-            .get(name)
-            .and_then(|&i| self.args.get(i))
-            .cloned()
-            .or_else(|| self.parent.get_variable(name))
+        self.parent.get_variable(name)
+    }
+
+    fn get_fn_arg(&self, idx: usize) -> Option<Value> {
+        self.args.get(idx).cloned()
     }
 }
 
@@ -63,6 +61,7 @@ pub enum Term {
     Number(f64),
     String(String),
     Variable(Variable),
+    FnArg(usize),
 }
 
 #[cfg(test)]
