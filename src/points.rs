@@ -54,7 +54,7 @@ impl PointCollection {
     fn get_point_info(&self, k: &str) -> Option<&PointInfo> {
         self.point_ids
             .get(k)
-            .and_then(|&PointId(id)| self.points.get(id))
+            .and_then(|&PointId(id)| self.points.get(id as usize))
     }
 
     pub fn get_point_and_id(&self, k: &str) -> Option<(Point, PointId)> {
@@ -121,7 +121,12 @@ impl PointCollection {
                 })
             }
             Entry::Vacant(e) => {
-                let id = PointId(self.points.len());
+                let id = PointId(
+                    self.points
+                        .len()
+                        .try_into()
+                        .expect("more than 65535 points not supported"),
+                );
                 self.points.push(PointInfo::new(value, id, line_number));
                 e.insert(id);
                 Ok(id)
@@ -244,8 +249,8 @@ impl PointCollection {
     ) {
         pairs.insert((p1, p2), line);
         pairs.insert((p2, p1), line);
-        points[p1.0].lines.insert(line);
-        points[p2.0].lines.insert(line);
+        points[p1.0 as usize].lines.insert(line);
+        points[p2.0 as usize].lines.insert(line);
     }
 
     /// Creates a new line from a start point, a direction, and (name, distance) pairs along the
@@ -651,13 +656,13 @@ impl Index<PointId> for PointCollection {
     type Output = PointInfo;
 
     fn index(&self, PointId(idx): PointId) -> &PointInfo {
-        &self.points[idx]
+        &self.points[idx as usize]
     }
 }
 
 impl IndexMut<PointId> for PointCollection {
     fn index_mut(&mut self, PointId(idx): PointId) -> &mut PointInfo {
-        &mut self.points[idx]
+        &mut self.points[idx as usize]
     }
 }
 
@@ -737,7 +742,7 @@ impl PointInfo {
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct PointId(usize);
+pub struct PointId(u16);
 
 impl fmt::Debug for PointId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

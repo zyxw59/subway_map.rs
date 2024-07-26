@@ -92,12 +92,8 @@ pub enum MathError {
     Variable(Variable),
     #[error("Undefined function {0}")]
     Function(Variable),
-    #[error("Incorrect number of arguments to function {name}: expected {expected}, got {actual}")]
-    Arguments {
-        name: Variable,
-        expected: usize,
-        actual: usize,
-    },
+    #[error("Incorrect number of arguments to function: expected {expected}, got {actual}")]
+    Arguments { expected: usize, actual: usize },
 }
 
 #[derive(Debug)]

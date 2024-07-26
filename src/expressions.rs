@@ -10,9 +10,8 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub name: Variable,
     pub expression: Expression,
-    pub(crate) num_args: usize,
+    pub num_args: usize,
 }
 
 impl Function {
@@ -20,11 +19,7 @@ impl Function {
         let expected = self.num_args;
         let actual = args.len();
         if expected != actual {
-            return Err(MathError::Arguments {
-                name: self.name.clone(),
-                expected,
-                actual,
-            });
+            return Err(MathError::Arguments { expected, actual });
         }
         let locals = FunctionEvaluator {
             parent: context,

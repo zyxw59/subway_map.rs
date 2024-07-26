@@ -188,9 +188,8 @@ where
         // get the function body, as an expression tree
         let expression = self.parse_expression(args)?;
         Ok((
-            name.clone(),
+            name,
             Function {
-                name,
                 expression,
                 num_args: index,
             },
