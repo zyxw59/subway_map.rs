@@ -80,7 +80,7 @@ pub enum EvaluatorError {
 
 #[derive(Error, Debug)]
 pub enum MathError {
-    #[error("Type error: expected {0:?}, got {0:?}")]
+    #[error("Type error: expected {0:?}, got {1:?}")]
     Type(Type, Type),
     #[error("Division by zero")]
     DivisionByZero,

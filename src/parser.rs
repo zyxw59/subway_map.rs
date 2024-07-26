@@ -308,10 +308,10 @@ where
                         let TokenKind::Tag(tag) = token.kind else {
                             unreachable!()
                         };
-                        let field = self.parse_dot_list()?;
+                        let fields = self.parse_dot_list()?;
                         expect!(self, TokenKind::Tag(ref tag) if tag == "=");
                         let expr = self.parse_expression(HashMap::new())?;
-                        Ok(Some(StatementKind::Variable(tag, expr)))
+                        Ok(Some(StatementKind::Variable(tag, fields, expr)))
                     }
                 }
             }
@@ -651,7 +651,7 @@ mod tests {
     fn variable_assignment() {
         assert_statement!(
             "a = b",
-            StatementKind::Variable("a".into(), expression_full![var("b")].into())
+            StatementKind::Variable("a".into(), Vec::new(), expression_full![var("b")].into())
         );
     }
 
@@ -659,7 +659,11 @@ mod tests {
     fn dotted_variable_assignment() {
         assert_statement!(
             "a.b = c",
-            StatementKind::Variable("a.b".into(), expression_full![var("c")].into())
+            StatementKind::Variable(
+                "a".into(),
+                vec!["b".into()],
+                expression_full![var("c")].into()
+            )
         );
     }
 

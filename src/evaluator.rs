@@ -1,4 +1,7 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    rc::Rc,
+};
 
 use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
 
@@ -85,28 +88,44 @@ impl Evaluator {
     fn evaluate(&mut self, Statement { statement, line }: Statement) -> Result<()> {
         match statement {
             StatementKind::Null => {}
-            StatementKind::Variable(name, expr) => {
+            StatementKind::Variable(name, fields, expr) => {
                 let value = evaluate_expression(self, expr)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
-                if &name == "line_sep" {
-                    let value =
-                        f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
-                    self.points.set_default_width(value);
-                } else if &name == "inner_radius" {
-                    let value =
-                        f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
-                    self.points.set_inner_radius(value);
-                }
-                // named points can't be redefined, since lines are defined in terms of them
-                if let Some(original_line) = self.points.get_point_line_number(&name) {
-                    return Err(EvaluatorError::PointRedefinition {
-                        name,
-                        line,
-                        original_line,
+                if fields.is_empty() {
+                    if &name == "line_sep" {
+                        let value =
+                            f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        self.points.set_default_width(value);
+                    } else if &name == "inner_radius" {
+                        let value =
+                            f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        self.points.set_inner_radius(value);
                     }
-                    .into());
+                    // named points can't be redefined, since lines are defined in terms of them
+                    if let Some(original_line) = self.points.get_point_line_number(&name) {
+                        return Err(EvaluatorError::PointRedefinition {
+                            name,
+                            line,
+                            original_line,
+                        }
+                        .into());
+                    }
                 }
-                self.variables.insert(name, value);
+                let mut slot = self.variables.entry(name.clone());
+                for field in fields {
+                    slot = slot
+                        .or_insert(Value::new_struct())
+                        .slot(field)
+                        .map_err(|err| EvaluatorError::Math(err, line))?
+                }
+                match slot {
+                    Entry::Occupied(mut entry) => {
+                        entry.insert(value);
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(value);
+                    }
+                }
             }
             StatementKind::Function(name, function) => {
                 self.variables.insert(name, Value::Function(function));

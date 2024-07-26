@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, fmt, ops, rc::Rc, result};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt, ops,
+    rc::Rc,
+    result,
+};
 
 use serde::Serialize;
 use svg::node::element::path::Parameters;
@@ -278,7 +283,7 @@ pub enum Value {
     Line(Point, Point, Option<(PointId, PointId)>),
     String(Rc<String>),
     List(Rc<Vec<Value>>),
-    Struct(Rc<BTreeMap<Variable, Value>>),
+    Struct(Rc<HashMap<Variable, Value>>),
     Function(crate::expressions::Function),
 }
 
@@ -287,6 +292,17 @@ impl Value {
         match self {
             Value::Number(x) => Some(x),
             _ => None,
+        }
+    }
+
+    pub fn new_struct() -> Self {
+        Self::Struct(Default::default())
+    }
+
+    pub fn slot(&mut self, field: Variable) -> Result<Entry<Variable, Value>> {
+        match self {
+            Self::Struct(fields) => Ok(Rc::make_mut(fields).entry(field)),
+            bad => Err(MathError::Type(Type::Struct, (&*bad).into())),
         }
     }
 
