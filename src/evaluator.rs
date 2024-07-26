@@ -54,7 +54,9 @@ impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationC
             Term::Number(x) => Ok(Value::Number(x)),
             Term::String(s) => Ok(Value::String(s)),
             Term::Variable(v) => self.get_variable(&v).ok_or(MathError::Variable(v)),
-            Term::FnArg(idx) => Ok(self.get_fn_arg(idx).expect("invalid function argument index")),
+            Term::FnArg(idx) => Ok(self
+                .get_fn_arg(idx)
+                .expect("invalid function argument index")),
         }
     }
 }

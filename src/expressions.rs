@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 pub use expr_parser::expression;
 use smol_str::SmolStr;
 
@@ -13,13 +11,13 @@ use crate::{
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub name: Variable,
-    pub args: HashMap<Variable, usize>,
     pub expression: Expression,
+    pub(crate) num_args: usize,
 }
 
 impl Function {
     pub fn apply(&self, args: Vec<Value>, context: &dyn EvaluationContext) -> Result<Value> {
-        let expected = self.args.len();
+        let expected = self.num_args;
         let actual = args.len();
         if expected != actual {
             return Err(MathError::Arguments {

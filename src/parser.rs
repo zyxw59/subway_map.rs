@@ -111,8 +111,8 @@ where
         self.tokens.line()
     }
 
-    fn parse_expression(&mut self) -> Result<Expression> {
-        expression::Parser::new()
+    fn parse_expression(&mut self, args: HashMap<Variable, usize>) -> Result<Expression> {
+        expression::Parser::new(args)
             .parse(IterTokenizer(ExprTokens {
                 parser: self,
                 until: |tok: &TokenKind| tok == &TokenKind::Semicolon,
@@ -124,7 +124,7 @@ where
         &mut self,
         mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
     ) -> Result<Expression> {
-        let expr = expression::Parser::new()
+        let expr = expression::Parser::new(HashMap::new())
             .parse(IterTokenizer(ExprTokens {
                 parser: self,
                 until: &mut until,
@@ -135,7 +135,7 @@ where
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
-        expression::Parser::new()
+        expression::Parser::new(HashMap::new())
             .parse_one_term(IterTokenizer(ExprTokens {
                 parser: self,
                 until: |_: &_| false,
@@ -186,13 +186,13 @@ where
         }
         expect!(self, TokenKind::Tag(ref tag) if tag == "=");
         // get the function body, as an expression tree
-        let expression = self.parse_expression()?;
+        let expression = self.parse_expression(args)?;
         Ok((
             name.clone(),
             Function {
                 name,
-                args,
                 expression,
+                num_args: index,
             },
         ))
     }
@@ -269,7 +269,7 @@ where
                         self.take_peek();
                         let name = expect!(self, TokenKind::Tag(tag) => tag);
                         expect!(self, TokenKind::Tag(ref tag) if tag == "=");
-                        let expr = self.parse_expression()?;
+                        let expr = self.parse_expression(HashMap::new())?;
                         Ok(Some(StatementKind::PointSingle(name, expr)))
                     }
                     // sequence of points
@@ -311,7 +311,7 @@ where
                         };
                         let field = self.parse_dot_list()?;
                         expect!(self, TokenKind::Tag(ref tag) if tag == "=");
-                        let expr = self.parse_expression()?;
+                        let expr = self.parse_expression(HashMap::new())?;
                         Ok(Some(StatementKind::Variable(tag, expr)))
                     }
                 }
@@ -484,6 +484,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::{
         expressions::tests::{b, expression_full, u, var},
         lexer::Lexer,
@@ -495,7 +497,7 @@ mod tests {
         ($text:expr, [$($expr:tt)*]) => {{
             let result = Lexer::new($text.as_bytes())
                 .into_parser()
-                .parse_expression()
+                .parse_expression(HashMap::new())
                 .unwrap()
                 .into_iter()
                 .map(|expr| expr.kind)

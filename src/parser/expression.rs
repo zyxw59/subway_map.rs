@@ -34,11 +34,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn new_with_args(fn_args: HashMap<Variable, usize>) -> Self {
+    pub fn new(fn_args: HashMap<Variable, usize>) -> Self {
         Self { fn_args }
     }
 }
