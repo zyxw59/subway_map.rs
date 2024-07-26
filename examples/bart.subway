@@ -12,6 +12,8 @@ fake.line_sep = 0;
 # inner_radius determines the radius of the innermost curve in a rounded corner
 inner_radius = 20;
 
+title "Bay Area Rapid Transit";
+
 # stylesheet
 style "bart.css";
 
