@@ -255,7 +255,7 @@ impl<R: BufRead> LexerExt for Lexer<R> {
             .find_position(|start| **start <= idx)
             .unwrap();
         Position {
-            line: self.lines.len() - lines_from_end,
+            line: self.lines.len() - 1 - lines_from_end,
             column: idx + 1 - line_start,
         }
     }
