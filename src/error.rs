@@ -90,6 +90,8 @@ pub enum MathError {
     Domain(String),
     #[error("Undefined variable {0}")]
     Variable(Variable),
+    #[error("Undefined field {0}")]
+    Field(Variable),
     #[error("Undefined function {0}")]
     Function(Variable),
     #[error("Incorrect number of arguments to function: expected {expected}, got {actual}")]

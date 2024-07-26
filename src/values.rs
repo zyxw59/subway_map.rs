@@ -592,6 +592,13 @@ impl Value {
             bad => Err(MathError::Type(Type::Function, bad.into())),
         }
     }
+
+    pub fn field_access(self, name: Variable) -> Result {
+        match self {
+            Self::Struct(fields) => fields.get(&name).cloned().ok_or(MathError::Field(name)),
+            bad => Err(MathError::Type(Type::Struct, bad.into())),
+        }
+    }
 }
 
 impl PartialEq for Value {

@@ -486,7 +486,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        expressions::tests::{b, expression_full, u, var},
+        expressions::tests::{b, dot, expression_full, u, var},
         lexer::Lexer,
         operators::{COMMA, COMMA_UNARY, FN_CALL, FN_CALL_UNARY, PAREN_UNARY},
         statement::{StatementKind, Stop},
@@ -607,7 +607,7 @@ mod tests {
 
     #[test]
     fn dotted_variable() {
-        assert_expression!("3*x.y", [3, var("x.y"), b("*")]);
+        assert_expression!("3*x.y", [3, var("x"), dot("y"), b("*")]);
     }
 
     #[test]

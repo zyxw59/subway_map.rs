@@ -80,7 +80,7 @@ impl parser::Parser<TokenKind> for Parser {
                 prefix: Prefix::None,
                 postfix: Postfix::PostfixOperator {
                     precedence: Precedence::Field,
-                    operator: UnaryOperator::field_access(tag),
+                    operator: UnaryOperator::FieldAccess(tag),
                 },
             },
             TokenKind::Comma => Element {

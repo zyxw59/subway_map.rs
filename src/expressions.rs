@@ -153,4 +153,8 @@ pub(crate) mod tests {
     pub fn var(s: &str) -> Expr {
         Expr::Term(Term::Variable(s.into()))
     }
+
+    pub fn dot(s: &str) -> Expr {
+        Expr::UnaryOperator(UnaryOperator::FieldAccess(s.into()))
+    }
 }

@@ -141,7 +141,7 @@ impl UnaryOperator {
     pub fn call(&self, value: Value, ctx: &dyn EvaluationContext) -> Result {
         match self {
             Self::Function(f) => (f.function)(value, ctx),
-            Self::FieldAccess(field) => todo!(),
+            Self::FieldAccess(field) => value.field_access(field.clone()),
         }
     }
 
@@ -155,10 +155,6 @@ impl UnaryOperator {
             "dir" => (Exponential, dir),
             "angle" => (Exponential, angle),
         })
-    }
-
-    pub fn field_access(name: Variable) -> Self {
-        Self::FieldAccess(name)
     }
 }
 
