@@ -64,6 +64,9 @@ impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationC
     }
 }
 
+const LINE_SEP: Variable = Variable::new_static("line_sep");
+const INNER_RADIUS: Variable = Variable::new_static("inner_radius");
+
 #[derive(Default, Debug)]
 pub struct Evaluator {
     variables: HashMap<Variable, Value>,
@@ -92,11 +95,11 @@ impl Evaluator {
                 let value = evaluate_expression(self, expr)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 if fields.is_empty() {
-                    if &name == "line_sep" {
+                    if name == LINE_SEP {
                         let value =
                             f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
                         self.points.set_default_width(value);
-                    } else if &name == "inner_radius" {
+                    } else if name == INNER_RADIUS {
                         let value =
                             f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
                         self.points.set_inner_radius(value);
@@ -222,9 +225,12 @@ impl Evaluator {
                     .iter()
                     // if a style has a distinct line_sep, get the appropriate line_sep
                     // take the line_sep of the first listed style with a defined line_sep
-                    .find_map(|style| self.get_variable(&format!("line_sep.{}", style)))
+                    .find_map(|style| {
+                        self.get_variable(style)
+                            .and_then(|st| st.field_access(LINE_SEP).ok())
+                    })
                     // otherwise, get the default line_sep
-                    .or_else(|| self.get_variable("line_sep"))
+                    .or_else(|| self.get_variable(&LINE_SEP))
                     // convert value to number
                     .and_then(Value::into_number)
                     // if it wasn't found, or wasn't a number, default to 1

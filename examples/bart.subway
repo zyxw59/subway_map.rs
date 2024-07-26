@@ -4,11 +4,11 @@
 # these variables have special meaning:
 # line_sep determines the separation between the centers of parallel lines
 # to define a style for thinner lines (e.g. for a different mode), use
-# `line_sep.{style}`, where `{style}` is the name of the style.
+# `{style}.fake`, where `{style}` is the name of the style.
 # To access a style you've defined in this way, use `line.{style}` when
 # defining a line.
 line_sep = 10;
-line_sep.fake = 0;
+fake.line_sep = 0;
 # inner_radius determines the radius of the innermost curve in a rounded corner
 inner_radius = 20;
 
