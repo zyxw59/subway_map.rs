@@ -1,6 +1,9 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt,
+};
 
-use expr_parser::{parser::Parser as _, token::IterTokenizer};
+use expr_parser::{parser::Parser as _, token::IterTokenizer, Span};
 
 use crate::{
     error::{ParserError, Result},
@@ -14,7 +17,7 @@ mod expression;
 pub trait LexerExt: Iterator<Item = Result<Token>> {
     fn line(&self) -> usize;
 
-    fn line_column(&self, idx: usize) -> (usize, usize);
+    fn line_column(&self, idx: usize) -> Position;
 
     fn into_parser(self) -> Parser<Self>
     where
@@ -27,6 +30,18 @@ pub trait LexerExt: Iterator<Item = Result<Token>> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
+    }
+}
+
 impl<'a, T> LexerExt for &'a mut T
 where
     T: LexerExt,
@@ -35,7 +50,7 @@ where
         (**self).line()
     }
 
-    fn line_column(&self, idx: usize) -> (usize, usize) {
+    fn line_column(&self, idx: usize) -> Position {
         (**self).line_column(idx)
     }
 }
@@ -54,11 +69,11 @@ macro_rules! expect_token {
         expect!($self, $token $(if $guard)? => ())
     };
     ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {{
-        let token = $self.next_token().ok_or_else(|| ParserError::EndOfInput($self.line()))??;
+        let token = $self.next_token().ok_or_else(|| ParserError::EndOfInput)??;
         match token {
             $($token $(if $guard)? => $capture),*,
             #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
-            tok => return Err(ParserError::Token(tok.kind, $self.line()).into()),
+            tok => return Err(ParserError::Token(tok.kind, $self.map_span(tok.span)).into()),
         }
     }};
 }
@@ -71,8 +86,11 @@ macro_rules! expect_peek {
         match $self.peek()? {
             $(Some($token) $(if $guard)? => $capture),*,
             #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
-            Some(_) => return Err(ParserError::Token($self.take_peek().unwrap(), $self.line()).into()),
-            None => return Err(ParserError::EndOfInput($self.line()).into()),
+            Some(_) => {
+                let tok = $self.take_peek_token().unwrap();
+                return Err(ParserError::Token(tok.kind, $self.map_span(tok.span)).into());
+            }
+            None => return Err(ParserError::EndOfInput.into()),
         }
     };
 }
@@ -86,10 +104,6 @@ impl<T> Parser<T>
 where
     T: LexerExt,
 {
-    fn next(&mut self) -> Option<Result<TokenKind>> {
-        self.next_token().map(|res| res.map(|tok| tok.kind))
-    }
-
     fn next_token(&mut self) -> Option<Result<Token>> {
         self.peek.take().map(Ok).or_else(|| self.tokens.next())
     }
@@ -109,6 +123,10 @@ where
 
     fn line(&self) -> usize {
         self.tokens.line()
+    }
+
+    fn map_span(&self, span: Span<usize>) -> Span<Position> {
+        span.map(|idx| self.tokens.line_column(idx))
     }
 
     fn parse_expression(&mut self, args: HashMap<Variable, usize>) -> Result<Expression> {
@@ -148,15 +166,18 @@ where
     /// On success, returns a tuple of the function name and the function definition.
     fn parse_function_def(&mut self) -> Result<(Variable, Function)> {
         let name = expect!(self, TokenKind::Tag(name) => name);
-        expect!(self, TokenKind::LeftParen);
+        let start_span =
+            expect_token!(self, Token { kind: TokenKind::LeftParen, span } => self.map_span(span));
         // maps argument names to their index in the function signature
         let mut args = HashMap::new();
         let mut index = 0;
-        let start_line = self.line();
         loop {
-            match self.next().transpose()? {
+            match self.next_token().transpose()? {
                 // a named argument
-                Some(TokenKind::Tag(arg)) => {
+                Some(Token {
+                    kind: TokenKind::Tag(arg),
+                    span,
+                }) => {
                     // insert the new argument into the hashmap
                     match args.entry(arg) {
                         // there's already an argument with this name
@@ -164,24 +185,27 @@ where
                             return Err(ParserError::Argument {
                                 argument: e.remove_entry().0,
                                 function: name,
-                                line: self.line(),
+                                span: self.map_span(span),
                             }
                             .into());
                         }
                         Entry::Vacant(e) => e.insert(index),
                     };
                     index += 1;
-                    match self.next().transpose()? {
-                        Some(TokenKind::Comma) => {}
-                        Some(TokenKind::RightParen) => break,
-                        Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
-                        None => return Err(ParserError::Parentheses(start_line).into()),
-                    }
+                    expect!(self,
+                        TokenKind::Comma => {},
+                        TokenKind::RightParen => break,
+                    );
                 }
                 // end of the arguments
-                Some(TokenKind::RightParen) => break,
-                Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
-                None => return Err(ParserError::Parentheses(start_line).into()),
+                Some(Token {
+                    kind: TokenKind::RightParen,
+                    span: _,
+                }) => break,
+                Some(tok) => {
+                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into())
+                }
+                None => return Err(ParserError::Parentheses(start_span).into()),
             }
         }
         expect!(self, TokenKind::Tag(ref tag) if tag == "=");
@@ -215,7 +239,10 @@ where
                     };
                     (None, ident)
                 }
-                _ => return Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into()),
+                _ => {
+                    let tok = self.take_peek_token().unwrap();
+                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into());
+                }
             };
             points.push(point);
             match self.peek()? {
@@ -227,7 +254,8 @@ where
                     break;
                 }
                 Some(_) => {
-                    return Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into())
+                    let tok = self.take_peek_token().unwrap();
+                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into());
                 }
             }
         }
@@ -318,7 +346,10 @@ where
             // semicolon; null statement
             Some(TokenKind::Semicolon) => Ok(Some(StatementKind::Null)),
             // other token; unexpected
-            Some(_) => Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into()),
+            Some(_) => {
+                let tok = self.take_peek_token().unwrap();
+                Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into())
+            }
             // empty statement, end of input
             None => Ok(None),
         }
@@ -347,7 +378,9 @@ where
         self.take_peek();
         expect!(self, TokenKind::Tag(ref tag) if tag == "from");
         let from = expect!(self, TokenKind::Tag(tag) => tag);
-        let kind = expect!(self, TokenKind::Tag(tag) => tag);
+        let (kind, span) = expect_token!(self,
+            Token { kind: TokenKind::Tag(tag), span } => (tag, self.map_span(span))
+        );
         match kind.as_ref() {
             // from ... spaced
             "spaced" => {
@@ -363,7 +396,7 @@ where
             "to" => self.parse_points_extend_statement(from, false),
             // from ... past
             "past" => self.parse_points_extend_statement(from, true),
-            _ => Err(ParserError::Token(TokenKind::Tag(kind), self.line()).into()),
+            _ => Err(ParserError::Token(TokenKind::Tag(kind), span).into()),
         }
     }
 
@@ -416,7 +449,11 @@ where
                 }
                 TokenKind::Semicolon => break,
                 TokenKind::Tag(_) => {
-                    let Some(TokenKind::Tag(tag)) = self.take_peek() else {
+                    let Some(Token {
+                        kind: TokenKind::Tag(tag),
+                        span,
+                    }) = self.take_peek_token()
+                    else {
                         unreachable!()
                     };
                     expect_peek!(self, TokenKind::LeftParen);
@@ -427,14 +464,17 @@ where
                             return Err(ParserError::Argument {
                                 argument: e.remove_entry().0,
                                 function: "marker".into(),
-                                line: self.line(),
+                                span: self.map_span(span),
                             }
                             .into());
                         }
                         Entry::Vacant(e) => e.insert(expr),
                     };
                 }
-                _ => return Err(ParserError::Token(self.take_peek().unwrap(), self.line()).into()),
+                _ => {
+                    let tok = self.take_peek_token().unwrap();
+                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into());
+                }
             }
         }
         Ok(params)

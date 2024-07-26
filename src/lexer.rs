@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 
 use crate::{
     error::{LexerError, Result},
-    parser::LexerExt,
+    parser::{LexerExt, Position},
 };
 
 pub type Token = expr_parser::token::Token<TokenKind>;
@@ -245,7 +245,7 @@ impl<R: BufRead> LexerExt for Lexer<R> {
         self.lines.len()
     }
 
-    fn line_column(&self, idx: usize) -> (usize, usize) {
+    fn line_column(&self, idx: usize) -> Position {
         // we're almost always going to be calling this on a recent index, so it's probably fastest
         // to do a linear search from the end.
         let (lines_from_end, line_start) = self
@@ -254,7 +254,10 @@ impl<R: BufRead> LexerExt for Lexer<R> {
             .rev()
             .find_position(|start| **start <= idx)
             .unwrap();
-        (self.lines.len() - lines_from_end, idx + 1 - line_start)
+        Position {
+            line: self.lines.len() - lines_from_end,
+            column: idx + 1 - line_start,
+        }
     }
 }
 

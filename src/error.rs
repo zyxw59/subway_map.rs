@@ -1,8 +1,9 @@
 use std::{io, result};
 
+use expr_parser::Span;
 use thiserror::Error;
 
-use crate::{expressions::Variable, lexer::TokenKind, values::Value};
+use crate::{expressions::Variable, lexer::TokenKind, parser::Position, values::Value};
 
 pub type Result<T, E = Error> = result::Result<T, E>;
 
@@ -18,21 +19,17 @@ pub enum Error {
 
 #[derive(Error, Debug)]
 pub enum ParserError {
-    #[error("Unexpected end of input on line {0}")]
-    EndOfInput(usize),
-    #[error("Unexpected token {0:?} on line {1}")]
-    Token(TokenKind, usize),
-    #[error("Unclosed parentheses starting on line {0}")]
-    Parentheses(usize),
-    #[error(
-        "Too many items in parenthesized list starting on line {1} (got {0}, expected 1 or 2)"
-    )]
-    ParenList(usize, usize),
-    #[error("Repeated argument {argument} to function {function} on line {line}")]
+    #[error("Unexpected end of input")]
+    EndOfInput,
+    #[error("Unexpected token {0:?} at {1}")]
+    Token(TokenKind, Span<Position>),
+    #[error("Unclosed parentheses starting at {0}")]
+    Parentheses(Span<Position>),
+    #[error("Repeated argument {argument} to function {function} at {span}")]
     Argument {
         argument: Variable,
         function: Variable,
-        line: usize,
+        span: Span<Position>,
     },
 }
 
