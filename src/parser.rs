@@ -3,7 +3,7 @@ use std::{
     fmt,
 };
 
-use expr_parser::{parser::Parser as _, token::IterTokenizer, Span};
+use expr_parser::{parser::Parser as _, token::IterTokenizer};
 
 use crate::{
     error::{ParserError, Result},
@@ -30,6 +30,8 @@ pub trait LexerExt: Iterator<Item = Result<Token>> {
     }
 }
 
+pub type Span<T = Position> = expr_parser::Span<T>;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Position {
     pub line: usize,
@@ -53,29 +55,6 @@ where
     fn line_column(&self, idx: usize) -> Position {
         (**self).line_column(idx)
     }
-}
-
-macro_rules! expect {
-    ($self:ident, $token:pat $(if $guard:expr)?) => {
-        expect!($self, $token $(if $guard)? => ())
-    };
-    ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {
-        expect_token!($self, $(Token { span: _, kind: $token } $(if $guard)? => $capture),*)
-    };
-}
-
-macro_rules! expect_token {
-    ($self:ident, $token:pat $(if $guard:expr)?) => {
-        expect!($self, $token $(if $guard)? => ())
-    };
-    ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {{
-        let token = $self.next_token().ok_or_else(|| ParserError::EndOfInput)??;
-        match token {
-            $($token $(if $guard)? => $capture),*,
-            #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
-            tok => return Err(ParserError::Token(tok.kind, $self.map_span(tok.span)).into()),
-        }
-    }};
 }
 
 macro_rules! expect_peek {
@@ -104,6 +83,55 @@ impl<T> Parser<T>
 where
     T: LexerExt,
 {
+    fn expect_next_token<U>(
+        &mut self,
+        paren_span: Option<Span>,
+        pred: impl FnOnce(TokenKind, Span) -> Result<U, TokenKind>,
+    ) -> Result<U> {
+        let Token { kind, span } = self.next_token().ok_or_else(|| {
+            if let Some(span) = paren_span {
+                ParserError::Parentheses(span)
+            } else {
+                ParserError::EndOfInput
+            }
+        })??;
+        let span = self.map_span(span);
+        pred(kind, span).map_err(|kind| ParserError::Token(kind, span).into())
+    }
+
+    fn expect_if(
+        &mut self,
+        paren_span: Option<Span>,
+        pred: impl FnOnce(&TokenKind) -> bool,
+    ) -> Result<(TokenKind, Span)> {
+        self.expect_next_token(paren_span, |tok, span| {
+            if pred(&tok) {
+                Ok((tok, span))
+            } else {
+                Err(tok)
+            }
+        })
+    }
+
+    fn expect_get_tag(&mut self) -> Result<Variable> {
+        self.expect_next_token(None, |tok, _| match tok {
+            TokenKind::Tag(t) => Ok(t),
+            _ => Err(tok),
+        })
+    }
+
+    fn expect_get_string(&mut self) -> Result<String> {
+        self.expect_next_token(None, |tok, _| match tok {
+            TokenKind::String(s) => Ok(s),
+            _ => Err(tok),
+        })
+    }
+
+    fn expect_tag(&mut self, tag: &str) -> Result<()> {
+        self.expect_if(None, |tok| tok.as_tag() == Some(tag))?;
+        Ok(())
+    }
+
     fn next_token(&mut self) -> Option<Result<Token>> {
         self.peek.take().map(Ok).or_else(|| self.tokens.next())
     }
@@ -125,7 +153,7 @@ where
         self.tokens.line()
     }
 
-    fn map_span(&self, span: Span<usize>) -> Span<Position> {
+    fn map_span(&self, span: Span<usize>) -> Span {
         span.map(|idx| self.tokens.line_column(idx))
     }
 
@@ -152,7 +180,7 @@ where
         let expr = expression::Parser::new(HashMap::new())
             .parse(self.expr_tokens(&mut until))
             .map_err(|e| -> crate::error::Error { panic!("{e}") })?;
-        expect!(self, tok if until(&tok));
+        self.expect_if(None, until)?;
         Ok(expr)
     }
 
@@ -166,19 +194,17 @@ where
     ///
     /// On success, returns a tuple of the function name and the function definition.
     fn parse_function_def(&mut self) -> Result<(Variable, Function)> {
-        let name = expect!(self, TokenKind::Tag(name) => name);
-        let start_span =
-            expect_token!(self, Token { kind: TokenKind::LeftParen, span } => self.map_span(span));
+        let name = self.expect_get_tag()?;
+        let (_, start_span) = self.expect_if(None, |tok| matches!(tok, TokenKind::LeftParen))?;
         // maps argument names to their index in the function signature
         let mut args = HashMap::new();
         let mut index = 0;
         loop {
-            match self.next_token().transpose()? {
+            let (token, span) =
+                self.expect_next_token(Some(start_span), |token, span| Ok((token, span)))?;
+            match token {
                 // a named argument
-                Some(Token {
-                    kind: TokenKind::Tag(arg),
-                    span,
-                }) => {
+                TokenKind::Tag(arg) => {
                     // insert the new argument into the hashmap
                     match args.entry(arg) {
                         // there's already an argument with this name
@@ -186,30 +212,27 @@ where
                             return Err(ParserError::Argument {
                                 argument: e.remove_entry().0,
                                 function: name,
-                                span: self.map_span(span),
+                                span,
                             }
                             .into());
                         }
                         Entry::Vacant(e) => e.insert(index),
                     };
                     index += 1;
-                    expect!(self,
-                        TokenKind::Comma => {},
-                        TokenKind::RightParen => break,
-                    );
+                    if self.expect_next_token(Some(start_span), |tok, _| match tok {
+                        TokenKind::Comma => Ok(false),
+                        TokenKind::RightParen => Ok(true),
+                        _ => Err(tok),
+                    })? {
+                        break;
+                    }
                 }
                 // end of the arguments
-                Some(Token {
-                    kind: TokenKind::RightParen,
-                    span: _,
-                }) => break,
-                Some(tok) => {
-                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into())
-                }
-                None => return Err(ParserError::Parentheses(start_span).into()),
+                TokenKind::RightParen => break,
+                _ => return Err(ParserError::Token(token, span).into()),
             }
         }
-        expect!(self, TokenKind::Tag(ref tag) if tag == "=");
+        self.expect_tag("=")?;
         // get the function body, as an expression tree
         let expression = self.parse_expression(args)?.into();
         Ok((
@@ -231,7 +254,7 @@ where
                 }
                 TokenKind::LeftParen => {
                     let multiplier = self.parse_delimited_expression()?;
-                    let ident = expect!(self, TokenKind::Tag(tag) => tag);
+                    let ident = self.expect_get_tag()?;
                     (Some(multiplier), ident)
                 }
                 TokenKind::Tag(_) => {
@@ -265,7 +288,7 @@ where
 
     fn parse_route(&mut self) -> Result<Vec<Segment>> {
         let mut route = Vec::new();
-        let mut start = expect!(self, TokenKind::Tag(tag) => tag);
+        let mut start = self.expect_get_tag()?;
         while self.peek()?.is_some() {
             expect_peek! { self,
                 TokenKind::Tag(ref tag) if tag == "--" => self.take_peek(),
@@ -273,7 +296,7 @@ where
             };
             expect_peek!(self, TokenKind::LeftParen);
             let offset = self.parse_delimited_expression()?;
-            let end = expect!(self, TokenKind::Tag(tag) => tag);
+            let end = self.expect_get_tag()?;
             let next = end.clone();
             route.push(Segment { start, end, offset });
             start = next;
@@ -295,8 +318,8 @@ where
                     // single point
                     "point" => {
                         self.take_peek();
-                        let name = expect!(self, TokenKind::Tag(tag) => tag);
-                        expect!(self, TokenKind::Tag(ref tag) if tag == "=");
+                        let name = self.expect_get_tag()?;
+                        self.expect_tag("=")?;
                         let expr = self.parse_expression(HashMap::new())?;
                         Ok(Some(StatementKind::PointSingle(name, expr)))
                     }
@@ -306,8 +329,8 @@ where
                     "route" => {
                         self.take_peek();
                         let styles = self.parse_dot_list()?;
-                        let name = expect!(self, TokenKind::Tag(name) => name);
-                        expect!(self, TokenKind::Tag(ref tag) if tag == ":");
+                        let name = self.expect_get_tag()?;
+                        self.expect_tag(":")?;
                         let segments = self.parse_route()?;
                         Ok(Some(StatementKind::Route {
                             name,
@@ -320,16 +343,14 @@ where
                     // stylesheet
                     "style" => {
                         self.take_peek();
-                        expect! { self,
-                            TokenKind::String(style) => Ok(Some(StatementKind::Style(style)))
-                        }
+                        let style = self.expect_get_string()?;
+                        Ok(Some(StatementKind::Style(style)))
                     }
                     // title
                     "title" => {
                         self.take_peek();
-                        expect! { self,
-                            TokenKind::String(title) => Ok(Some(StatementKind::Title(title)))
-                        }
+                        let title = self.expect_get_string()?;
+                        Ok(Some(StatementKind::Title(title)))
                     }
                     // other (variable assignment)
                     _ => {
@@ -338,7 +359,7 @@ where
                             unreachable!()
                         };
                         let fields = self.parse_dot_list()?;
-                        expect!(self, TokenKind::Tag(ref tag) if tag == "=");
+                        self.expect_tag("=")?;
                         let expr = self.parse_expression(HashMap::new())?;
                         Ok(Some(StatementKind::Variable(tag, fields, expr)))
                     }
@@ -377,14 +398,22 @@ where
 
     fn parse_points_statement(&mut self) -> Result<Option<StatementKind>> {
         self.take_peek();
-        expect!(self, TokenKind::Tag(ref tag) if tag == "from");
-        let from = expect!(self, TokenKind::Tag(tag) => tag);
-        let (kind, span) = expect_token!(self,
-            Token { kind: TokenKind::Tag(tag), span } => (tag, self.map_span(span))
-        );
-        match kind.as_ref() {
+        self.expect_tag("from")?;
+        let from = self.expect_get_tag()?;
+        enum PointsKind {
+            Spaced,
+            To,
+            Past,
+        }
+        let kind = self.expect_next_token(None, |tok, _| match tok.as_tag() {
+            Some("spaced") => Ok(PointsKind::Spaced),
+            Some("to") => Ok(PointsKind::To),
+            Some("past") => Ok(PointsKind::Past),
+            _ => Err(tok),
+        })?;
+        match kind {
             // from ... spaced
-            "spaced" => {
+            PointsKind::Spaced => {
                 let spaced = self.parse_expression_until(|tok| tok.as_tag() == Some(":"))?;
                 let points = self.parse_comma_point_list()?;
                 Ok(Some(StatementKind::PointSpaced {
@@ -394,10 +423,9 @@ where
                 }))
             }
             // from ... to
-            "to" => self.parse_points_extend_statement(from, false),
+            PointsKind::To => self.parse_points_extend_statement(from, false),
             // from ... past
-            "past" => self.parse_points_extend_statement(from, true),
-            _ => Err(ParserError::Token(TokenKind::Tag(kind), span).into()),
+            PointsKind::Past => self.parse_points_extend_statement(from, true),
         }
     }
 
@@ -409,7 +437,7 @@ where
         let to = expect_peek! { self,
             TokenKind::LeftParen => {
                 let multiplier = self.parse_delimited_expression()?;
-                let ident = expect!(self, TokenKind::Tag(tag) => tag);
+                let ident = self.expect_get_tag()?;
                 (Some(multiplier), ident)
             },
             TokenKind::Tag(_) => {
@@ -417,7 +445,7 @@ where
                 (None, ident)
             },
         };
-        expect!(self, TokenKind::Tag(ref tag) if tag == ":");
+        self.expect_tag(":")?;
         let points = self.parse_comma_point_list()?;
         Ok(Some(StatementKind::PointExtend {
             from,
@@ -431,7 +459,7 @@ where
         self.take_peek();
         let styles = self.parse_dot_list()?;
         let point = self.parse_expression_until(|tok| tok.as_tag() == Some("marker"))?;
-        let marker_type = expect!(self, TokenKind::Tag(tag) => tag);
+        let marker_type = self.expect_get_tag()?;
         let marker_parameters = self.parse_marker_params()?;
         Ok(Some(StatementKind::Stop(Stop {
             point,
@@ -491,7 +519,7 @@ where
     fn next(&mut self) -> Option<Result<Statement>> {
         self.parse_statement().transpose().map(|res| {
             res.and_then(|statement| {
-                expect!(self, TokenKind::Semicolon);
+                self.expect_if(None, |tok| tok == &TokenKind::Semicolon)?;
                 Ok(Statement {
                     statement,
                     line: self.line(),
