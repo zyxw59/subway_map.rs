@@ -129,12 +129,19 @@ where
         span.map(|idx| self.tokens.line_column(idx))
     }
 
+    fn expr_tokens<F: for<'a> FnMut(&'a TokenKind) -> bool>(
+        &mut self,
+        until: F,
+    ) -> IterTokenizer<ExprTokens<T, F>> {
+        IterTokenizer(ExprTokens {
+            parser: self,
+            until,
+        })
+    }
+
     fn parse_expression(&mut self, args: HashMap<Variable, usize>) -> Result<Expression> {
         expression::Parser::new(args)
-            .parse(IterTokenizer(ExprTokens {
-                parser: self,
-                until: |tok: &TokenKind| tok == &TokenKind::Semicolon,
-            }))
+            .parse(self.expr_tokens(|tok| tok == &TokenKind::Semicolon))
             .map_err(|e| panic!("{e}"))
     }
 
@@ -143,10 +150,7 @@ where
         mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
     ) -> Result<Expression> {
         let expr = expression::Parser::new(HashMap::new())
-            .parse(IterTokenizer(ExprTokens {
-                parser: self,
-                until: &mut until,
-            }))
+            .parse(self.expr_tokens(&mut until))
             .map_err(|e| -> crate::error::Error { panic!("{e}") })?;
         expect!(self, tok if until(&tok));
         Ok(expr)
@@ -154,10 +158,7 @@ where
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
         expression::Parser::new(HashMap::new())
-            .parse_one_term(IterTokenizer(ExprTokens {
-                parser: self,
-                until: |_: &_| false,
-            }))
+            .parse_one_term(self.expr_tokens(|_| false))
             .map_err(|e| panic!("{e}"))
     }
 
