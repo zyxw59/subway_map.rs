@@ -57,23 +57,6 @@ where
     }
 }
 
-macro_rules! expect_peek {
-    ($self:ident, $token:pat $(if $guard:expr)?) => {
-        expect_peek!($self, $token $(if $guard)? => ())
-    };
-    ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {
-        match $self.peek()? {
-            $(Some($token) $(if $guard)? => $capture),*,
-            #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
-            Some(_) => {
-                let tok = $self.take_peek_token().unwrap();
-                return Err(ParserError::Token(tok.kind, $self.map_span(tok.span)).into());
-            }
-            None => return Err(ParserError::EndOfInput.into()),
-        }
-    };
-}
-
 pub struct Parser<T> {
     tokens: T,
     peek: Option<Token>,
@@ -132,13 +115,23 @@ where
         Ok(())
     }
 
+    fn take_peek_unexpected<U>(&mut self) -> Result<U> {
+        let tok = self.take_peek_token().unwrap();
+        Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into())
+    }
+
     fn next_token(&mut self) -> Option<Result<Token>> {
         self.peek.take().map(Ok).or_else(|| self.tokens.next())
     }
 
     fn peek(&mut self) -> Result<Option<&TokenKind>> {
+        self.peek_token()
+            .map(|opt| opt.as_ref().map(|tok| &tok.kind))
+    }
+
+    fn peek_token(&mut self) -> Result<Option<&Token>> {
         self.peek = self.next_token().transpose()?;
-        Ok(self.peek.as_ref().map(|tok| &tok.kind))
+        Ok(self.peek.as_ref())
     }
 
     fn take_peek(&mut self) -> Option<TokenKind> {
@@ -263,10 +256,7 @@ where
                     };
                     (None, ident)
                 }
-                _ => {
-                    let tok = self.take_peek_token().unwrap();
-                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into());
-                }
+                _ => self.take_peek_unexpected()?,
             };
             points.push(point);
             match self.peek()? {
@@ -277,10 +267,7 @@ where
                 Some(TokenKind::Semicolon) => {
                     break;
                 }
-                Some(_) => {
-                    let tok = self.take_peek_token().unwrap();
-                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into());
-                }
+                Some(_) => self.take_peek_unexpected()?,
             }
         }
         Ok(points)
@@ -289,12 +276,20 @@ where
     fn parse_route(&mut self) -> Result<Vec<Segment>> {
         let mut route = Vec::new();
         let mut start = self.expect_get_tag()?;
-        while self.peek()?.is_some() {
-            expect_peek! { self,
+        while let Some(tok) = self.peek_token()? {
+            match tok.kind {
                 TokenKind::Tag(ref tag) if tag == "--" => self.take_peek(),
                 TokenKind::Semicolon => break,
+                _ => self.take_peek_unexpected()?,
             };
-            expect_peek!(self, TokenKind::LeftParen);
+            match self.peek_token()? {
+                Some(Token {
+                    kind: TokenKind::LeftParen,
+                    ..
+                }) => {}
+                Some(_) => self.take_peek_unexpected()?,
+                None => return Err(ParserError::EndOfInput.into()),
+            };
             let offset = self.parse_delimited_expression()?;
             let end = self.expect_get_tag()?;
             let next = end.clone();
@@ -368,10 +363,7 @@ where
             // semicolon; null statement
             Some(TokenKind::Semicolon) => Ok(Some(StatementKind::Null)),
             // other token; unexpected
-            Some(_) => {
-                let tok = self.take_peek_token().unwrap();
-                Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into())
-            }
+            Some(_) => self.take_peek_unexpected()?,
             // empty statement, end of input
             None => Ok(None),
         }
@@ -434,16 +426,26 @@ where
         from: Variable,
         is_past: bool,
     ) -> Result<Option<StatementKind>> {
-        let to = expect_peek! { self,
-            TokenKind::LeftParen => {
+        let to = match self.peek_token()? {
+            Some(Token {
+                kind: TokenKind::LeftParen,
+                ..
+            }) => {
                 let multiplier = self.parse_delimited_expression()?;
                 let ident = self.expect_get_tag()?;
                 (Some(multiplier), ident)
-            },
-            TokenKind::Tag(_) => {
-                let Some(TokenKind::Tag(ident)) = self.take_peek() else { unreachable!() };
+            }
+            Some(Token {
+                kind: TokenKind::Tag(_),
+                ..
+            }) => {
+                let Some(TokenKind::Tag(ident)) = self.take_peek() else {
+                    unreachable!()
+                };
                 (None, ident)
-            },
+            }
+            Some(_) => self.take_peek_unexpected()?,
+            None => return Err(ParserError::EndOfInput.into()),
         };
         self.expect_tag(":")?;
         let points = self.parse_comma_point_list()?;
@@ -485,7 +487,14 @@ where
                     else {
                         unreachable!()
                     };
-                    expect_peek!(self, TokenKind::LeftParen);
+                    match self.peek_token()? {
+                        Some(Token {
+                            kind: TokenKind::LeftParen,
+                            ..
+                        }) => {}
+                        Some(_) => self.take_peek_unexpected()?,
+                        None => return Err(ParserError::EndOfInput.into()),
+                    };
                     let expr = self.parse_delimited_expression()?;
                     match params.entry(tag) {
                         // there's already an argument with this name
@@ -500,10 +509,7 @@ where
                         Entry::Vacant(e) => e.insert(expr),
                     };
                 }
-                _ => {
-                    let tok = self.take_peek_token().unwrap();
-                    return Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into());
-                }
+                _ => self.take_peek_unexpected()?,
             }
         }
         Ok(params)
