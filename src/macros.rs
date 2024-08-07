@@ -1,94 +1,39 @@
 #[cfg(test)]
 macro_rules! token {
-    (.) => {
-        $crate::lexer::Token::Dot
+    (.$tag:expr) => {
+        $crate::lexer::TokenKind::DotTag(smol_str::SmolStr::from($tag))
     };
     ((l)) => {
-        $crate::lexer::Token::LeftParen
+        $crate::lexer::TokenKind::LeftParen
     };
     ((r)) => {
-        $crate::lexer::Token::RightParen
+        $crate::lexer::TokenKind::RightParen
     };
     (,) => {
-        $crate::lexer::Token::Comma
+        $crate::lexer::TokenKind::Comma
     };
     (;) => {
-        $crate::lexer::Token::Semicolon
-    };
-    (=) => {
-        $crate::lexer::Token::Equal
+        $crate::lexer::TokenKind::Semicolon
     };
     (#$tag:expr) => {
-        $crate::lexer::Token::Tag(String::from($tag))
+        $crate::lexer::TokenKind::Tag(smol_str::SmolStr::from($tag))
     };
     ($value:expr) => {
-        $crate::lexer::Token::Number($value as f64)
+        $crate::lexer::TokenKind::Number($value as f64)
     };
     (@$str:expr) => {
-        $crate::lexer::Token::String(String::from($str))
-    };
-}
-
-#[cfg(test)]
-/// Macro for building Expressions
-macro_rules! expression {
-    ($op:tt, ($($x:tt)+), ($($y:tt)+)) => {{
-        $crate::expressions::Expression::BinaryOperator(
-            $crate::operators::BinaryBuiltins.get($op).unwrap(),
-            Box::new((expression!($($x)+), expression!($($y)+))),
-        )
-    }};
-    ($op:tt, ($($x:tt)+), $y:expr) => {
-        expression!($op, ($($x)+), ($y))
-    };
-    ($op:tt, ($($x:tt)+)) => {{
-        $crate::expressions::Expression::UnaryOperator(
-            $crate::operators::UnaryBuiltins.get($op).unwrap(),
-            Box::new(expression!($($x)+)),
-        )
-    }};
-    ($op:tt, $x:expr, ($($y:tt)+)) => {
-        expression!($op, ($x), ($($y)+))
-    };
-    ($op:tt, $x:expr, $y:expr) => {
-        expression!($op, ($x), ($y))
-    };
-    ($op:tt, $x:expr) => {
-        expression!($op, ($x))
-    };
-    ($fn:tt[$(($($x:tt)+)),*]) => {
-        $crate::expressions::Expression::Function(
-            $crate::expressions::Variable::from($fn),
-            vec![$(expression!($($x)+)),*],
-        )
-    };
-    (@($($x:tt)+), ($($y:tt)+)) => {
-        $crate::expressions::Expression::Point(
-            Box::new((expression!($($x)+), expression!($($y)+))),
-        )
-    };
-    (@$x:expr, ($($y:tt)+)) => {
-        expression!(@($x), ($($y)+))
-    };
-    (@($($x:tt)+), $y:expr) => {
-        expression!(@($($x)+), ($y))
-    };
-    (@$x:expr, $y:expr) => {
-        expression!(@($x), ($y))
-    };
-    (#$var:expr) => {
-        $crate::expressions::Expression::Variable($crate::expressions::Variable::from($var))
-    };
-    ($x:expr) => {
-        $crate::expressions::Expression::Value($crate::values::Value::Number($x as f64))
-    };
-    (@$s:expr) => {
-        $crate::expressions::Expression::Value($crate::values::Value::String($s.into()))
+        $crate::lexer::TokenKind::String(String::from($str))
     };
 }
 
 #[cfg(test)]
 macro_rules! value {
+    (($x:expr, $y:expr)) => {
+        value!($x, $y)
+    };
+    (($x:expr, $y:expr, $id:expr)) => {
+        value!($x, $y, $id)
+    };
     ($x:expr) => {
         $crate::values::Value::Number($x as f64)
     };
@@ -112,17 +57,17 @@ macro_rules! value {
         )
     };
     (@$s:expr) => {
-        $crate::values::Value::String($s.into())
+        $crate::values::Value::String(std::rc::Rc::new($s.into()))
     };
 }
 
 #[cfg(test)]
 macro_rules! segment {
-    ($start:expr, $end:expr, $($expr:tt)*) => {
+    ($start:expr, $end:expr, [$($expr:expr),*$(,)?]) => {
         $crate::statement::Segment {
             start: $crate::expressions::Variable::from($start),
             end: $crate::expressions::Variable::from($end),
-            offset: expression!($($expr)*),
+            offset: $crate::expressions::tests::expression_full![$($expr),*].into(),
         }
     }
 }

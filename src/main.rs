@@ -64,3 +64,29 @@ fn main() -> Result<(), anyhow::Error> {
         .map_err(error::EvaluatorError::Io)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{fs::File, io, path::Path};
+
+    use crate::{evaluator::Evaluator, lexer::Lexer, parser::LexerExt};
+
+    fn test_example(input_file: impl AsRef<Path>) -> anyhow::Result<()> {
+        let input = io::BufReader::new(File::open(input_file)?);
+        let parser = Lexer::new(input).into_parser();
+        let mut evaluator = Evaluator::new();
+        evaluator.evaluate_all(parser)?;
+        let _document = evaluator.create_document()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_bart_example() {
+        test_example("examples/bart.subway").unwrap();
+    }
+
+    #[test]
+    fn test_simple_wyes_example() {
+        test_example("examples/simple_wyes.subway").unwrap();
+    }
+}

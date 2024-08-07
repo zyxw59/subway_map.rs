@@ -1,24 +1,75 @@
-use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    rc::Rc,
+};
 
-use crate::document::Document;
-use crate::error::{EvaluatorError, MathError, Result as EResult};
-use crate::expressions::{Function, Variable};
-use crate::points::PointCollection;
-use crate::statement::{Statement, StatementKind};
-use crate::stops::{Stop, StopCollection};
-use crate::values::{Point, PointProvenance, Value};
+use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
+
+use crate::{
+    document::Document,
+    error::{EvaluatorError, MathError, Result},
+    expressions::{ExpressionBit, Term, Variable},
+    operators::{BinaryOperator, UnaryOperator},
+    points::PointCollection,
+    statement::{Statement, StatementKind},
+    stops::{Stop, StopCollection},
+    values::{Point, PointProvenance, Value},
+};
 
 pub trait EvaluationContext {
     fn get_variable(&self, name: &str) -> Option<Value>;
 
-    fn get_function(&self, name: &str) -> Option<&Function>;
+    fn get_fn_arg(&self, idx: usize) -> Option<Value>;
 }
+
+pub fn evaluate_expression(
+    ctx: &dyn EvaluationContext,
+    expr: impl IntoIterator<Item = ExpressionBit>,
+) -> Result<Value, MathError> {
+    EvaluatorTrait::evaluate(ctx, expr)
+}
+
+impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + 'a {
+    type Value = Value;
+    type Error = MathError;
+
+    fn evaluate_binary_operator(
+        &self,
+        _span: Span,
+        operator: BinaryOperator,
+        lhs: Value,
+        rhs: Value,
+    ) -> Result<Value, MathError> {
+        (operator.function)(lhs, rhs, self)
+    }
+
+    fn evaluate_unary_operator(
+        &self,
+        _span: Span,
+        operator: UnaryOperator,
+        argument: Value,
+    ) -> Result<Value, MathError> {
+        operator.call(argument, self)
+    }
+
+    fn evaluate_term(&self, _span: Span, term: Term) -> Result<Value, MathError> {
+        match term {
+            Term::Number(x) => Ok(Value::Number(x)),
+            Term::String(s) => Ok(Value::String(Rc::new(s))),
+            Term::Variable(v) => self.get_variable(&v).ok_or(MathError::Variable(v)),
+            Term::FnArg(idx) => Ok(self
+                .get_fn_arg(idx)
+                .expect("invalid function argument index")),
+        }
+    }
+}
+
+const LINE_SEP: Variable = Variable::new_static("line_sep");
+const INNER_RADIUS: Variable = Variable::new_static("inner_radius");
 
 #[derive(Default, Debug)]
 pub struct Evaluator {
     variables: HashMap<Variable, Value>,
-    functions: HashMap<Variable, Function>,
     points: PointCollection,
     stops: StopCollection,
     stylesheets: Vec<String>,
@@ -30,45 +81,57 @@ impl Evaluator {
         Default::default()
     }
 
-    pub fn evaluate_all(
-        &mut self,
-        parser: impl Iterator<Item = EResult<Statement>>,
-    ) -> EResult<()> {
+    pub fn evaluate_all(&mut self, parser: impl Iterator<Item = Result<Statement>>) -> Result<()> {
         for statement in parser {
             self.evaluate(statement?)?;
         }
         Ok(())
     }
 
-    fn evaluate(&mut self, Statement { statement, line }: Statement) -> EResult<()> {
+    fn evaluate(&mut self, Statement { statement, line }: Statement) -> Result<()> {
         match statement {
             StatementKind::Null => {}
-            StatementKind::Variable(name, expr) => {
-                let value = expr
-                    .evaluate(self)
+            StatementKind::Variable(name, fields, expr) => {
+                let value = evaluate_expression(self, expr)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
-                if &name == "line_sep" {
-                    let value =
-                        f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
-                    self.points.set_default_width(value);
-                } else if &name == "inner_radius" {
-                    let value =
-                        f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
-                    self.points.set_inner_radius(value);
-                }
-                // named points can't be redefined, since lines are defined in terms of them
-                if let Some(original_line) = self.points.get_point_line_number(&name) {
-                    return Err(EvaluatorError::PointRedefinition {
-                        name,
-                        line,
-                        original_line,
+                if fields.is_empty() {
+                    if name == LINE_SEP {
+                        let value =
+                            f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        self.points.set_default_width(value);
+                    } else if name == INNER_RADIUS {
+                        let value =
+                            f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        self.points.set_inner_radius(value);
                     }
-                    .into());
+                    // named points can't be redefined, since lines are defined in terms of them
+                    if let Some(original_line) = self.points.get_point_line_number(&name) {
+                        return Err(EvaluatorError::PointRedefinition {
+                            name,
+                            line,
+                            original_line,
+                        }
+                        .into());
+                    }
                 }
-                self.variables.insert(name, value);
+                let mut slot = self.variables.entry(name.clone());
+                for field in fields {
+                    slot = slot
+                        .or_insert(Value::new_struct())
+                        .slot(field)
+                        .map_err(|err| EvaluatorError::Math(err, line))?
+                }
+                match slot {
+                    Entry::Occupied(mut entry) => {
+                        entry.insert(value);
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(value);
+                    }
+                }
             }
             StatementKind::Function(name, function) => {
-                self.functions.insert(name, function);
+                self.variables.insert(name, Value::Function(function));
             }
             StatementKind::PointSingle(name, expr) => {
                 // named points can't be redefined, since lines are defined in terms of them
@@ -80,8 +143,7 @@ impl Evaluator {
                     }
                     .into());
                 }
-                let (point, provenance) = expr
-                    .evaluate(self)
+                let (point, provenance) = evaluate_expression(self, expr)
                     .and_then(<(Point, PointProvenance)>::try_from)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 self.points.insert_point(name, point, provenance, line)?;
@@ -91,8 +153,7 @@ impl Evaluator {
                 spaced,
                 points,
             } => {
-                let spacing = spaced
-                    .evaluate(self)
+                let spacing = evaluate_expression(self, spaced)
                     .and_then(Point::try_from)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 if !self.points.contains(&from) {
@@ -102,7 +163,7 @@ impl Evaluator {
                     .into_iter()
                     .map(|(multiplier, name)| {
                         multiplier
-                            .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                            .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                             .unwrap_or(Ok(1.0))
                             .map_err(|err| EvaluatorError::Math(err, line))
                             .map(|distance| (name, distance))
@@ -121,7 +182,7 @@ impl Evaluator {
                     .into_iter()
                     .map(|(multiplier, name)| {
                         total_distance += multiplier
-                            .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                            .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                             .unwrap_or(Ok(1.0))
                             .map_err(|err| EvaluatorError::Math(err, line))?;
                         Ok((name, total_distance))
@@ -129,7 +190,7 @@ impl Evaluator {
                     .collect::<Result<Vec<_>, EvaluatorError>>()?;
                 if is_past {
                     let past_multiplier = to_multiplier
-                        .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                         .unwrap_or(Ok(1.0))
                         .map_err(|err| EvaluatorError::Math(err, line))?;
                     self.points.extend_line(
@@ -142,7 +203,7 @@ impl Evaluator {
                     )?;
                 } else {
                     total_distance += to_multiplier
-                        .map(|expr| expr.evaluate(self).and_then(f64::try_from))
+                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                         .unwrap_or(Ok(1.0))
                         .map_err(|err| EvaluatorError::Math(err, line))?;
                     self.points.extend_line(
@@ -164,9 +225,12 @@ impl Evaluator {
                     .iter()
                     // if a style has a distinct line_sep, get the appropriate line_sep
                     // take the line_sep of the first listed style with a defined line_sep
-                    .find_map(|style| self.get_variable(&format!("line_sep.{}", style)))
+                    .find_map(|style| {
+                        self.get_variable(style)
+                            .and_then(|st| st.field_access(LINE_SEP).ok())
+                    })
                     // otherwise, get the default line_sep
-                    .or_else(|| self.get_variable("line_sep"))
+                    .or_else(|| self.get_variable(&LINE_SEP))
                     // convert value to number
                     .and_then(Value::into_number)
                     // if it wasn't found, or wasn't a number, default to 1
@@ -175,9 +239,7 @@ impl Evaluator {
                 for segment in segments {
                     // if offset evaluates to a number, coerce it to an integer
                     // TODO: add warning if it's not an integer
-                    let offset = segment
-                        .offset
-                        .evaluate(self)
+                    let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)
                         .map_err(|err| EvaluatorError::Math(err, line))?
                         as isize;
@@ -189,15 +251,13 @@ impl Evaluator {
                 }
             }
             StatementKind::Stop(stop) => {
-                let point = stop
-                    .point
-                    .evaluate(&*self)
+                let point = evaluate_expression(self, stop.point)
                     .and_then(Point::try_from)
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 let marker_parameters = stop
                     .marker_parameters
                     .into_iter()
-                    .map(|(key, expr)| Ok((key, expr.evaluate(&*self)?)))
+                    .map(|(key, expr)| Ok((key, evaluate_expression(self, expr)?)))
                     .collect::<Result<_, _>>()
                     .map_err(|err| EvaluatorError::Math(err, line))?;
                 self.stops.push(Stop {
@@ -268,8 +328,8 @@ impl EvaluationContext for Evaluator {
         }
     }
 
-    fn get_function(&self, name: &str) -> Option<&Function> {
-        self.functions.get(name)
+    fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
+        None
     }
 }
 
@@ -278,7 +338,7 @@ impl EvaluationContext for () {
         None
     }
 
-    fn get_function(&self, _name: &str) -> Option<&Function> {
+    fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
         None
     }
 }

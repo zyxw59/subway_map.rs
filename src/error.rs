@@ -1,13 +1,11 @@
-use std::io;
-use std::result;
+use std::{io, result};
 
+use expr_parser::Span;
 use thiserror::Error;
 
-use crate::expressions::Variable;
-use crate::lexer::Token;
-use crate::values::Value;
+use crate::{expressions::Variable, lexer::TokenKind, parser::Position, values::Value};
 
-pub type Result<T> = result::Result<T, Error>;
+pub type Result<T, E = Error> = result::Result<T, E>;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -21,21 +19,17 @@ pub enum Error {
 
 #[derive(Error, Debug)]
 pub enum ParserError {
-    #[error("Unexpected end of input on line {0}")]
-    EndOfInput(usize),
-    #[error("Unexpected token {0:?} on line {1}")]
-    Token(Token, usize),
-    #[error("Unclosed parentheses starting on line {0}")]
-    Parentheses(usize),
-    #[error(
-        "Too many items in parenthesized list starting on line {1} (got {0}, expected 1 or 2)"
-    )]
-    ParenList(usize, usize),
-    #[error("Repeated argument {argument} to function {function} on line {line}")]
+    #[error("Unexpected end of input")]
+    EndOfInput,
+    #[error("Unexpected token {0:?} at {1}")]
+    Token(TokenKind, Span<Position>),
+    #[error("Unclosed parentheses starting at {0}")]
+    Parentheses(Span<Position>),
+    #[error("Repeated argument {argument} to function {function} at {span}")]
     Argument {
         argument: Variable,
         function: Variable,
-        line: usize,
+        span: Span<Position>,
     },
 }
 
@@ -83,7 +77,7 @@ pub enum EvaluatorError {
 
 #[derive(Error, Debug)]
 pub enum MathError {
-    #[error("Type error: expected {0:?}, got {0:?}")]
+    #[error("Type error: expected {0:?}, got {1:?}")]
     Type(Type, Type),
     #[error("Division by zero")]
     DivisionByZero,
@@ -93,14 +87,12 @@ pub enum MathError {
     Domain(String),
     #[error("Undefined variable {0}")]
     Variable(Variable),
+    #[error("Undefined field {0}")]
+    Field(Variable),
     #[error("Undefined function {0}")]
     Function(Variable),
-    #[error("Incorrect number of arguments to function {name}: expected {expected}, got {actual}")]
-    Arguments {
-        name: Variable,
-        expected: usize,
-        actual: usize,
-    },
+    #[error("Incorrect number of arguments to function: expected {expected}, got {actual}")]
+    Arguments { expected: usize, actual: usize },
 }
 
 #[derive(Debug)]
@@ -109,6 +101,9 @@ pub enum Type {
     Point,
     Line,
     String,
+    List,
+    Struct,
+    Function,
 }
 
 impl From<Value> for Type {
@@ -124,6 +119,9 @@ impl From<&'_ Value> for Type {
             Value::Point(..) => Type::Point,
             Value::Line(..) => Type::Line,
             Value::String(..) => Type::String,
+            Value::List(..) => Type::List,
+            Value::Struct(..) => Type::Struct,
+            Value::Function(..) => Type::Function,
         }
     }
 }

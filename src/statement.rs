@@ -19,7 +19,7 @@ pub enum StatementKind {
     /// A function declaration.
     Function(Variable, Function),
     /// A variable assignment.
-    Variable(Variable, Expression),
+    Variable(Variable, Vec<Variable>, Expression),
     /// A declaration of a single point.
     PointSingle(Variable, Expression),
     /// A declaration of a sequence of points, using the `from` ... `spaced` syntax.
