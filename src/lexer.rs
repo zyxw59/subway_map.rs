@@ -1,14 +1,17 @@
-use std::io::BufRead;
+use std::io::{BufRead, Seek, SeekFrom};
 
+use combine::{easy, ParseError};
 use expr_parser::Span;
 use itertools::Itertools;
 use regex_syntax::is_word_character;
 use smol_str::SmolStr;
 
 use crate::{
-    error::{LexerError, Result},
+    error::{Error, LexerError},
     parser::{LexerExt, Position},
 };
+
+type Result<T, E = LexerError> = std::result::Result<T, E>;
 
 pub type Token = expr_parser::token::Token<TokenKind>;
 
@@ -190,7 +193,7 @@ impl<R: BufRead> Lexer<R> {
                 None => break,
             }
         }
-        Err(LexerError::UnterminatedString(self.line()).into())
+        Err(LexerError::UnterminatedString(self.line()))
     }
 
     fn parse_dot(&mut self) -> Result<TokenKind> {
@@ -233,10 +236,10 @@ impl<R: BufRead> Lexer<R> {
 }
 
 impl<R: BufRead> Iterator for Lexer<R> {
-    type Item = Result<Token>;
+    type Item = Result<Token, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.get_next_token().transpose()
+        self.get_next_token().map_err(Error::from).transpose()
     }
 }
 
@@ -259,6 +262,66 @@ impl<R: BufRead> LexerExt for Lexer<R> {
             column: idx + 1 - line_start,
         }
     }
+}
+
+impl<R: BufRead> combine::StreamOnce for Lexer<R> {
+    type Token = Token;
+    type Range = Token;
+    type Position = Position;
+    type Error = easy::Errors<Token, Token, Position>;
+
+    fn uncons(&mut self) -> Result<Token, easy::Error<Token, Token>> {
+        use easy::Error;
+        match self.get_next_token() {
+            Ok(Some(tok)) => Ok(tok),
+            Ok(None) => Err(easy::Error::end_of_input()),
+            Err(LexerError::UnterminatedString(_)) => {
+                Err(Error::Unexpected("unterminated string".into()))
+            }
+            Err(LexerError::Unicode(_)) => Err(Error::Unexpected("invalid unicode".into())),
+            Err(LexerError::Io(err, _)) => Err(Error::Other(err.into())),
+        }
+    }
+}
+
+impl<R: BufRead> combine::Positioned for Lexer<R> {
+    fn position(&self) -> Self::Position {
+        self.line_column(self.char_idx)
+    }
+}
+
+impl<R: BufRead + Seek> combine::stream::ResetStream for Lexer<R> {
+    type Checkpoint = Checkpoint;
+
+    fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            char_idx: self.char_idx,
+            byte_idx: self.byte_idx,
+            num_lines: self.lines.len(),
+        }
+    }
+
+    fn reset(&mut self, checkpoint: Checkpoint) -> Result<(), Self::Error> {
+        self.input
+            .seek(SeekFrom::Start(checkpoint.byte_idx as _))
+            .map_err(|e| {
+                Self::Error::from_error(
+                    combine::Positioned::position(self),
+                    easy::Error::Other(e.into()),
+                )
+            })?;
+        self.char_idx = checkpoint.char_idx;
+        self.byte_idx = checkpoint.byte_idx;
+        self.lines.truncate(checkpoint.num_lines);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Checkpoint {
+    char_idx: usize,
+    byte_idx: usize,
+    num_lines: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
