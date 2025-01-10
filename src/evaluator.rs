@@ -10,6 +10,7 @@ use crate::{
     error::{EvaluatorError, MathError, Result},
     expressions::{ExpressionBit, Term, Variable},
     operators::{BinaryOperator, UnaryOperator},
+    parser::Position,
     points::PointCollection,
     statement::{Statement, StatementKind},
     stops::{Stop, StopCollection},
@@ -29,13 +30,13 @@ pub fn evaluate_expression(
     EvaluatorTrait::evaluate(ctx, expr)
 }
 
-impl EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + '_ {
+impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + '_ {
     type Value = Value;
     type Error = MathError;
 
     fn evaluate_binary_operator(
         &self,
-        _span: Span,
+        _span: Span<Position>,
         operator: BinaryOperator,
         lhs: Value,
         rhs: Value,
@@ -45,14 +46,14 @@ impl EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationConte
 
     fn evaluate_unary_operator(
         &self,
-        _span: Span,
+        _span: Span<Position>,
         operator: UnaryOperator,
         argument: Value,
     ) -> Result<Value, MathError> {
         operator.call(argument, self)
     }
 
-    fn evaluate_term(&self, _span: Span, term: Term) -> Result<Value, MathError> {
+    fn evaluate_term(&self, _span: Span<Position>, term: Term) -> Result<Value, MathError> {
         match term {
             Term::Number(x) => Ok(Value::Number(x)),
             Term::String(s) => Ok(Value::String(Rc::new(s))),

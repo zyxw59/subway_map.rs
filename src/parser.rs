@@ -3,7 +3,7 @@ use std::{
     fmt,
 };
 
-use expr_parser::{parser::Parser as _, token::IterTokenizer};
+use expr_parser::parser::ParseState;
 
 use crate::{
     error::{ParserError, Result},
@@ -32,7 +32,7 @@ pub trait LexerExt: Iterator<Item = Result<Token>> {
 
 pub type Span<T = Position> = expr_parser::Span<T>;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Position {
     pub line: usize,
     pub column: usize,
@@ -78,7 +78,6 @@ where
                 ParserError::EndOfInput
             }
         })??;
-        let span = self.map_span(span);
         pred(kind, span).map_err(|kind| ParserError::Token(kind, span).into())
     }
 
@@ -117,7 +116,7 @@ where
 
     fn take_peek_unexpected<U>(&mut self) -> Result<U> {
         let tok = self.take_peek_token().unwrap();
-        Err(ParserError::Token(tok.kind, self.map_span(tok.span)).into())
+        Err(ParserError::Token(tok.kind, tok.span).into())
     }
 
     fn next_token(&mut self) -> Option<Result<Token>> {
@@ -146,41 +145,44 @@ where
         self.tokens.line()
     }
 
-    fn map_span(&self, span: Span<usize>) -> Span {
-        span.map(|idx| self.tokens.line_column(idx))
-    }
-
     fn expr_tokens<F: for<'a> FnMut(&'a TokenKind) -> bool>(
         &mut self,
         until: F,
-    ) -> IterTokenizer<ExprTokens<T, F>> {
-        IterTokenizer(ExprTokens {
+    ) -> ExprTokens<T, F> {
+        ExprTokens {
             parser: self,
             until,
-        })
+        }
     }
 
     fn parse_expression(&mut self, args: HashMap<Variable, usize>) -> Result<Expression> {
-        expression::Parser::new(args)
-            .parse(self.expr_tokens(|tok| tok == &TokenKind::Semicolon))
-            .map_err(|e| panic!("{e}"))
+        let mut state = ParseState::new(expression::Parser::new(args));
+        state.extend(self.expr_tokens(|tok| tok == &TokenKind::Semicolon));
+        state.finish().map_err(|e| panic!("{e}"))
     }
 
     fn parse_expression_until(
         &mut self,
         mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
     ) -> Result<Expression> {
-        let expr = expression::Parser::new(HashMap::new())
-            .parse(self.expr_tokens(&mut until))
+        let mut state = ParseState::new(expression::Parser::new(HashMap::new()));
+        state.extend(self.expr_tokens(&mut until));
+        let expr = state
+            .finish()
             .map_err(|e| -> crate::error::Error { panic!("{e}") })?;
         self.expect_if(None, until)?;
         Ok(expr)
     }
 
     fn parse_delimited_expression(&mut self) -> Result<Expression> {
-        expression::Parser::new(HashMap::new())
-            .parse_one_term(self.expr_tokens(|_| false))
-            .map_err(|e| panic!("{e}"))
+        let mut state = ParseState::new(expression::Parser::new(HashMap::new()));
+        while let Some(token) = self.next_token() {
+            state.parse_result(token);
+            if state.has_parsed_expression() {
+                break;
+            }
+        }
+        state.finish().map_err(|e| panic!("{e}"))
     }
 
     /// Parses a function definition.
@@ -502,7 +504,7 @@ where
                             return Err(ParserError::Argument {
                                 argument: e.remove_entry().0,
                                 function: "marker".into(),
-                                span: self.map_span(span),
+                                span,
                             }
                             .into());
                         }

@@ -7,6 +7,7 @@ use crate::{
     error::MathError,
     evaluator::{evaluate_expression, EvaluationContext},
     operators::{BinaryOperator, UnaryOperator},
+    parser::Position,
     values::{Result, Value},
 };
 
@@ -48,7 +49,7 @@ impl EvaluationContext for FunctionEvaluator<'_> {
 
 pub type Variable = SmolStr;
 
-pub type ExpressionBit = expression::Expression<BinaryOperator, UnaryOperator, Term>;
+pub type ExpressionBit = expression::Expression<Position, BinaryOperator, UnaryOperator, Term>;
 pub type Expression = Vec<ExpressionBit>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -89,7 +90,9 @@ pub(crate) mod tests {
         ($($x:expr),* $(,)?) => {
             $crate::expressions::tests::expression_map!(kind => ::expr_parser::expression::Expression {
                 kind,
-                span: ::expr_parser::Span::new(0..0),
+                span: ::expr_parser::Span::new(
+                    $crate::parser::Position::default()..$crate::parser::Position::default()
+                ),
             }; $($x),*)
         };
     }
