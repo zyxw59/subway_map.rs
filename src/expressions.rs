@@ -36,7 +36,7 @@ pub struct FunctionEvaluator<'a> {
     args: &'a [Value],
 }
 
-impl<'a> EvaluationContext for FunctionEvaluator<'a> {
+impl EvaluationContext for FunctionEvaluator<'_> {
     fn get_variable(&self, name: &str) -> Option<Value> {
         self.parent.get_variable(name)
     }

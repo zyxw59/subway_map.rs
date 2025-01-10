@@ -44,7 +44,7 @@ impl fmt::Display for Position {
     }
 }
 
-impl<'a, T> LexerExt for &'a mut T
+impl<T> LexerExt for &mut T
 where
     T: LexerExt,
 {
@@ -71,7 +71,7 @@ where
         paren_span: Option<Span>,
         pred: impl FnOnce(TokenKind, Span) -> Result<U, TokenKind>,
     ) -> Result<U> {
-        let Token { kind, span } = self.next_token().ok_or_else(|| {
+        let Token { kind, span } = self.next_token().ok_or({
             if let Some(span) = paren_span {
                 ParserError::Parentheses(span)
             } else {

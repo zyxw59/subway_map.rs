@@ -29,7 +29,7 @@ pub fn evaluate_expression(
     EvaluatorTrait::evaluate(ctx, expr)
 }
 
-impl<'a> EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + 'a {
+impl EvaluatorTrait<BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + '_ {
     type Value = Value;
     type Error = MathError;
 
