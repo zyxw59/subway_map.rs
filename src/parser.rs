@@ -435,12 +435,9 @@ where
 
     fn next(&mut self) -> Option<Result<Statement>> {
         self.parse_statement().transpose().map(|res| {
-            res.and_then(|statement| {
-                self.expect_if(None, |tok| tok == &TokenKind::Semicolon)?;
-                Ok(Statement {
-                    statement,
-                    line: self.line(),
-                })
+            res.map(|statement| Statement {
+                statement,
+                line: self.line(),
             })
         })
     }
