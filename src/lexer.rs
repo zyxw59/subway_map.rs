@@ -1,7 +1,6 @@
 use std::io::BufRead;
 
 use expr_parser::Span;
-use itertools::Itertools;
 use regex_syntax::is_word_character;
 use smol_str::SmolStr;
 
@@ -19,11 +18,7 @@ pub struct Lexer<R> {
     buffer: String,
     /// Byte index into `buffer`
     byte_idx: usize,
-    /// Character index into the file, used for token spans.
-    char_idx: usize,
-    /// Character indices of the start of each line, used for mapping spans to (line, column)
-    /// pairs.
-    lines: Vec<usize>,
+    position: Position,
 }
 
 impl<R: BufRead> Lexer<R> {
@@ -32,20 +27,12 @@ impl<R: BufRead> Lexer<R> {
             input,
             buffer: String::new(),
             byte_idx: 0,
-            char_idx: 0,
-            lines: vec![0],
+            position: Position::default(),
         }
-    }
-
-    pub fn column(&self) -> usize {
-        self.char_idx - self.lines.last().unwrap()
     }
 
     pub fn current_position(&self) -> Position {
-        Position {
-            line: self.line(),
-            column: self.column(),
-        }
+        self.position
     }
 
     fn get_next_token(&mut self) -> Result<Option<Token>> {
@@ -77,7 +64,6 @@ impl<R: BufRead> Lexer<R> {
             match c {
                 // rest of line is a comment; retrieve new line
                 '#' => {
-                    self.char_idx += 1;
                     self.fill_buffer()?;
                 }
                 c if c.is_whitespace() => self.advance_while(char::is_whitespace),
@@ -95,21 +81,22 @@ impl<R: BufRead> Lexer<R> {
             .read_line(&mut self.buffer)
             .map_err(|err| LexerError::from_io(err, self.line()))?;
         if !self.buffer.is_empty() {
-            self.lines.push(self.char_idx);
+            self.position.line += 1;
+            self.position.column = 0;
         }
         Ok(())
     }
 
     fn advance_one(&mut self) {
         if let Some(c) = self.get_current_char() {
-            self.char_idx += 1;
+            self.position.column += 1;
             self.byte_idx += c.len_utf8();
         }
     }
 
     fn retreat_one(&mut self) {
         if let Some(c) = self.buffer[..self.byte_idx].chars().last() {
-            self.char_idx -= 1;
+            self.position.column -= 1;
             self.byte_idx -= c.len_utf8();
         }
     }
@@ -128,7 +115,7 @@ impl<R: BufRead> Lexer<R> {
             })
             .unwrap_or(self.buffer.len());
         self.byte_idx = byte_idx;
-        self.char_idx += num_chars;
+        self.position.column += num_chars;
     }
 
     fn slice_from(&self, start_idx: usize) -> &str {
@@ -251,22 +238,7 @@ impl<R: BufRead> Iterator for Lexer<R> {
 
 impl<R: BufRead> LexerExt for Lexer<R> {
     fn line(&self) -> usize {
-        self.lines.len()
-    }
-
-    fn line_column(&self, idx: usize) -> Position {
-        // we're almost always going to be calling this on a recent index, so it's probably fastest
-        // to do a linear search from the end.
-        let (lines_from_end, line_start) = self
-            .lines
-            .iter()
-            .rev()
-            .find_position(|start| **start <= idx)
-            .unwrap();
-        Position {
-            line: self.lines.len() - 1 - lines_from_end,
-            column: idx + 1 - line_start,
-        }
+        self.position.line
     }
 }
 
