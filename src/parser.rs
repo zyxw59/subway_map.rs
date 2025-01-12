@@ -15,15 +15,16 @@ use crate::{
 mod expression;
 
 pub trait LexerExt: Iterator<Item = Result<Token>> {
-    fn line(&self) -> usize;
-
-    fn into_parser(self) -> Parser<Self>
+    fn into_parser(self) -> impl Iterator<Item = Result<Statement>>
     where
         Self: Sized,
     {
-        Parser { tokens: self }
+        use itertools::Itertools;
+        self.batching(|tokens| parse_statement(tokens).transpose())
     }
 }
+
+impl<T: Iterator<Item = Result<Token>>> LexerExt for T {}
 
 pub type Span<T = Position> = expr_parser::Span<T>;
 
@@ -37,19 +38,6 @@ impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.line, self.column)
     }
-}
-
-impl<T> LexerExt for &mut T
-where
-    T: LexerExt,
-{
-    fn line(&self) -> usize {
-        (**self).line()
-    }
-}
-
-pub struct Parser<T> {
-    tokens: T,
 }
 
 pub fn parse_statement(
@@ -409,17 +397,6 @@ fn parse_marker_params(
         }
     }
     Ok(params)
-}
-
-impl<T> Iterator for Parser<T>
-where
-    T: LexerExt,
-{
-    type Item = Result<Statement>;
-
-    fn next(&mut self) -> Option<Result<Statement>> {
-        parse_statement(&mut self.tokens).transpose()
-    }
 }
 
 fn expect_next_token<U>(

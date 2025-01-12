@@ -6,7 +6,7 @@ use smol_str::SmolStr;
 
 use crate::{
     error::{Error, LexerError},
-    parser::{LexerExt, Position},
+    parser::Position,
 };
 
 type Result<T, E = LexerError> = std::result::Result<T, E>;
@@ -79,7 +79,7 @@ impl<R: BufRead> Lexer<R> {
         self.byte_idx = 0;
         self.input
             .read_line(&mut self.buffer)
-            .map_err(|err| LexerError::from_io(err, self.line()))?;
+            .map_err(|err| LexerError::from_io(err, self.position.line))?;
         if !self.buffer.is_empty() {
             self.position.line += 1;
             self.position.column = 0;
@@ -186,7 +186,7 @@ impl<R: BufRead> Lexer<R> {
                 None => break,
             }
         }
-        Err(LexerError::UnterminatedString(self.line()))
+        Err(LexerError::UnterminatedString(self.position.line))
     }
 
     fn parse_dot(&mut self) -> Result<TokenKind> {
@@ -233,12 +233,6 @@ impl<R: BufRead> Iterator for Lexer<R> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.get_next_token().map_err(Error::from).transpose()
-    }
-}
-
-impl<R: BufRead> LexerExt for Lexer<R> {
-    fn line(&self) -> usize {
-        self.position.line
     }
 }
 
