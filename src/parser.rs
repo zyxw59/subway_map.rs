@@ -165,7 +165,12 @@ fn parse_comma_point_list(
             _ => return Err(ParserError::Token(token.kind, token.span).into()),
         };
         points.push(point);
-        expect_if(tokens.next(), None, |tok| tok == &TokenKind::Comma)?;
+        let Some(next) = tokens.next().transpose()? else {
+            break;
+        };
+        if next.kind != TokenKind::Comma {
+            return Err(ParserError::Token(next.kind, next.span).into());
+        }
     }
     Ok(points)
 }
@@ -178,7 +183,8 @@ fn parse_route(mut tokens: impl Iterator<Item = Result<Token>>) -> Result<Vec<Se
         let token = tokens.next().ok_or(ParserError::EndOfInput)??;
         let (offset, end) = match token.kind {
             TokenKind::LeftParen => {
-                let offset = parse_delimited_expression([Ok(token)])?;
+                let offset =
+                    parse_delimited_expression([Ok(token)].into_iter().chain(&mut tokens))?;
                 let end = expect_get_tag(tokens.next())?;
                 (offset, end)
             }
@@ -463,11 +469,11 @@ mod tests {
         statement::{StatementKind, Stop},
     };
 
+    use super::{parse_expression, parse_statement};
+
     macro_rules! assert_expression {
         ($text:expr, [$($expr:tt)*]) => {{
-            let result = Lexer::new($text.as_bytes())
-                .into_parser()
-                .parse_expression(HashMap::new())
+            let result = parse_expression(Lexer::new($text.as_bytes()), HashMap::new())
                 .unwrap()
                 .into_iter()
                 .map(|expr| expr.kind)
@@ -475,8 +481,6 @@ mod tests {
             assert_eq!(result, crate::expressions::tests::expression!($($expr)*));
         }};
     }
-
-    use super::LexerExt;
 
     #[test]
     fn basic_arithmetic() {
@@ -609,9 +613,7 @@ mod tests {
 
     macro_rules! assert_statement {
         ($text:expr, $statement:expr) => {{
-            let result = Lexer::new($text.as_bytes())
-                .into_parser()
-                .parse_statement()
+            let result = parse_statement(Lexer::new($text.as_bytes()))
                 .unwrap()
                 .unwrap();
             assert_eq!(result, $statement);
