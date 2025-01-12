@@ -52,7 +52,7 @@ pub struct Parser<T> {
     tokens: T,
 }
 
-fn parse_expression2(
+fn parse_expression(
     tokens: impl Iterator<Item = Result<Token>>,
     args: HashMap<Variable, usize>,
 ) -> Result<Expression> {
@@ -61,7 +61,7 @@ fn parse_expression2(
     state.finish().map_err(|e| panic!("{e}"))
 }
 
-fn parse_expression_until2(
+fn parse_expression_until(
     tokens: impl IntoIterator<Item = Result<Token>>,
     mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
 ) -> Result<Expression> {
@@ -77,7 +77,7 @@ fn parse_expression_until2(
     Ok(expr)
 }
 
-fn parse_delimited_expression2(
+fn parse_delimited_expression(
     tokens: impl IntoIterator<Item = Result<Token>>,
 ) -> Result<Expression> {
     let mut state = ParseState::new(expression::Parser::new(HashMap::new()));
@@ -139,7 +139,7 @@ fn parse_function_def(
     }
     expect_tag(tokens.next(), "=")?;
     // get the function body, as an expression tree
-    let expression = parse_expression2(tokens, args)?.into();
+    let expression = parse_expression(tokens, args)?.into();
     Ok((
         name,
         Function {
@@ -149,7 +149,7 @@ fn parse_function_def(
     ))
 }
 
-fn parse_comma_point_list2(
+fn parse_comma_point_list(
     mut tokens: impl Iterator<Item = Result<Token>>,
 ) -> Result<Vec<(Option<Expression>, Variable)>> {
     let mut points = Vec::new();
@@ -157,7 +157,7 @@ fn parse_comma_point_list2(
         let point = match token.kind {
             TokenKind::LeftParen => {
                 let multiplier =
-                    parse_delimited_expression2([Ok(token)].into_iter().chain(&mut tokens))?;
+                    parse_delimited_expression([Ok(token)].into_iter().chain(&mut tokens))?;
                 let ident = expect_get_tag(tokens.next())?;
                 (Some(multiplier), ident)
             }
@@ -178,7 +178,7 @@ fn parse_route(mut tokens: impl Iterator<Item = Result<Token>>) -> Result<Vec<Se
         let token = tokens.next().ok_or(ParserError::EndOfInput)??;
         let (offset, end) = match token.kind {
             TokenKind::LeftParen => {
-                let offset = parse_delimited_expression2([Ok(token)])?;
+                let offset = parse_delimited_expression([Ok(token)])?;
                 let end = expect_get_tag(tokens.next())?;
                 (offset, end)
             }
@@ -195,7 +195,7 @@ fn parse_route(mut tokens: impl Iterator<Item = Result<Token>>) -> Result<Vec<Se
     Ok(route)
 }
 
-fn parse_statement2(
+fn parse_statement(
     tokens: impl IntoIterator<Item = Result<Token>>,
 ) -> Result<Option<StatementKind>> {
     let mut tokens = tokens.into_iter();
@@ -220,7 +220,7 @@ fn parse_statement2(
                 "point" => {
                     let name = expect_get_tag(tokens.next())?;
                     expect_tag(tokens.next(), "=")?;
-                    let expr = parse_expression2(tokens, HashMap::new())?;
+                    let expr = parse_expression(tokens, HashMap::new())?;
                     Ok(Some(StatementKind::PointSingle(name, expr)))
                 }
                 // sequence of points
@@ -253,7 +253,7 @@ fn parse_statement2(
                 _ => {
                     let (fields, next) = parse_dot_list(&mut tokens)?;
                     expect_tag(next.map(Ok), "=")?;
-                    let expr = parse_expression2(tokens, HashMap::new())?;
+                    let expr = parse_expression(tokens, HashMap::new())?;
                     Ok(Some(StatementKind::Variable(tag, fields, expr)))
                 }
             }
@@ -300,8 +300,8 @@ fn parse_points_statement(
     match kind {
         // from ... spaced
         PointsKind::Spaced => {
-            let spaced = parse_expression_until2(&mut tokens, |tok| tok.as_tag() == Some(":"))?;
-            let points = parse_comma_point_list2(tokens)?;
+            let spaced = parse_expression_until(&mut tokens, |tok| tok.as_tag() == Some(":"))?;
+            let points = parse_comma_point_list(tokens)?;
             Ok(Some(StatementKind::PointSpaced {
                 from,
                 spaced,
@@ -324,7 +324,7 @@ fn parse_points_extend_statement(
     let to = match token.kind {
         TokenKind::LeftParen => {
             let multiplier =
-                parse_delimited_expression2([Ok(token)].into_iter().chain(&mut tokens))?;
+                parse_delimited_expression([Ok(token)].into_iter().chain(&mut tokens))?;
             let ident = expect_get_tag(tokens.next())?;
             (Some(multiplier), ident)
         }
@@ -332,7 +332,7 @@ fn parse_points_extend_statement(
         _ => return Err(ParserError::Token(token.kind, token.span).into()),
     };
     expect_tag(tokens.next(), ":")?;
-    let points = parse_comma_point_list2(tokens)?;
+    let points = parse_comma_point_list(tokens)?;
     Ok(Some(StatementKind::PointExtend {
         from,
         to,
@@ -346,7 +346,7 @@ fn parse_stop_statement(
 ) -> Result<Option<StatementKind>> {
     let (styles, token) = parse_dot_list(&mut tokens)?;
     let token = token.ok_or(ParserError::EndOfInput)?;
-    let point = parse_expression_until2([Ok(token)].into_iter().chain(&mut tokens), |tok| {
+    let point = parse_expression_until([Ok(token)].into_iter().chain(&mut tokens), |tok| {
         tok.as_tag() == Some("marker")
     })?;
     let marker_type = expect_get_tag(tokens.next())?;
@@ -368,7 +368,7 @@ fn parse_marker_params(
             TokenKind::Comma => {}
             TokenKind::Tag(tag) => {
                 let paren = tokens.next().ok_or(ParserError::EndOfInput)??;
-                let expr = parse_delimited_expression2([Ok(paren)].into_iter().chain(&mut tokens))?;
+                let expr = parse_delimited_expression([Ok(paren)].into_iter().chain(&mut tokens))?;
                 match params.entry(tag) {
                     // there's already an argument with this name
                     Entry::Occupied(e) => {
@@ -395,7 +395,7 @@ where
     type Item = Result<Statement>;
 
     fn next(&mut self) -> Option<Result<Statement>> {
-        parse_statement2(&mut self.tokens).transpose().map(|res| {
+        parse_statement(&mut self.tokens).transpose().map(|res| {
             res.map(|statement| Statement {
                 statement,
                 line: self.tokens.line(),
