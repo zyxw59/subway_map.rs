@@ -52,7 +52,77 @@ pub struct Parser<T> {
     tokens: T,
 }
 
-fn parse_expression(
+pub fn parse_statement(
+    tokens: impl IntoIterator<Item = Result<Token>>,
+) -> Result<Option<StatementKind>> {
+    let mut tokens = tokens.into_iter();
+    let Some(token) = tokens.next().transpose()? else {
+        return Ok(None);
+    };
+    let mut tokens = tokens.take_while(|res| {
+        res.as_ref()
+            .map_or(true, |tok| tok.kind != TokenKind::Semicolon)
+    });
+
+    match token.kind {
+        // tag; start of an assignment expression or function definition
+        TokenKind::Tag(tag) => {
+            match tag.as_ref() {
+                // function definition
+                "fn" => {
+                    let (func_name, func) = parse_function_def(tokens)?;
+                    Ok(Some(StatementKind::Function(func_name, func)))
+                }
+                // single point
+                "point" => {
+                    let name = expect_get_tag(tokens.next())?;
+                    expect_tag(tokens.next(), "=")?;
+                    let expr = parse_expression(tokens, HashMap::new())?;
+                    Ok(Some(StatementKind::PointSingle(name, expr)))
+                }
+                // sequence of points
+                "points" => parse_points_statement(tokens),
+                // route
+                "route" => {
+                    let (styles, next) = parse_dot_list(&mut tokens)?;
+                    let name = expect_get_tag(next.map(Ok))?;
+                    expect_tag(tokens.next(), ":")?;
+                    let segments = parse_route(tokens)?;
+                    Ok(Some(StatementKind::Route {
+                        name,
+                        styles,
+                        segments,
+                    }))
+                }
+                // stop
+                "stop" => parse_stop_statement(tokens),
+                // stylesheet
+                "style" => {
+                    let style = expect_get_string(tokens.next())?;
+                    Ok(Some(StatementKind::Style(style)))
+                }
+                // title
+                "title" => {
+                    let title = expect_get_string(tokens.next())?;
+                    Ok(Some(StatementKind::Title(title)))
+                }
+                // other (variable assignment)
+                _ => {
+                    let (fields, next) = parse_dot_list(&mut tokens)?;
+                    expect_tag(next.map(Ok), "=")?;
+                    let expr = parse_expression(tokens, HashMap::new())?;
+                    Ok(Some(StatementKind::Variable(tag, fields, expr)))
+                }
+            }
+        }
+        // semicolon; null statement
+        TokenKind::Semicolon => Ok(Some(StatementKind::Null)),
+        // other token; unexpected
+        _ => Err(ParserError::Token(token.kind, token.span).into()),
+    }
+}
+
+pub fn parse_expression(
     tokens: impl Iterator<Item = Result<Token>>,
     args: HashMap<Variable, usize>,
 ) -> Result<Expression> {
@@ -65,16 +135,12 @@ fn parse_expression_until(
     tokens: impl IntoIterator<Item = Result<Token>>,
     mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
 ) -> Result<Expression> {
-    let mut state = ParseState::new(expression::Parser::new(HashMap::new()));
-    state.extend(
+    parse_expression(
         tokens
             .into_iter()
             .take_while(|res| res.as_ref().map_or(true, |tok| !until(&tok.kind))),
-    );
-    let expr = state
-        .finish()
-        .map_err(|e| -> crate::error::Error { panic!("{e}") })?;
-    Ok(expr)
+        HashMap::new(),
+    )
 }
 
 fn parse_delimited_expression(
@@ -199,76 +265,6 @@ fn parse_route(mut tokens: impl Iterator<Item = Result<Token>>) -> Result<Vec<Se
         start = next;
     }
     Ok(route)
-}
-
-fn parse_statement(
-    tokens: impl IntoIterator<Item = Result<Token>>,
-) -> Result<Option<StatementKind>> {
-    let mut tokens = tokens.into_iter();
-    let Some(token) = tokens.next().transpose()? else {
-        return Ok(None);
-    };
-    let mut tokens = tokens.take_while(|res| {
-        res.as_ref()
-            .map_or(true, |tok| tok.kind != TokenKind::Semicolon)
-    });
-
-    match token.kind {
-        // tag; start of an assignment expression or function definition
-        TokenKind::Tag(tag) => {
-            match tag.as_ref() {
-                // function definition
-                "fn" => {
-                    let (func_name, func) = parse_function_def(tokens)?;
-                    Ok(Some(StatementKind::Function(func_name, func)))
-                }
-                // single point
-                "point" => {
-                    let name = expect_get_tag(tokens.next())?;
-                    expect_tag(tokens.next(), "=")?;
-                    let expr = parse_expression(tokens, HashMap::new())?;
-                    Ok(Some(StatementKind::PointSingle(name, expr)))
-                }
-                // sequence of points
-                "points" => parse_points_statement(tokens),
-                // route
-                "route" => {
-                    let (styles, next) = parse_dot_list(&mut tokens)?;
-                    let name = expect_get_tag(next.map(Ok))?;
-                    expect_tag(tokens.next(), ":")?;
-                    let segments = parse_route(tokens)?;
-                    Ok(Some(StatementKind::Route {
-                        name,
-                        styles,
-                        segments,
-                    }))
-                }
-                // stop
-                "stop" => parse_stop_statement(tokens),
-                // stylesheet
-                "style" => {
-                    let style = expect_get_string(tokens.next())?;
-                    Ok(Some(StatementKind::Style(style)))
-                }
-                // title
-                "title" => {
-                    let title = expect_get_string(tokens.next())?;
-                    Ok(Some(StatementKind::Title(title)))
-                }
-                // other (variable assignment)
-                _ => {
-                    let (fields, next) = parse_dot_list(&mut tokens)?;
-                    expect_tag(next.map(Ok), "=")?;
-                    let expr = parse_expression(tokens, HashMap::new())?;
-                    Ok(Some(StatementKind::Variable(tag, fields, expr)))
-                }
-            }
-        }
-        // semicolon; null statement
-        TokenKind::Semicolon => Ok(Some(StatementKind::Null)),
-        // other token; unexpected
-        _ => Err(ParserError::Token(token.kind, token.span).into()),
-    }
 }
 
 fn parse_dot_list(
