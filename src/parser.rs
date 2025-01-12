@@ -59,12 +59,19 @@ pub fn parse_statement(
     let Some(token) = tokens.next().transpose()? else {
         return Ok(None);
     };
+    let mut semicolon = None;
     let mut tokens = tokens.take_while(|res| {
-        res.as_ref()
-            .map_or(true, |tok| tok.kind != TokenKind::Semicolon)
+        res.as_ref().map_or(true, |tok| {
+            if tok.kind == TokenKind::Semicolon {
+                semicolon = Some(tok.span);
+                false
+            } else {
+                true
+            }
+        })
     });
 
-    match token.kind {
+    let result = match token.kind {
         // tag; start of an assignment expression or function definition
         TokenKind::Tag(tag) => {
             match tag.as_ref() {
@@ -119,7 +126,16 @@ pub fn parse_statement(
         TokenKind::Semicolon => Ok(Some(StatementKind::Null)),
         // other token; unexpected
         _ => Err(ParserError::Token(token.kind, token.span).into()),
-    }
+    };
+    // handle unexpected end of input caused by semicolons
+    result.map_err(|err| {
+        use crate::error::Error;
+        if let (Error::Parser(ParserError::EndOfInput), Some(span)) = (&err, semicolon) {
+            ParserError::Token(TokenKind::Semicolon, span).into()
+        } else {
+            err
+        }
+    })
 }
 
 pub fn parse_expression(
