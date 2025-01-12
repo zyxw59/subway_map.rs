@@ -61,7 +61,7 @@ where
         paren_span: Option<Span>,
         pred: impl FnOnce(TokenKind, Span) -> Result<U, TokenKind>,
     ) -> Result<U> {
-        expect_next_token(self.next_token(), paren_span, pred)
+        expect_next_token(self.tokens.next(), paren_span, pred)
     }
 
     fn expect_if(
@@ -69,23 +69,19 @@ where
         paren_span: Option<Span>,
         pred: impl FnOnce(&TokenKind) -> bool,
     ) -> Result<(TokenKind, Span)> {
-        expect_if(self.next_token(), paren_span, pred)
+        expect_if(self.tokens.next(), paren_span, pred)
     }
 
     fn expect_get_tag(&mut self) -> Result<Variable> {
-        expect_get_tag(self.next_token())
+        expect_get_tag(self.tokens.next())
     }
 
     fn expect_get_string(&mut self) -> Result<String> {
-        expect_get_string(self.next_token())
+        expect_get_string(self.tokens.next())
     }
 
     fn expect_tag(&mut self, tag: &str) -> Result<()> {
-        expect_tag(self.next_token(), tag)
-    }
-
-    fn next_token(&mut self) -> Option<Result<Token>> {
-        self.tokens.next()
+        expect_tag(self.tokens.next(), tag)
     }
 
     fn line(&self) -> usize {
@@ -94,12 +90,11 @@ where
 
     fn expr_tokens<F: for<'a> FnMut(&'a TokenKind) -> bool>(
         &mut self,
-        until: F,
-    ) -> ExprTokens<T, F> {
-        ExprTokens {
-            parser: self,
-            until,
-        }
+        mut until: F,
+    ) -> impl Iterator<Item = Result<Token>> + use<'_, T, F> {
+        self.tokens
+            .by_ref()
+            .take_while(move |res| res.as_ref().map_or(true, |token| !until(&token.kind)))
     }
 
     fn parse_expression(&mut self, args: HashMap<Variable, usize>) -> Result<Expression> {
@@ -133,7 +128,7 @@ where
                 break;
             }
         }
-        while let Some(token) = self.next_token() {
+        for token in &mut self.tokens {
             state.parse_result(token);
             if state.has_parsed_expression() {
                 break;
@@ -198,7 +193,7 @@ where
 
     fn parse_comma_point_list(&mut self) -> Result<Vec<(Option<Expression>, Variable)>> {
         let mut points = Vec::new();
-        while let Some(token) = self.next_token().transpose()? {
+        while let Some(token) = self.tokens.next().transpose()? {
             let point = match token.kind {
                 TokenKind::LeftParen => {
                     let multiplier = self.parse_delimited_expression([token])?;
@@ -210,7 +205,7 @@ where
                 _ => return Err(ParserError::Token(token.kind, token.span).into()),
             };
             points.push(point);
-            let Some(next) = self.next_token().transpose()? else {
+            let Some(next) = self.tokens.next().transpose()? else {
                 break;
             };
             match next.kind {
@@ -225,13 +220,13 @@ where
     fn parse_route(&mut self) -> Result<Vec<Segment>> {
         let mut route = Vec::new();
         let mut start = self.expect_get_tag()?;
-        while let Some(token) = self.next_token().transpose()? {
+        while let Some(token) = self.tokens.next().transpose()? {
             match token.kind {
                 TokenKind::Tag(tag) if tag == "--" => {}
                 TokenKind::Semicolon => break,
                 _ => return Err(ParserError::Token(token.kind, token.span).into()),
             };
-            let token = self.next_token().ok_or(ParserError::EndOfInput)??;
+            let token = self.tokens.next().ok_or(ParserError::EndOfInput)??;
             let (offset, end) = match token.kind {
                 TokenKind::LeftParen => {
                     let offset = self.parse_delimited_expression([token])?;
@@ -252,7 +247,7 @@ where
     }
 
     fn parse_statement(&mut self) -> Result<Option<StatementKind>> {
-        let Some(token) = self.next_token().transpose()? else {
+        let Some(token) = self.tokens.next().transpose()? else {
             return Ok(None);
         };
         match token.kind {
@@ -316,7 +311,7 @@ where
     fn parse_dot_list(&mut self) -> Result<(Vec<Variable>, Option<Token>)> {
         let mut list = Vec::new();
         let mut next = None;
-        while let Some(token) = self.next_token().transpose()? {
+        while let Some(token) = self.tokens.next().transpose()? {
             if let TokenKind::DotTag(tag) = token.kind {
                 list.push(tag);
             } else {
@@ -364,7 +359,7 @@ where
         from: Variable,
         is_past: bool,
     ) -> Result<Option<StatementKind>> {
-        let token = self.next_token().ok_or(ParserError::EndOfInput)??;
+        let token = self.tokens.next().ok_or(ParserError::EndOfInput)??;
         let to = match token.kind {
             TokenKind::LeftParen => {
                 let multiplier = self.parse_delimited_expression([token])?;
@@ -400,12 +395,12 @@ where
 
     fn parse_marker_params(&mut self) -> Result<HashMap<Variable, Expression>> {
         let mut params = HashMap::new();
-        while let Some(token) = self.next_token().transpose()? {
+        while let Some(token) = self.tokens.next().transpose()? {
             match token.kind {
                 TokenKind::Semicolon => break,
                 TokenKind::Comma => {}
                 TokenKind::Tag(tag) => {
-                    let paren = self.next_token().ok_or(ParserError::EndOfInput)??;
+                    let paren = self.tokens.next().ok_or(ParserError::EndOfInput)??;
                     let expr = self.parse_delimited_expression([paren])?;
                     match params.entry(tag) {
                         // there's already an argument with this name
@@ -440,26 +435,6 @@ where
                 line: self.line(),
             })
         })
-    }
-}
-
-struct ExprTokens<'a, T, F> {
-    parser: &'a mut Parser<T>,
-    until: F,
-}
-
-impl<T, F> Iterator for ExprTokens<'_, T, F>
-where
-    T: LexerExt,
-    F: for<'a> FnMut(&'a TokenKind) -> bool,
-{
-    type Item = Result<Token>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.parser
-            .next_token()
-            .transpose()
-            .map(|opt| opt.filter(|tok| !(self.until)(&tok.kind)))
-            .transpose()
     }
 }
 
