@@ -578,7 +578,7 @@ impl Value {
     pub fn div(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
-            (_, Number(x)) if x == 0.0 => return Err(MathError::DivisionByZero),
+            (_, Number(0.0)) => return Err(MathError::DivisionByZero),
             (Number(a), Number(b)) => Number(a / b),
             (Point(p, _), Number(a)) => Point(p / a, PointProvenance::None),
             (bad, Number(..)) | (_, bad) => return Err(MathError::Type(Type::Number, bad.into())),
