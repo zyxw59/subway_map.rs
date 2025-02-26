@@ -179,11 +179,11 @@ fn parse_function_def(
     })?;
     // maps argument names to their index in the function signature
     let mut args = HashMap::new();
-    let mut index = 0;
     loop {
         let (token, span) = expect_next_token(tokens.next(), Some(start_span), |token, span| {
             Ok((token, span))
         })?;
+        let index = args.len();
         match token {
             // a named argument
             TokenKind::Tag(arg) => {
@@ -200,7 +200,6 @@ fn parse_function_def(
                     }
                     Entry::Vacant(e) => e.insert(index),
                 };
-                index += 1;
                 if expect_next_token(tokens.next(), Some(start_span), |tok, _| match tok {
                     TokenKind::Comma => Ok(false),
                     TokenKind::RightParen => Ok(true),
@@ -216,12 +215,13 @@ fn parse_function_def(
     }
     expect_tag(tokens.next(), "=")?;
     // get the function body, as an expression tree
+    let num_args = args.len();
     let expression = parse_expression(tokens, args)?.into();
     Ok((
         name,
         Function {
             expression,
-            num_args: index,
+            num_args,
         },
     ))
 }
