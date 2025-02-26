@@ -226,7 +226,7 @@ fn parse_function_def(
     ))
 }
 
-fn parse_comma_point_list(
+fn parse_point_list(
     mut tokens: impl Iterator<Item = Result<Token>>,
 ) -> Result<Vec<(Option<Expression>, Variable)>> {
     let mut points = Vec::new();
@@ -314,7 +314,7 @@ fn parse_points_statement(
         // from ... spaced
         PointsKind::Spaced => {
             let spaced = parse_expression_until(&mut tokens, |tok| tok.as_tag() == Some(":"))?;
-            let points = parse_comma_point_list(tokens)?;
+            let points = parse_point_list(tokens)?;
             Ok(StatementKind::PointSpaced {
                 from,
                 spaced,
@@ -345,7 +345,7 @@ fn parse_points_extend_statement(
         _ => return Err(ParserError::Token(token.kind, token.span).into()),
     };
     expect_tag(tokens.next(), ":")?;
-    let points = parse_comma_point_list(tokens)?;
+    let points = parse_point_list(tokens)?;
     Ok(StatementKind::PointExtend {
         from,
         to,
