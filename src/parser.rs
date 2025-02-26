@@ -1,5 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
+    iter,
     fmt,
 };
 
@@ -234,7 +235,7 @@ fn parse_point_list(
         let point = match token.kind {
             TokenKind::LeftParen => {
                 let multiplier =
-                    parse_delimited_expression([Ok(token)].into_iter().chain(&mut tokens))?;
+                    parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
                 let ident = expect_get_tag(tokens.next())?;
                 (Some(multiplier), ident)
             }
@@ -261,7 +262,7 @@ fn parse_route(mut tokens: impl Iterator<Item = Result<Token>>) -> Result<Vec<Se
         let (offset, end) = match token.kind {
             TokenKind::LeftParen => {
                 let offset =
-                    parse_delimited_expression([Ok(token)].into_iter().chain(&mut tokens))?;
+                    parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
                 let end = expect_get_tag(tokens.next())?;
                 (offset, end)
             }
@@ -337,7 +338,7 @@ fn parse_points_extend_statement(
     let to = match token.kind {
         TokenKind::LeftParen => {
             let multiplier =
-                parse_delimited_expression([Ok(token)].into_iter().chain(&mut tokens))?;
+                parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
             let ident = expect_get_tag(tokens.next())?;
             (Some(multiplier), ident)
         }
@@ -357,7 +358,7 @@ fn parse_points_extend_statement(
 fn parse_stop_statement(mut tokens: impl Iterator<Item = Result<Token>>) -> Result<StatementKind> {
     let (styles, token) = parse_dot_list(&mut tokens)?;
     let token = token.ok_or(ParserError::EndOfInput)?;
-    let point = parse_expression_until([Ok(token)].into_iter().chain(&mut tokens), |tok| {
+    let point = parse_expression_until(iter::once(Ok(token)).chain(&mut tokens), |tok| {
         tok.as_tag() == Some("marker")
     })?;
     let marker_type = expect_get_tag(tokens.next())?;
@@ -379,7 +380,7 @@ fn parse_marker_params(
             TokenKind::Comma => {}
             TokenKind::Tag(tag) => {
                 let paren = tokens.next().ok_or(ParserError::EndOfInput)??;
-                let expr = parse_delimited_expression([Ok(paren)].into_iter().chain(&mut tokens))?;
+                let expr = parse_delimited_expression(iter::once(Ok(paren)).chain(&mut tokens))?;
                 match params.entry(tag) {
                     // there's already an argument with this name
                     Entry::Occupied(e) => {
