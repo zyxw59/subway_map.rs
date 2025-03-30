@@ -4,10 +4,7 @@ use expr_parser::Span;
 use regex_syntax::is_word_character;
 use smol_str::SmolStr;
 
-use crate::{
-    error::{Error, LexerError},
-    parser::Position,
-};
+use crate::{error::LexerError, parser::Position};
 
 type Result<T, E = LexerError> = std::result::Result<T, E>;
 
@@ -229,10 +226,10 @@ impl<R: BufRead> Lexer<R> {
 }
 
 impl<R: BufRead> Iterator for Lexer<R> {
-    type Item = Result<Token, Error>;
+    type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.get_next_token().map_err(Error::from).transpose()
+        self.get_next_token().transpose()
     }
 }
 
