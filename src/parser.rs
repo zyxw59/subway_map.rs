@@ -1,7 +1,6 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
-    iter,
-    fmt,
+    collections::{HashMap, hash_map::Entry},
+    fmt, iter,
 };
 
 use expr_parser::parser::ParseState;
@@ -261,8 +260,7 @@ fn parse_route(mut tokens: impl Iterator<Item = Result<Token>>) -> Result<Vec<Se
         let token = tokens.next().ok_or(ParserError::EndOfInput)??;
         let (offset, end) = match token.kind {
             TokenKind::LeftParen => {
-                let offset =
-                    parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
+                let offset = parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
                 let end = expect_get_tag(tokens.next())?;
                 (offset, end)
             }
@@ -337,8 +335,7 @@ fn parse_points_extend_statement(
     let token = tokens.next().ok_or(ParserError::EndOfInput)??;
     let to = match token.kind {
         TokenKind::LeftParen => {
-            let multiplier =
-                parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
+            let multiplier = parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
             let ident = expect_get_tag(tokens.next())?;
             (Some(multiplier), ident)
         }
