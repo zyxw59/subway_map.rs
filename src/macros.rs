@@ -1,32 +1,4 @@
 #[cfg(test)]
-macro_rules! token {
-    (.$tag:expr) => {
-        $crate::lexer::TokenKind::DotTag(smol_str::SmolStr::from($tag))
-    };
-    ((l)) => {
-        $crate::lexer::TokenKind::LeftParen
-    };
-    ((r)) => {
-        $crate::lexer::TokenKind::RightParen
-    };
-    (,) => {
-        $crate::lexer::TokenKind::Comma
-    };
-    (;) => {
-        $crate::lexer::TokenKind::Semicolon
-    };
-    (#$tag:expr) => {
-        $crate::lexer::TokenKind::Tag(smol_str::SmolStr::from($tag))
-    };
-    ($value:expr) => {
-        $crate::lexer::TokenKind::Number($value as f64)
-    };
-    (@$str:expr) => {
-        $crate::lexer::TokenKind::String(String::from($str))
-    };
-}
-
-#[cfg(test)]
 macro_rules! value {
     (($x:expr, $y:expr)) => {
         value!($x, $y)

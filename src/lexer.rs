@@ -382,7 +382,23 @@ impl TokenKind {
 
 #[cfg(test)]
 mod tests {
-    use super::Lexer;
+    use super::{Lexer, TokenKind};
+
+    fn tag(s: &str) -> TokenKind {
+        TokenKind::Tag(s.into())
+    }
+
+    fn dot(s: &str) -> TokenKind {
+        TokenKind::DotTag(s.into())
+    }
+
+    fn string(s: &str) -> TokenKind {
+        TokenKind::String(s.into())
+    }
+
+    fn num(x: f64) -> TokenKind {
+        TokenKind::Number(x)
+    }
 
     #[test]
     fn all_whitespace() {
@@ -405,13 +421,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             tokens,
-            [
-                token!(#"a"),
-                token!(,),
-                token!(#"b"),
-                token!(."c"),
-                token!(0.123)
-            ]
+            [tag("a"), TokenKind::Comma, tag("b"), dot("c"), num(0.123)]
         );
     }
 
@@ -422,7 +432,7 @@ mod tests {
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(tokens, [token!(1.1), token!(0.1)]);
+        assert_eq!(tokens, [num(1.1), num(0.1)]);
     }
 
     #[test]
@@ -432,10 +442,7 @@ mod tests {
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(
-            tokens,
-            [token!(#".."), token!(0.5), token!(#"..."), token!(#"a")]
-        );
+        assert_eq!(tokens, [tag(".."), num(0.5), tag("..."), tag("a")]);
     }
 
     #[test]
@@ -445,7 +452,7 @@ mod tests {
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(tokens, [token!(@"abc"), token!(@r#""\"#)]);
+        assert_eq!(tokens, [string("abc"), string(r#""\"#)]);
     }
 
     #[test]
@@ -467,7 +474,7 @@ mod tests {
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(tokens, [token!(@"foo\nbar")]);
+        assert_eq!(tokens, [string("foo\nbar")]);
     }
 
     #[test]
@@ -477,7 +484,7 @@ mod tests {
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(tokens, [token!(#"a"), token!(#"="), token!(#"b")]);
+        assert_eq!(tokens, [tag("a"), tag("="), tag("b")]);
     }
 
     #[test]
@@ -487,6 +494,6 @@ mod tests {
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(tokens, [token!(#"a"), token!(#"=="), token!(#"b")]);
+        assert_eq!(tokens, [tag("a"), tag("=="), tag("b")]);
     }
 }
