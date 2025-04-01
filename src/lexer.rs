@@ -382,6 +382,8 @@ impl TokenKind {
 
 #[cfg(test)]
 mod tests {
+    use test_case::test_case;
+
     use super::{Lexer, TokenKind};
 
     fn tag(s: &str) -> TokenKind {
@@ -400,100 +402,34 @@ mod tests {
         TokenKind::Number(x)
     }
 
-    #[test]
-    fn all_whitespace() {
-        let mut lexer = Lexer::new(" \n\t\u{a0}".as_bytes());
-        assert!(lexer.next().is_none());
-    }
-
-    #[test]
-    fn comment() {
-        let mut lexer = Lexer::new("# abc. 12345 //\"".as_bytes());
-        assert!(lexer.next().is_none());
-    }
-
-    #[test]
-    fn tokens() {
-        let lexer = Lexer::new("a,b.c.123".as_bytes());
-        let tokens = lexer
+    #[test_case(" \n\t\u{a0}".as_bytes(), []; "all whitespace")]
+    #[test_case(b"# abc. 12345 //\"", []; "comment")]
+    #[test_case(b"a,b.c.123", [tag("a"), TokenKind::Comma, tag("b"), dot("c"), num(0.123)]; "tokens")]
+    #[test_case(b"1.1.1", [num(1.1), num(0.1)]; "number dot")]
+    #[test_case(b"...5...a", [tag(".."), num(0.5), tag("..."), tag("a")]; "dots")]
+    #[test_case(br#""abc" "\"\\""#, [string("abc"), string(r#""\"#)]; "strings")]
+    #[test_case(b"\"foo\nbar\"", [string("foo\nbar")]; "string multiline")]
+    #[test_case(b"a=b", [tag("a"), tag("="), tag("b")]; "equal")]
+    #[test_case(b"a==b", [tag("a"), tag("=="), tag("b")]; "equal 2")]
+    #[test_case(b"a # \xa0\nb", [tag("a"), tag("b")]; "comment with bad unicode")]
+    fn test_valid_tokens<const N: usize>(input: &[u8], expected: [TokenKind; N]) {
+        let lexer = Lexer::new(input);
+        let actual = lexer
             .map(|res| res.map(|tok| tok.kind))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(
-            tokens,
-            [tag("a"), TokenKind::Comma, tag("b"), dot("c"), num(0.123)]
-        );
+        assert_eq!(actual, expected);
     }
 
-    #[test]
-    fn number_dot() {
-        let lexer = Lexer::new("1.1.1".as_bytes());
-        let tokens = lexer
-            .map(|res| res.map(|tok| tok.kind))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(tokens, [num(1.1), num(0.1)]);
-    }
-
-    #[test]
-    fn dots() {
-        let lexer = Lexer::new("...5...a".as_bytes());
-        let tokens = lexer
-            .map(|res| res.map(|tok| tok.kind))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(tokens, [tag(".."), num(0.5), tag("..."), tag("a")]);
-    }
-
-    #[test]
-    fn strings() {
-        let lexer = Lexer::new(r#""abc" "\"\\""#.as_bytes());
-        let tokens = lexer
-            .map(|res| res.map(|tok| tok.kind))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(tokens, [string("abc"), string(r#""\"#)]);
-    }
-
-    #[test]
-    fn string_trailing_backslash() {
-        let mut lexer = Lexer::new(r#""\"#.as_bytes());
-        assert!(lexer.next().unwrap().is_err());
-    }
-
-    #[test]
-    fn string_unterminated() {
-        let mut lexer = Lexer::new(r#"""#.as_bytes());
-        assert!(lexer.next().unwrap().is_err());
-    }
-
-    #[test]
-    fn string_multiline() {
-        let lexer = Lexer::new("\"foo\nbar\"".as_bytes());
-        let tokens = lexer
-            .map(|res| res.map(|tok| tok.kind))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(tokens, [string("foo\nbar")]);
-    }
-
-    #[test]
-    fn equal() {
-        let lexer = Lexer::new("a=b".as_bytes());
-        let tokens = lexer
-            .map(|res| res.map(|tok| tok.kind))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(tokens, [tag("a"), tag("="), tag("b")]);
-    }
-
-    #[test]
-    fn equal_2() {
-        let lexer = Lexer::new("a==b".as_bytes());
-        let tokens = lexer
-            .map(|res| res.map(|tok| tok.kind))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(tokens, [tag("a"), tag("=="), tag("b")]);
+    #[test_case(br#""\"#, [Err(())]; "string trailing backslash")]
+    #[test_case(br#"""#, [Err(())]; "string unterminated")]
+    #[test_case(b"a(\xa0)", [Ok(tag("b")), Ok(TokenKind::LeftParen), Err(()), Ok(TokenKind::RightParen)]; "bad unicode")]
+    #[test_case(b"\"\xa0\"+\"foo\"", [Err(()), Ok(tag("+")), Ok(string("foo"))]; "string bad unicode")]
+    fn test_errors<const N: usize>(input: &[u8], expected: [Result<TokenKind, ()>; N]) {
+        let lexer = Lexer::new(input);
+        let actual = lexer
+            .map(|res| res.map(|tok| tok.kind).map_err(|_| ()))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
     }
 }
