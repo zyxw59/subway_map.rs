@@ -130,6 +130,4 @@ impl From<&'_ Value> for Type {
 pub enum LexerError {
     #[error("Unterminated string at {0}")]
     UnterminatedString(Position),
-    #[error("Invalid UTF-8 at {0}")]
-    Unicode(Position),
 }
