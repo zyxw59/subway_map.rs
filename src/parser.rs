@@ -34,6 +34,7 @@ pub type Span<T = Position> = expr_parser::Span<T>;
 pub struct Position {
     pub line: usize,
     pub column: usize,
+    pub byte_idx: usize,
 }
 
 impl fmt::Display for Position {

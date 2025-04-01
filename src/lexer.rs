@@ -1,4 +1,4 @@
-use std::io::BufRead;
+use std::{ops, str::Utf8Chunk};
 
 use expr_parser::Span;
 use regex_syntax::is_word_character;
@@ -10,20 +10,18 @@ type Result<T, E = LexerError> = std::result::Result<T, E>;
 
 pub type Token = expr_parser::token::Token<TokenKind, Position>;
 
-pub struct Lexer<R> {
-    input: R,
-    buffer: String,
-    /// Byte index into `buffer`
-    byte_idx: usize,
+pub struct Lexer<'a> {
+    input: &'a [u8],
+    chunk: Chunk<'a>,
     position: Position,
 }
 
-impl<R: BufRead> Lexer<R> {
-    pub fn new(input: R) -> Lexer<R> {
+impl<'a> Lexer<'a> {
+    pub fn new(input: &'a [u8]) -> Self {
+        let chunk = input.utf8_chunks().next().into();
         Lexer {
             input,
-            buffer: String::new(),
-            byte_idx: 0,
+            chunk,
             position: Position::default(),
         }
     }
@@ -34,7 +32,7 @@ impl<R: BufRead> Lexer<R> {
 
     fn get_next_token(&mut self) -> Result<Option<Token>> {
         self.skip_whitespace_and_comments()?;
-        if let Some(c) = self.get()? {
+        if let Some(c) = self.get_current_char()? {
             let start = self.current_position();
             let kind = match c.into() {
                 CharCat::Number => self.parse_number(),
@@ -44,7 +42,7 @@ impl<R: BufRead> Lexer<R> {
                     self.advance_one();
                     Ok(TokenKind::singleton(c).unwrap())
                 }
-                cat => self.parse_tag(cat).map(|s| TokenKind::Tag(s.into())),
+                cat => Ok(TokenKind::Tag(self.parse_tag(cat).into())),
             }?;
             let end = self.current_position();
             Ok(Some(Token {
@@ -57,13 +55,13 @@ impl<R: BufRead> Lexer<R> {
     }
 
     fn skip_whitespace_and_comments(&mut self) -> Result<()> {
-        while let Some(c) = self.get()? {
+        while let Some(c) = self.get_current_char()? {
             match c {
-                // rest of line is a comment; retrieve new line
-                '#' => {
-                    self.fill_buffer()?;
+                // rest of line is a comment
+                '#' => self.skip_line(),
+                c if c.is_whitespace() => {
+                    self.advance_while(char::is_whitespace);
                 }
-                c if c.is_whitespace() => self.advance_while(char::is_whitespace),
                 // stop skipping
                 _ => break,
             }
@@ -71,75 +69,100 @@ impl<R: BufRead> Lexer<R> {
         Ok(())
     }
 
-    fn fill_buffer(&mut self) -> Result<()> {
-        self.buffer.clear();
-        self.byte_idx = 0;
-        self.input
-            .read_line(&mut self.buffer)
-            .map_err(|err| LexerError::from_io(err, self.position.line))?;
-        if !self.buffer.is_empty() {
+    fn skip_line(&mut self) {
+        if let Some(idx) = self.chunk.find('\n') {
+            self.increment_byte_index(idx);
             self.position.line += 1;
             self.position.column = 0;
+        } else {
+            let rest = &self.input[self.position.byte_idx..];
+            if let Some(line) = rest.split(|&b| b == b'\n').next() {
+                self.increment_byte_index(line.len());
+                self.position.line += 1;
+                self.position.column = 0;
+            } else {
+                // no more newlines, we're at the end of the file
+                self.position.byte_idx = self.input.len();
+                self.chunk = Chunk::default();
+                self.position.column += len_utf8_lossy(rest);
+            }
         }
-        Ok(())
+    }
+
+    fn increment_byte_index(&mut self, count: usize) {
+        self.position.byte_idx += count;
+        self.chunk.byte_idx += count;
+        if self.chunk.byte_idx >= self.chunk.total_len() {
+            self.chunk = self.input[self.position.byte_idx..]
+                .utf8_chunks()
+                .next()
+                .into();
+        }
     }
 
     fn advance_one(&mut self) {
-        if let Some(c) = self.get_current_char() {
+        if self.input[self.position.byte_idx] == b'\n' {
+            self.increment_byte_index(1);
+            self.position.line += 1;
+            self.position.column = 0;
+        } else {
+            let Some(next_char) = self.get_char_or_width().transpose() else {
+                return;
+            };
+            self.increment_byte_index(next_char.map_or_else(|len| len, char::len_utf8));
             self.position.column += 1;
-            self.byte_idx += c.len_utf8();
         }
     }
 
-    fn retreat_one(&mut self) {
-        if let Some(c) = self.buffer[..self.byte_idx].chars().last() {
-            self.position.column -= 1;
-            self.byte_idx -= c.len_utf8();
-        }
-    }
-
-    fn advance_while(&mut self, mut pred: impl FnMut(char) -> bool) {
+    fn advance_while(&mut self, mut pred: impl FnMut(char) -> bool) -> &'a str {
         let mut num_chars = 0;
-        let byte_idx = self.buffer[self.byte_idx..]
+        let mut num_lines = 0;
+        let byte_len = self
+            .chunk
             .char_indices()
             .find_map(|(num_bytes, ch)| {
                 if pred(ch) {
                     num_chars += 1;
+                    if ch == '\n' {
+                        num_lines += 1;
+                        num_chars = 0;
+                    }
                     None
                 } else {
-                    Some(self.byte_idx + num_bytes)
+                    Some(num_bytes)
                 }
             })
-            .unwrap_or(self.buffer.len());
-        self.byte_idx = byte_idx;
+            .unwrap_or(self.chunk.len());
+        let s = &self.chunk.as_str()[..byte_len];
+        self.increment_byte_index(byte_len);
+        if num_lines > 0 {
+            self.position.line += num_lines;
+            self.position.column = 0;
+        }
         self.position.column += num_chars;
+        s
     }
 
-    fn slice_from(&self, start_idx: usize) -> &str {
-        &self.buffer[start_idx..self.byte_idx]
+    fn slice_from(&self, start_idx: usize) -> &'a str {
+        std::str::from_utf8(&self.input[start_idx..self.position.byte_idx]).unwrap()
     }
 
-    fn get_current_char(&self) -> Option<char> {
-        self.buffer[self.byte_idx..].chars().next()
+    fn get_char_or_width(&self) -> Result<Option<char>, usize> {
+        if let Some(c) = self.chunk.chars().next() {
+            Ok(Some(c))
+        } else if !self.chunk.invalid.is_empty() {
+            Err(self.chunk.invalid.len())
+        } else {
+            Ok(None)
+        }
     }
 
-    /// Returns the current character, calling `fill_buffer` as necessary.
-    ///
-    /// If the buffer is still empty after `fill_buffer`, returns `None`, indicating end of input.
-    fn get(&mut self) -> Result<Option<char>> {
-        Ok(match self.get_current_char() {
-            // if we've got a character, here it is
-            Some(c) => Some(c),
-            // if we don't, check if we can get a new buffer
-            None => {
-                self.fill_buffer()?;
-                // and return the new character, if any
-                self.get_current_char()
-            }
-        })
+    fn get_current_char(&self) -> Result<Option<char>> {
+        self.get_char_or_width()
+            .map_err(|_| LexerError::Unicode(self.position))
     }
 
-    fn parse_tag(&mut self, cat: CharCat) -> Result<&str> {
+    fn parse_tag(&mut self, cat: CharCat) -> &str {
         assert!(cat.is_tag());
         match cat {
             CharCat::Word => self.parse_word(),
@@ -147,27 +170,23 @@ impl<R: BufRead> Lexer<R> {
         }
     }
 
-    fn parse_word(&mut self) -> Result<&str> {
-        let start_idx = self.byte_idx;
-        self.advance_while(is_word_character);
-        Ok(self.slice_from(start_idx))
+    fn parse_word(&mut self) -> &str {
+        self.advance_while(is_word_character)
     }
 
     fn parse_string(&mut self) -> Result<TokenKind> {
         let mut s = String::new();
         self.advance_one();
         loop {
-            let start_idx = self.byte_idx;
-            self.advance_while(|c| !matches!(c, '\\' | '"'));
-            s.push_str(self.slice_from(start_idx));
-            match self.get()? {
+            s.push_str(self.advance_while(|c| !matches!(c, '\\' | '"')));
+            match self.get_current_char()? {
                 Some('"') => {
                     self.advance_one();
                     return Ok(TokenKind::String(s));
                 }
                 Some('\\') => {
                     self.advance_one();
-                    match self.get()? {
+                    match self.get_current_char()? {
                         Some('n') => {
                             self.advance_one();
                             s.push('\n');
@@ -183,30 +202,30 @@ impl<R: BufRead> Lexer<R> {
                 None => break,
             }
         }
-        Err(LexerError::UnterminatedString(self.position.line))
+        Err(LexerError::UnterminatedString(self.position))
     }
 
     fn parse_dot(&mut self) -> Result<TokenKind> {
-        let start_idx = self.byte_idx;
+        let start_idx = self.position.byte_idx;
         self.advance_while(|c| c == '.');
-        if let Some('0'..='9') = self.get_current_char() {
+        if let Some('0'..='9') = self.get_current_char()? {
             // the dot is part of a number
-            self.retreat_one();
+            self.chunk.byte_idx -= 1;
+            self.position.byte_idx -= 1;
+            self.position.column -= 1;
         }
-        let next_cat = self.get_current_char().map(CharCat::from);
-        match (self.byte_idx - start_idx, next_cat) {
+        let next_cat = self.get_current_char()?.map(CharCat::from);
+        match (self.position.byte_idx - start_idx, next_cat) {
             (0, _) => self.parse_number(),
-            (1, Some(cat)) if cat.is_tag() => {
-                self.parse_tag(cat).map(|s| TokenKind::DotTag(s.into()))
-            }
+            (1, Some(cat)) if cat.is_tag() => Ok(TokenKind::DotTag(self.parse_tag(cat).into())),
             _ => Ok(TokenKind::Tag(self.slice_from(start_idx).into())),
         }
     }
 
     fn parse_number(&mut self) -> Result<TokenKind> {
-        let start_idx = self.byte_idx;
+        let start_idx = self.position.byte_idx;
         self.advance_while(|c| matches!(c, '0'..='9' | '_'));
-        if let Some('.') = self.get_current_char() {
+        if let Some('.') = self.get_current_char()? {
             self.advance_one();
             self.advance_while(|c| matches!(c, '0'..='9' | '_'));
         }
@@ -218,19 +237,60 @@ impl<R: BufRead> Lexer<R> {
         Ok(TokenKind::Number(val))
     }
 
-    fn parse_other(&mut self, cat: CharCat) -> Result<&str> {
-        let start_idx = self.byte_idx;
-        self.advance_while(|c| CharCat::from(c) == cat);
-        Ok(self.slice_from(start_idx))
+    fn parse_other(&mut self, cat: CharCat) -> &str {
+        self.advance_while(|c| CharCat::from(c) == cat)
     }
 }
 
-impl<R: BufRead> Iterator for Lexer<R> {
+impl Iterator for Lexer<'_> {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.get_next_token().transpose()
     }
+}
+
+#[derive(Clone, Copy, Default)]
+struct Chunk<'a> {
+    valid: &'a str,
+    invalid: &'a [u8],
+    byte_idx: usize,
+}
+
+impl<'a> Chunk<'a> {
+    fn total_len(&self) -> usize {
+        self.valid.len() + self.invalid.len()
+    }
+
+    fn as_str(&self) -> &'a str {
+        &self.valid[self.byte_idx..]
+    }
+}
+
+impl ops::Deref for Chunk<'_> {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl<'a> From<Option<Utf8Chunk<'a>>> for Chunk<'a> {
+    fn from(chunk: Option<Utf8Chunk<'a>>) -> Self {
+        chunk
+            .map(|chunk| Chunk {
+                valid: chunk.valid(),
+                invalid: chunk.invalid(),
+                byte_idx: 0,
+            })
+            .unwrap_or_default()
+    }
+}
+
+fn len_utf8_lossy(bytes: &[u8]) -> usize {
+    bytes
+        .utf8_chunks()
+        .map(|chunk| chunk.valid().chars().count() + chunk.invalid().len().min(1))
+        .sum()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

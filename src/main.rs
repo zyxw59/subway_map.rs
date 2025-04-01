@@ -36,12 +36,14 @@ struct Args {
 
 fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
-    let input: Box<dyn io::BufRead> = if let Some(path) = args.input {
-        Box::new(io::BufReader::new(File::open(path)?))
+    let input = if let Some(path) = args.input {
+        std::fs::read(path)?
     } else {
-        Box::new(io::BufReader::new(io::stdin()))
+        let mut buf = Vec::new();
+        io::Read::read_to_end(&mut io::stdin(), &mut buf)?;
+        buf
     };
-    let parser = lexer::Lexer::new(input).into_parser();
+    let parser = lexer::Lexer::new(&input).into_parser();
     let mut evaluator = evaluator::Evaluator::new();
     evaluator.evaluate_all(parser)?;
     if let Some(debug_output) = args.debug {
@@ -67,13 +69,13 @@ fn main() -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs::File, io, path::Path};
+    use std::{fs, path::Path};
 
     use crate::{evaluator::Evaluator, lexer::Lexer, parser::LexerExt};
 
     fn test_example(input_file: impl AsRef<Path>) -> anyhow::Result<()> {
-        let input = io::BufReader::new(File::open(input_file)?);
-        let parser = Lexer::new(input).into_parser();
+        let input = fs::read(input_file)?;
+        let parser = Lexer::new(&input).into_parser();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parser)?;
         let _document = evaluator.create_document()?;

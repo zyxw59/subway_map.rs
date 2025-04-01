@@ -128,19 +128,8 @@ impl From<&'_ Value> for Type {
 
 #[derive(Error, Debug)]
 pub enum LexerError {
-    #[error("Unterminated string at line {0}")]
-    UnterminatedString(usize),
-    #[error("Invalid UTF-8 at line {0}")]
-    Unicode(usize),
-    #[error("IO error while reading line {1}: {0}")]
-    Io(#[source] io::Error, usize),
-}
-
-impl LexerError {
-    pub fn from_io(err: io::Error, line: usize) -> LexerError {
-        match err.kind() {
-            io::ErrorKind::InvalidData => LexerError::Unicode(line),
-            _ => LexerError::Io(err, line),
-        }
-    }
+    #[error("Unterminated string at {0}")]
+    UnterminatedString(Position),
+    #[error("Invalid UTF-8 at {0}")]
+    Unicode(Position),
 }
