@@ -457,7 +457,7 @@ mod tests {
 
     macro_rules! assert_expression {
         ($text:expr, [$($expr:tt)*]) => {{
-            let result = parse_expression(Lexer::new($text.as_bytes()), HashMap::new())
+            let result = parse_expression(Lexer::new($text), HashMap::new())
                 .unwrap()
                 .into_iter()
                 .map(|expr| expr.kind)
@@ -597,9 +597,7 @@ mod tests {
 
     macro_rules! assert_statement {
         ($text:expr, $statement:expr) => {{
-            let result = parse_statement(Lexer::new($text.as_bytes()))
-                .unwrap()
-                .unwrap();
+            let result = parse_statement(Lexer::new($text)).unwrap().unwrap();
             assert_eq!(result.statement, $statement);
         }};
     }

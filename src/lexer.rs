@@ -1,5 +1,3 @@
-use std::{ops, str::Utf8Chunk};
-
 use expr_parser::Span;
 use regex_syntax::is_word_character;
 use smol_str::SmolStr;
@@ -11,17 +9,14 @@ type Result<T, E = LexerError> = std::result::Result<T, E>;
 pub type Token = expr_parser::token::Token<TokenKind, Position>;
 
 pub struct Lexer<'a> {
-    input: &'a [u8],
-    chunk: Chunk<'a>,
+    input: &'a str,
     position: Position,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a [u8]) -> Self {
-        let chunk = input.utf8_chunks().next().into();
+    pub fn new(input: &'a str) -> Self {
         Lexer {
             input,
-            chunk,
             position: Position::default(),
         }
     }
@@ -32,7 +27,7 @@ impl<'a> Lexer<'a> {
 
     fn get_next_token(&mut self) -> Result<Option<Token>> {
         self.skip_whitespace_and_comments()?;
-        if let Some(c) = self.get_current_char()? {
+        if let Some(c) = self.next_char() {
             let start = self.current_position();
             let kind = match c.into() {
                 CharCat::Number => self.parse_number(),
@@ -54,8 +49,16 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn rest(&self) -> &'a str {
+        &self.input[self.position.byte_idx..]
+    }
+
+    fn next_char(&self) -> Option<char> {
+        self.rest().chars().next()
+    }
+
     fn skip_whitespace_and_comments(&mut self) -> Result<()> {
-        while let Some(c) = self.get_current_char()? {
+        while let Some(c) = self.next_char() {
             match c {
                 // rest of line is a comment
                 '#' => self.skip_line(),
@@ -70,96 +73,58 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_line(&mut self) {
-        if let Some(idx) = self.chunk.find('\n') {
-            self.increment_byte_index(idx);
+        let rest = self.rest();
+        if let Some(offset) = rest.find('\n') {
+            self.position.byte_idx += offset;
             self.position.line += 1;
             self.position.column = 0;
         } else {
-            let rest = &self.input[self.position.byte_idx..];
-            if let Some(line) = rest.split(|&b| b == b'\n').next() {
-                self.increment_byte_index(line.len());
-                self.position.line += 1;
-                self.position.column = 0;
-            } else {
-                // no more newlines, we're at the end of the file
-                self.position.byte_idx = self.input.len();
-                self.chunk = Chunk::default();
-                self.position.column += len_utf8_lossy(rest);
-            }
-        }
-    }
-
-    fn increment_byte_index(&mut self, count: usize) {
-        self.position.byte_idx += count;
-        self.chunk.byte_idx += count;
-        if self.chunk.byte_idx >= self.chunk.total_len() {
-            self.chunk = self.input[self.position.byte_idx..]
-                .utf8_chunks()
-                .next()
-                .into();
+            // no more newlines, we're at the end of the file
+            self.position.byte_idx = self.input.len();
+            self.position.column += rest.chars().count();
         }
     }
 
     fn advance_one(&mut self) {
-        if self.input[self.position.byte_idx] == b'\n' {
-            self.increment_byte_index(1);
-            self.position.line += 1;
-            self.position.column = 0;
-        } else {
-            let Some(next_char) = self.get_char_or_width().transpose() else {
-                return;
-            };
-            self.increment_byte_index(next_char.map_or_else(|len| len, char::len_utf8));
-            self.position.column += 1;
+        match self.next_char() {
+            Some('\n') => {
+                self.position.byte_idx += 1;
+                self.position.line += 1;
+                self.position.column = 0;
+            }
+            Some(c) => {
+                self.position.byte_idx += c.len_utf8();
+                self.position.column += 1;
+            }
+            None => {}
         }
     }
 
     fn advance_while(&mut self, mut pred: impl FnMut(char) -> bool) -> &'a str {
-        let mut num_chars = 0;
-        let mut num_lines = 0;
+        let start_idx = self.position.byte_idx;
         let byte_len = self
-            .chunk
+            .rest()
             .char_indices()
             .find_map(|(num_bytes, ch)| {
                 if pred(ch) {
-                    num_chars += 1;
                     if ch == '\n' {
-                        num_lines += 1;
-                        num_chars = 0;
+                        self.position.line += 1;
+                        self.position.column = 0;
+                    } else {
+                        self.position.column += 1;
                     }
                     None
                 } else {
                     Some(num_bytes)
                 }
             })
-            .unwrap_or(self.chunk.len());
-        let s = &self.chunk.as_str()[..byte_len];
-        self.increment_byte_index(byte_len);
-        if num_lines > 0 {
-            self.position.line += num_lines;
-            self.position.column = 0;
-        }
-        self.position.column += num_chars;
-        s
+            .unwrap_or(self.rest().len());
+        self.position.byte_idx += byte_len;
+        self.slice_from(start_idx)
     }
 
     fn slice_from(&self, start_idx: usize) -> &'a str {
-        std::str::from_utf8(&self.input[start_idx..self.position.byte_idx]).unwrap()
-    }
-
-    fn get_char_or_width(&self) -> Result<Option<char>, usize> {
-        if let Some(c) = self.chunk.chars().next() {
-            Ok(Some(c))
-        } else if !self.chunk.invalid.is_empty() {
-            Err(self.chunk.invalid.len())
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn get_current_char(&self) -> Result<Option<char>> {
-        self.get_char_or_width()
-            .map_err(|_| LexerError::Unicode(self.position))
+        &self.input[start_idx..self.position.byte_idx]
     }
 
     fn parse_tag(&mut self, cat: CharCat) -> &str {
@@ -179,14 +144,14 @@ impl<'a> Lexer<'a> {
         self.advance_one();
         loop {
             s.push_str(self.advance_while(|c| !matches!(c, '\\' | '"')));
-            match self.get_current_char()? {
+            match self.next_char() {
                 Some('"') => {
                     self.advance_one();
                     return Ok(TokenKind::String(s));
                 }
                 Some('\\') => {
                     self.advance_one();
-                    match self.get_current_char()? {
+                    match self.next_char() {
                         Some('n') => {
                             self.advance_one();
                             s.push('\n');
@@ -208,13 +173,12 @@ impl<'a> Lexer<'a> {
     fn parse_dot(&mut self) -> Result<TokenKind> {
         let start_idx = self.position.byte_idx;
         self.advance_while(|c| c == '.');
-        if let Some('0'..='9') = self.get_current_char()? {
+        if let Some('0'..='9') = self.next_char() {
             // the dot is part of a number
-            self.chunk.byte_idx -= 1;
             self.position.byte_idx -= 1;
             self.position.column -= 1;
         }
-        let next_cat = self.get_current_char()?.map(CharCat::from);
+        let next_cat = self.next_char().map(CharCat::from);
         match (self.position.byte_idx - start_idx, next_cat) {
             (0, _) => self.parse_number(),
             (1, Some(cat)) if cat.is_tag() => Ok(TokenKind::DotTag(self.parse_tag(cat).into())),
@@ -225,7 +189,7 @@ impl<'a> Lexer<'a> {
     fn parse_number(&mut self) -> Result<TokenKind> {
         let start_idx = self.position.byte_idx;
         self.advance_while(|c| matches!(c, '0'..='9' | '_'));
-        if let Some('.') = self.get_current_char()? {
+        if let Some('.') = self.next_char() {
             self.advance_one();
             self.advance_while(|c| matches!(c, '0'..='9' | '_'));
         }
@@ -248,49 +212,6 @@ impl Iterator for Lexer<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         self.get_next_token().transpose()
     }
-}
-
-#[derive(Clone, Copy, Default)]
-struct Chunk<'a> {
-    valid: &'a str,
-    invalid: &'a [u8],
-    byte_idx: usize,
-}
-
-impl<'a> Chunk<'a> {
-    fn total_len(&self) -> usize {
-        self.valid.len() + self.invalid.len()
-    }
-
-    fn as_str(&self) -> &'a str {
-        &self.valid[self.byte_idx..]
-    }
-}
-
-impl ops::Deref for Chunk<'_> {
-    type Target = str;
-    fn deref(&self) -> &Self::Target {
-        self.as_str()
-    }
-}
-
-impl<'a> From<Option<Utf8Chunk<'a>>> for Chunk<'a> {
-    fn from(chunk: Option<Utf8Chunk<'a>>) -> Self {
-        chunk
-            .map(|chunk| Chunk {
-                valid: chunk.valid(),
-                invalid: chunk.invalid(),
-                byte_idx: 0,
-            })
-            .unwrap_or_default()
-    }
-}
-
-fn len_utf8_lossy(bytes: &[u8]) -> usize {
-    bytes
-        .utf8_chunks()
-        .map(|chunk| chunk.valid().chars().count() + chunk.invalid().len().min(1))
-        .sum()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -402,17 +323,16 @@ mod tests {
         TokenKind::Number(x)
     }
 
-    #[test_case(" \n\t\u{a0}".as_bytes(), []; "all whitespace")]
-    #[test_case(b"# abc. 12345 //\"", []; "comment")]
-    #[test_case(b"a,b.c.123", [tag("a"), TokenKind::Comma, tag("b"), dot("c"), num(0.123)]; "tokens")]
-    #[test_case(b"1.1.1", [num(1.1), num(0.1)]; "number dot")]
-    #[test_case(b"...5...a", [tag(".."), num(0.5), tag("..."), tag("a")]; "dots")]
-    #[test_case(br#""abc" "\"\\""#, [string("abc"), string(r#""\"#)]; "strings")]
-    #[test_case(b"\"foo\nbar\"", [string("foo\nbar")]; "string multiline")]
-    #[test_case(b"a=b", [tag("a"), tag("="), tag("b")]; "equal")]
-    #[test_case(b"a==b", [tag("a"), tag("=="), tag("b")]; "equal 2")]
-    #[test_case(b"a # \xa0\nb", [tag("a"), tag("b")]; "comment with bad unicode")]
-    fn test_valid_tokens<const N: usize>(input: &[u8], expected: [TokenKind; N]) {
+    #[test_case(" \n\t\u{a0}", []; "all whitespace")]
+    #[test_case("# abc. 12345 //\"\na", [tag("a")]; "comment")]
+    #[test_case("a,b.c.123", [tag("a"), TokenKind::Comma, tag("b"), dot("c"), num(0.123)]; "tokens")]
+    #[test_case("1.1.1", [num(1.1), num(0.1)]; "number dot")]
+    #[test_case("...5...a", [tag(".."), num(0.5), tag("..."), tag("a")]; "dots")]
+    #[test_case(r#""abc" "\"\\""#, [string("abc"), string(r#""\"#)]; "strings")]
+    #[test_case("\"foo\nbar\"", [string("foo\nbar")]; "string multiline")]
+    #[test_case("a=b", [tag("a"), tag("="), tag("b")]; "equal")]
+    #[test_case("a==b", [tag("a"), tag("=="), tag("b")]; "equal 2")]
+    fn test_valid_tokens<const N: usize>(input: &str, expected: [TokenKind; N]) {
         let lexer = Lexer::new(input);
         let actual = lexer
             .map(|res| res.map(|tok| tok.kind))
@@ -421,11 +341,9 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test_case(br#""\"#, [Err(())]; "string trailing backslash")]
-    #[test_case(br#"""#, [Err(())]; "string unterminated")]
-    #[test_case(b"a(\xa0)", [Ok(tag("b")), Ok(TokenKind::LeftParen), Err(()), Ok(TokenKind::RightParen)]; "bad unicode")]
-    #[test_case(b"\"\xa0\"+\"foo\"", [Err(()), Ok(tag("+")), Ok(string("foo"))]; "string bad unicode")]
-    fn test_errors<const N: usize>(input: &[u8], expected: [Result<TokenKind, ()>; N]) {
+    #[test_case(r#""\"#, [Err(())]; "string trailing backslash")]
+    #[test_case(r#"""#, [Err(())]; "string unterminated")]
+    fn test_errors<const N: usize>(input: &str, expected: [Result<TokenKind, ()>; N]) {
         let lexer = Lexer::new(input);
         let actual = lexer
             .map(|res| res.map(|tok| tok.kind).map_err(|_| ()))

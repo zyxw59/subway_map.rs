@@ -37,11 +37,9 @@ struct Args {
 fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
     let input = if let Some(path) = args.input {
-        std::fs::read(path)?
+        std::fs::read_to_string(path)?
     } else {
-        let mut buf = Vec::new();
-        io::Read::read_to_end(&mut io::stdin(), &mut buf)?;
-        buf
+        io::read_to_string(&mut io::stdin())?
     };
     let parser = lexer::Lexer::new(&input).into_parser();
     let mut evaluator = evaluator::Evaluator::new();
@@ -74,7 +72,7 @@ mod tests {
     use crate::{evaluator::Evaluator, lexer::Lexer, parser::LexerExt};
 
     fn test_example(input_file: impl AsRef<Path>) -> anyhow::Result<()> {
-        let input = fs::read(input_file)?;
+        let input = fs::read_to_string(input_file)?;
         let parser = Lexer::new(&input).into_parser();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parser)?;

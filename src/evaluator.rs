@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn variables_set() {
-        let parser = Lexer::new("x = 1;".as_bytes()).into_parser();
+        let parser = Lexer::new("x = 1;").into_parser();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parser).unwrap();
         assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn variables_get() {
-        let parser = Lexer::new("x = 1; z = x * 2;".as_bytes()).into_parser();
+        let parser = Lexer::new("x = 1; z = x * 2;").into_parser();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parser).unwrap();
         assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn functions() {
-        let parser = Lexer::new("fn f(x) = x + 1; y = f(3);".as_bytes()).into_parser();
+        let parser = Lexer::new("fn f(x) = x + 1; y = f(3);").into_parser();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parser).unwrap();
         assert_eq!(evaluator.variables.get("y"), Some(&Value::Number(4.0)));
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn functions_2() {
-        let parser = Lexer::new("fn f(x, y) = x * y; z = f(3, 2);".as_bytes()).into_parser();
+        let parser = Lexer::new("fn f(x, y) = x * y; z = f(3, 2);").into_parser();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parser).unwrap();
         assert_eq!(evaluator.variables.get("z"), Some(&Value::Number(6.0)));
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn point_single() {
-        let parser = Lexer::new("point a = (1, 1);".as_bytes()).into_parser();
+        let parser = Lexer::new("point a = (1, 1);").into_parser();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parser).unwrap();
         assert_eq!(evaluator.get_variable("a"), Some(value!(1, 1)));
@@ -398,7 +398,7 @@ mod tests {
          $first:ident: ($first_x:expr, $first_y:expr),
          $($name:ident: ($x:expr, $y:expr)),*;
          $last:ident: ($last_x:expr, $last_y:expr)) => {
-            let parser = Lexer::new($str.as_bytes()).into_parser();
+            let parser = Lexer::new($str).into_parser();
             let mut evaluator = Evaluator::new();
             evaluator.evaluate_all(parser).unwrap();
             assert_eq!(
