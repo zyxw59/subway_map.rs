@@ -82,11 +82,10 @@ impl Evaluator {
         Default::default()
     }
 
-    pub fn evaluate_all(&mut self, parser: impl Iterator<Item = Result<Statement>>) -> Result<()> {
-        for statement in parser {
-            self.evaluate(statement?)?;
-        }
-        Ok(())
+    pub fn evaluate_all(&mut self, parser: impl IntoIterator<Item = Statement>) -> Result<()> {
+        parser
+            .into_iter()
+            .try_for_each(|statement| self.evaluate(statement))
     }
 
     fn evaluate(&mut self, Statement { statement, line }: Statement) -> Result<()> {
@@ -346,50 +345,54 @@ impl EvaluationContext for () {
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::Lexer;
-    use crate::parser::LexerExt;
-    use crate::values::{Point, Value};
+    use crate::{
+        parser::parse,
+        values::{Point, Value},
+    };
 
     use super::{EvaluationContext, Evaluator};
 
     #[test]
     fn variables_set() {
-        let parser = Lexer::new("x = 1;").into_parser();
         let mut evaluator = Evaluator::new();
-        evaluator.evaluate_all(parser).unwrap();
+        evaluator.evaluate_all(parse("x = 1;").unwrap()).unwrap();
         assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
     }
 
     #[test]
     fn variables_get() {
-        let parser = Lexer::new("x = 1; z = x * 2;").into_parser();
         let mut evaluator = Evaluator::new();
-        evaluator.evaluate_all(parser).unwrap();
+        evaluator
+            .evaluate_all(parse("x = 1; z = x * 2;").unwrap())
+            .unwrap();
         assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
         assert_eq!(evaluator.variables.get("z"), Some(&Value::Number(2.0)));
     }
 
     #[test]
     fn functions() {
-        let parser = Lexer::new("fn f(x) = x + 1; y = f(3);").into_parser();
         let mut evaluator = Evaluator::new();
-        evaluator.evaluate_all(parser).unwrap();
+        evaluator
+            .evaluate_all(parse("fn f(x) = x + 1; y = f(3);").unwrap())
+            .unwrap();
         assert_eq!(evaluator.variables.get("y"), Some(&Value::Number(4.0)));
     }
 
     #[test]
     fn functions_2() {
-        let parser = Lexer::new("fn f(x, y) = x * y; z = f(3, 2);").into_parser();
         let mut evaluator = Evaluator::new();
-        evaluator.evaluate_all(parser).unwrap();
+        evaluator
+            .evaluate_all(parse("fn f(x, y) = x * y; z = f(3, 2);").unwrap())
+            .unwrap();
         assert_eq!(evaluator.variables.get("z"), Some(&Value::Number(6.0)));
     }
 
     #[test]
     fn point_single() {
-        let parser = Lexer::new("point a = (1, 1);").into_parser();
         let mut evaluator = Evaluator::new();
-        evaluator.evaluate_all(parser).unwrap();
+        evaluator
+            .evaluate_all(parse("point a = (1, 1);").unwrap())
+            .unwrap();
         assert_eq!(evaluator.get_variable("a"), Some(value!(1, 1)));
     }
 
@@ -398,9 +401,8 @@ mod tests {
          $first:ident: ($first_x:expr, $first_y:expr),
          $($name:ident: ($x:expr, $y:expr)),*;
          $last:ident: ($last_x:expr, $last_y:expr)) => {
-            let parser = Lexer::new($str).into_parser();
             let mut evaluator = Evaluator::new();
-            evaluator.evaluate_all(parser).unwrap();
+            evaluator.evaluate_all(parse($str).unwrap()).unwrap();
             assert_eq!(
                 evaluator.points.get_points_of_line(stringify!($first), stringify!($last)),
                 Some(vec![

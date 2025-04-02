@@ -19,8 +19,6 @@ pub mod statement;
 mod stops;
 mod values;
 
-use parser::LexerExt;
-
 #[derive(Parser)]
 struct Args {
     /// Input file, stdin if not present.
@@ -41,9 +39,9 @@ fn main() -> Result<(), anyhow::Error> {
     } else {
         io::read_to_string(&mut io::stdin())?
     };
-    let parser = lexer::Lexer::new(&input).into_parser();
+    let statements = parser::parse(&input)?;
     let mut evaluator = evaluator::Evaluator::new();
-    evaluator.evaluate_all(parser)?;
+    evaluator.evaluate_all(statements)?;
     if let Some(debug_output) = args.debug {
         let mut debug_output: Box<dyn io::Write> = if let Some(path) = debug_output {
             Box::new(File::create(path)?)
@@ -69,13 +67,13 @@ fn main() -> Result<(), anyhow::Error> {
 mod tests {
     use std::{fs, path::Path};
 
-    use crate::{evaluator::Evaluator, lexer::Lexer, parser::LexerExt};
+    use crate::{evaluator::Evaluator, parser::parse};
 
     fn test_example(input_file: impl AsRef<Path>) -> anyhow::Result<()> {
         let input = fs::read_to_string(input_file)?;
-        let parser = Lexer::new(&input).into_parser();
+        let statements = parse(&input)?;
         let mut evaluator = Evaluator::new();
-        evaluator.evaluate_all(parser)?;
+        evaluator.evaluate_all(statements)?;
         let _document = evaluator.create_document()?;
         Ok(())
     }

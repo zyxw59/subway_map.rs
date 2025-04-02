@@ -8,7 +8,7 @@ use expr_parser::parser::ParseState;
 use crate::{
     error::{LexerError, ParserError, Result},
     expressions::{Expression, Function, Variable},
-    lexer::{Token, TokenKind},
+    lexer::{Lexer, Token, TokenKind},
     statement::{Segment, Statement, StatementKind, Stop},
 };
 
@@ -16,17 +16,12 @@ mod expression;
 
 type TokenResult = Result<Token, LexerError>;
 
-pub trait LexerExt: Iterator<Item = TokenResult> {
-    fn into_parser(self) -> impl Iterator<Item = Result<Statement>>
-    where
-        Self: Sized,
-    {
-        use itertools::Itertools;
-        self.batching(|tokens| parse_statement(tokens).transpose())
-    }
+pub fn parse(source: &str) -> Result<Vec<Statement>> {
+    use itertools::Itertools;
+    Lexer::new(source)
+        .batching(|tokens| parse_statement(tokens).transpose())
+        .collect()
 }
-
-impl<T: Iterator<Item = TokenResult>> LexerExt for T {}
 
 pub type Span<T = Position> = expr_parser::Span<T>;
 
