@@ -1,19 +1,11 @@
-use std::{io, result};
-
 use thiserror::Error;
 
 use crate::{expressions::Variable, values::Value};
 
-pub type Result<T, E = Error> = result::Result<T, E>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Evaluator error: {0}")]
-    Evaluator(#[from] EvaluatorError),
-}
-
-#[derive(Error, Debug)]
-pub enum EvaluatorError {
     #[error("Math error on line {1}: {0}")]
     Math(#[source] MathError, usize),
     #[error(
@@ -48,8 +40,6 @@ pub enum EvaluatorError {
         arg: &'static str,
         line: usize,
     },
-    #[error("IO error during output: {0}")]
-    Io(#[from] io::Error),
     #[error("Error during debug output: {0}")]
     DebugOutput(#[from] serde_json::Error),
 }

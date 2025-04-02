@@ -7,7 +7,7 @@ use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
 
 use crate::{
     document::Document,
-    error::{EvaluatorError, MathError, Result},
+    error::{Error, MathError, Result},
     expressions::{ExpressionBit, Term, Variable},
     operators::{BinaryOperator, UnaryOperator},
     parser::Position,
@@ -92,26 +92,23 @@ impl Evaluator {
         match statement {
             StatementKind::Null => {}
             StatementKind::Variable(name, fields, expr) => {
-                let value = evaluate_expression(self, expr)
-                    .map_err(|err| EvaluatorError::Math(err, line))?;
+                let value =
+                    evaluate_expression(self, expr).map_err(|err| Error::Math(err, line))?;
                 if fields.is_empty() {
                     if name == LINE_SEP {
-                        let value =
-                            f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        let value = f64::try_from(&value).map_err(|err| Error::Math(err, line))?;
                         self.points.set_default_width(value);
                     } else if name == INNER_RADIUS {
-                        let value =
-                            f64::try_from(&value).map_err(|err| EvaluatorError::Math(err, line))?;
+                        let value = f64::try_from(&value).map_err(|err| Error::Math(err, line))?;
                         self.points.set_inner_radius(value);
                     }
                     // named points can't be redefined, since lines are defined in terms of them
                     if let Some(original_line) = self.points.get_point_line_number(&name) {
-                        return Err(EvaluatorError::PointRedefinition {
+                        return Err(Error::PointRedefinition {
                             name,
                             line,
                             original_line,
-                        }
-                        .into());
+                        });
                     }
                 }
                 let mut slot = self.variables.entry(name.clone());
@@ -119,7 +116,7 @@ impl Evaluator {
                     slot = slot
                         .or_insert(Value::new_struct())
                         .slot(field)
-                        .map_err(|err| EvaluatorError::Math(err, line))?
+                        .map_err(|err| Error::Math(err, line))?
                 }
                 match slot {
                     Entry::Occupied(mut entry) => {
@@ -136,16 +133,15 @@ impl Evaluator {
             StatementKind::PointSingle(name, expr) => {
                 // named points can't be redefined, since lines are defined in terms of them
                 if let Some(original_line) = self.points.get_point_line_number(&name) {
-                    return Err(EvaluatorError::PointRedefinition {
+                    return Err(Error::PointRedefinition {
                         name,
                         line,
                         original_line,
-                    }
-                    .into());
+                    });
                 }
                 let (point, provenance) = evaluate_expression(self, expr)
                     .and_then(<(Point, PointProvenance)>::try_from)
-                    .map_err(|err| EvaluatorError::Math(err, line))?;
+                    .map_err(|err| Error::Math(err, line))?;
                 self.points.insert_point(name, point, provenance, line)?;
             }
             StatementKind::PointSpaced {
@@ -155,9 +151,9 @@ impl Evaluator {
             } => {
                 let spacing = evaluate_expression(self, spaced)
                     .and_then(Point::try_from)
-                    .map_err(|err| EvaluatorError::Math(err, line))?;
+                    .map_err(|err| Error::Math(err, line))?;
                 if !self.points.contains(&from) {
-                    return Err(EvaluatorError::Math(MathError::Variable(from), line).into());
+                    return Err(Error::Math(MathError::Variable(from), line));
                 }
                 let points = points
                     .into_iter()
@@ -165,7 +161,7 @@ impl Evaluator {
                         multiplier
                             .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                             .unwrap_or(Ok(1.0))
-                            .map_err(|err| EvaluatorError::Math(err, line))
+                            .map_err(|err| Error::Math(err, line))
                             .map(|distance| (name, distance))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -184,15 +180,15 @@ impl Evaluator {
                         total_distance += multiplier
                             .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                             .unwrap_or(Ok(1.0))
-                            .map_err(|err| EvaluatorError::Math(err, line))?;
+                            .map_err(|err| Error::Math(err, line))?;
                         Ok((name, total_distance))
                     })
-                    .collect::<Result<Vec<_>, EvaluatorError>>()?;
+                    .collect::<Result<Vec<_>>>()?;
                 if is_past {
                     let past_multiplier = to_multiplier
                         .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                         .unwrap_or(Ok(1.0))
-                        .map_err(|err| EvaluatorError::Math(err, line))?;
+                        .map_err(|err| Error::Math(err, line))?;
                     self.points.extend_line(
                         from,
                         to,
@@ -205,7 +201,7 @@ impl Evaluator {
                     total_distance += to_multiplier
                         .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
                         .unwrap_or(Ok(1.0))
-                        .map_err(|err| EvaluatorError::Math(err, line))?;
+                        .map_err(|err| Error::Math(err, line))?;
                     self.points.extend_line(
                         from,
                         to,
@@ -241,25 +237,23 @@ impl Evaluator {
                     // TODO: add warning if it's not an integer
                     let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)
-                        .map_err(|err| EvaluatorError::Math(err, line))?
+                        .map_err(|err| Error::Math(err, line))?
                         as isize;
                     self.points
                         .add_segment(route, &segment.start, &segment.end, offset)
-                        .map_err(|name| {
-                            EvaluatorError::Math(MathError::Variable(name.into()), line)
-                        })?;
+                        .map_err(|name| Error::Math(MathError::Variable(name.into()), line))?;
                 }
             }
             StatementKind::Stop(stop) => {
                 let point = evaluate_expression(self, stop.point)
                     .and_then(Point::try_from)
-                    .map_err(|err| EvaluatorError::Math(err, line))?;
+                    .map_err(|err| Error::Math(err, line))?;
                 let marker_parameters = stop
                     .marker_parameters
                     .into_iter()
                     .map(|(key, expr)| Ok((key, evaluate_expression(self, expr)?)))
                     .collect::<Result<_, _>>()
-                    .map_err(|err| EvaluatorError::Math(err, line))?;
+                    .map_err(|err| Error::Math(err, line))?;
                 self.stops.push(Stop {
                     point,
                     marker_parameters,
@@ -274,11 +268,11 @@ impl Evaluator {
         Ok(())
     }
 
-    pub fn write_debug(&self, file: impl std::io::Write) -> Result<(), EvaluatorError> {
+    pub fn write_debug(&self, file: impl std::io::Write) -> Result<()> {
         serde_json::to_writer_pretty(file, &self.points).map_err(Into::into)
     }
 
-    pub fn create_document(&self) -> Result<Document, EvaluatorError> {
+    pub fn create_document(&self) -> Result<Document> {
         let mut document = Document::new();
         if let Some(ref title) = self.title {
             document.set_title(title);
@@ -314,7 +308,7 @@ impl Evaluator {
         self.points.draw_routes(document);
     }
 
-    pub fn draw_stops(&self, document: &mut Document) -> Result<(), EvaluatorError> {
+    pub fn draw_stops(&self, document: &mut Document) -> Result<()> {
         self.stops.draw(document)
     }
 }

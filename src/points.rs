@@ -14,7 +14,7 @@ use svg::node::{
 use crate::{
     corner::{calculate_longitudinal_offsets, calculate_tan_half_angle, Corner, ParallelShift},
     document::Document,
-    error::{EvaluatorError, MathError},
+    error::{Error, MathError, Result},
     expressions::Variable,
     values::{Point, PointProvenance},
 };
@@ -85,11 +85,11 @@ impl PointCollection {
         width: f64,
         styles: Vec<Variable>,
         line_number: usize,
-    ) -> Result<RouteId, EvaluatorError> {
+    ) -> Result<RouteId> {
         match self.route_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::RouteRedefinition {
+                Err(Error::RouteRedefinition {
                     name: e.key().clone(),
                     line: line_number,
                     original_line: self[id].line_number,
@@ -110,11 +110,11 @@ impl PointCollection {
         name: Variable,
         value: Point,
         line_number: usize,
-    ) -> Result<PointId, EvaluatorError> {
+    ) -> Result<PointId> {
         match self.point_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::PointRedefinition {
+                Err(Error::PointRedefinition {
                     name: e.key().clone(),
                     line: line_number,
                     original_line: self[id].info.line_number,
@@ -134,16 +134,11 @@ impl PointCollection {
         }
     }
 
-    fn insert_alias(
-        &mut self,
-        name: Variable,
-        id: PointId,
-        line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    fn insert_alias(&mut self, name: Variable, id: PointId, line_number: usize) -> Result<()> {
         match self.point_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::PointRedefinition {
+                Err(Error::PointRedefinition {
                     name: e.key().clone(),
                     line: line_number,
                     original_line: self[id].info.line_number,
@@ -199,7 +194,7 @@ impl PointCollection {
         value: Point,
         provenance: PointProvenance,
         line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    ) -> Result<()> {
         match provenance {
             PointProvenance::None => {
                 // just insert the point
@@ -263,15 +258,12 @@ impl PointCollection {
         direction: Point,
         points: impl IntoIterator<Item = (Variable, f64)>,
         line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    ) -> Result<()> {
         let line_id = LineId(self.lines.len());
         let &start_id = self
             .point_ids
             .get(&start_point)
-            .ok_or(EvaluatorError::Math(
-                MathError::Variable(start_point),
-                line_number,
-            ))?;
+            .ok_or(Error::Math(MathError::Variable(start_point), line_number))?;
         let origin = self[start_id].info;
         let mut line = Line::from_origin_direction(origin, direction);
         let mut total_distance = 0.0;
@@ -296,18 +288,15 @@ impl PointCollection {
         end_point: Variable,
         points: impl IntoIterator<Item = (Variable, f64)>,
         line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    ) -> Result<()> {
         let start_id = *self
             .point_ids
             .get(&start_point)
-            .ok_or(EvaluatorError::Math(
-                MathError::Variable(start_point),
-                line_number,
-            ))?;
-        let end_id = *self.point_ids.get(&end_point).ok_or(EvaluatorError::Math(
-            MathError::Variable(end_point),
-            line_number,
-        ))?;
+            .ok_or(Error::Math(MathError::Variable(start_point), line_number))?;
+        let end_id = *self
+            .point_ids
+            .get(&end_point)
+            .ok_or(Error::Math(MathError::Variable(end_point), line_number))?;
         let line_id = self.get_or_insert_line(start_id, end_id);
         let start = self[start_id].info.value;
         let end = self[end_id].info.value;

@@ -8,7 +8,7 @@ use svg::node::{
 
 use crate::{
     document::Document,
-    error::{EvaluatorError, MathError},
+    error::{Error, MathError, Result},
     values::{Point, Value},
 };
 
@@ -28,7 +28,7 @@ pub struct Stop {
 }
 
 impl Stop {
-    pub fn draw(&self, document: &mut Document) -> Result<(), EvaluatorError> {
+    pub fn draw(&self, document: &mut Document) -> Result<()> {
         let mut group = Group::new().set(
             "class",
             format!("stop {} {}", self.marker_type, self.styles.join(" ")),
@@ -65,7 +65,7 @@ impl Stop {
             // TODO(#16): more marker types?
             // TODO(#17): user-defined marker types?
             _ => {
-                return Err(EvaluatorError::UndefinedStopMarker {
+                return Err(Error::UndefinedStopMarker {
                     name: self.marker_type.clone(),
                     line: self.input_line,
                 })
@@ -75,17 +75,17 @@ impl Stop {
         Ok(())
     }
 
-    fn get_parameter(&self, arg: &'static str) -> Result<&Value, EvaluatorError> {
+    fn get_parameter(&self, arg: &'static str) -> Result<&Value> {
         self.marker_parameters
             .get(arg)
-            .ok_or_else(|| EvaluatorError::MissingMarkerArg {
+            .ok_or_else(|| Error::MissingMarkerArg {
                 marker: self.marker_type.clone(),
                 arg,
                 line: self.input_line,
             })
     }
 
-    fn get_parameter_typed<'a, T>(&'a self, arg: &'static str) -> Result<T, EvaluatorError>
+    fn get_parameter_typed<'a, T>(&'a self, arg: &'static str) -> Result<T>
     where
         T: TryFrom<&'a Value, Error = MathError>,
     {
@@ -93,10 +93,7 @@ impl Stop {
             .and_then(|val| T::try_from(val).map_err(|err| self.invalid_arg_error(arg, err)))
     }
 
-    fn get_optional_parameter_typed<'a, T>(
-        &'a self,
-        arg: &'static str,
-    ) -> Result<Option<T>, EvaluatorError>
+    fn get_optional_parameter_typed<'a, T>(&'a self, arg: &'static str) -> Result<Option<T>>
     where
         T: TryFrom<&'a Value, Error = MathError>,
     {
@@ -106,8 +103,8 @@ impl Stop {
             .transpose()
     }
 
-    fn invalid_arg_error(&self, arg: &'static str, error: MathError) -> EvaluatorError {
-        EvaluatorError::InvalidMarkerArg {
+    fn invalid_arg_error(&self, arg: &'static str, error: MathError) -> Error {
+        Error::InvalidMarkerArg {
             marker: self.marker_type.clone(),
             arg,
             line: self.input_line,
@@ -126,7 +123,7 @@ impl StopCollection {
         self.stops.push(stop);
     }
 
-    pub fn draw(&self, document: &mut Document) -> Result<(), EvaluatorError> {
+    pub fn draw(&self, document: &mut Document) -> Result<()> {
         for stop in &self.stops {
             stop.draw(document)?;
         }
