@@ -2,7 +2,7 @@ use expr_parser::Span;
 use regex_syntax::is_word_character;
 use smol_str::SmolStr;
 
-use crate::{error::LexerError, parser::Position};
+use super::{error::LexerError, Position};
 
 type Result<T, E = LexerError> = std::result::Result<T, E>;
 

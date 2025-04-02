@@ -1,36 +1,15 @@
 use std::{io, result};
 
-use expr_parser::Span;
 use thiserror::Error;
 
-use crate::{expressions::Variable, lexer::TokenKind, parser::Position, values::Value};
+use crate::{expressions::Variable, values::Value};
 
 pub type Result<T, E = Error> = result::Result<T, E>;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Lexer error: {0}")]
-    Lexer(#[from] LexerError),
-    #[error("Parser error: {0}")]
-    Parser(#[from] ParserError),
     #[error("Evaluator error: {0}")]
     Evaluator(#[from] EvaluatorError),
-}
-
-#[derive(Error, Debug)]
-pub enum ParserError {
-    #[error("Unexpected end of input")]
-    EndOfInput,
-    #[error("Unexpected token {0:?} at {1}")]
-    Token(TokenKind, Span<Position>),
-    #[error("Unclosed parentheses starting at {0}")]
-    Parentheses(Span<Position>),
-    #[error("Repeated argument {argument} to function {function} at {span}")]
-    Argument {
-        argument: Variable,
-        function: Variable,
-        span: Span<Position>,
-    },
 }
 
 #[derive(Error, Debug)]
@@ -124,10 +103,4 @@ impl From<&'_ Value> for Type {
             Value::Function(..) => Type::Function,
         }
     }
-}
-
-#[derive(Error, Debug)]
-pub enum LexerError {
-    #[error("Unterminated string at {0}")]
-    UnterminatedString(Position),
 }

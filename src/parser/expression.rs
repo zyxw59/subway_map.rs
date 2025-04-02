@@ -5,9 +5,9 @@ use expr_parser::{
     parser::{self, Element, ParserElement, Postfix, Prefix},
 };
 
+use super::lexer::TokenKind;
 use crate::{
     expressions::{Term, Variable},
-    lexer::TokenKind,
     operators::{self, BinaryOperator, Precedence, UnaryOperator},
 };
 

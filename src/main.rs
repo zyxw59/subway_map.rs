@@ -11,7 +11,6 @@ mod document;
 mod error;
 pub mod evaluator;
 mod expressions;
-pub mod lexer;
 mod operators;
 pub mod parser;
 pub mod points;

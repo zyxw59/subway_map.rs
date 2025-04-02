@@ -6,13 +6,16 @@ use std::{
 use expr_parser::parser::ParseState;
 
 use crate::{
-    error::{LexerError, ParserError, Result},
     expressions::{Expression, Function, Variable},
-    lexer::{Lexer, Token, TokenKind},
     statement::{Segment, Statement, StatementKind, Stop},
 };
 
+mod error;
 mod expression;
+mod lexer;
+
+use error::{Error, LexerError, Result};
+use lexer::{Lexer, Token, TokenKind};
 
 type TokenResult = Result<Token, LexerError>;
 
@@ -57,9 +60,8 @@ pub fn parse_statement(tokens: impl IntoIterator<Item = TokenResult>) -> Result<
     let line = initial_token.span.start.line;
     let statement = parse_statement_kind(initial_token, tokens).map_err(|err| {
         // handle unexpected end of input caused by semicolons
-        use crate::error::Error;
-        if let (Error::Parser(ParserError::EndOfInput), Some(span)) = (&err, semicolon) {
-            ParserError::Token(TokenKind::Semicolon, span).into()
+        if let (Error::EndOfInput, Some(span)) = (&err, semicolon) {
+            Error::Token(TokenKind::Semicolon, span)
         } else {
             err
         }
@@ -125,7 +127,7 @@ fn parse_statement_kind(
         // semicolon; null statement
         TokenKind::Semicolon => Ok(StatementKind::Null),
         // other token; unexpected
-        _ => Err(ParserError::Token(initial_token.kind, initial_token.span).into()),
+        _ => Err(Error::Token(initial_token.kind, initial_token.span)),
     }
 }
 
@@ -185,12 +187,11 @@ fn parse_function_def(
                 match args.entry(arg) {
                     // there's already an argument with this name
                     Entry::Occupied(e) => {
-                        return Err(ParserError::Argument {
+                        return Err(Error::Argument {
                             argument: e.remove_entry().0,
                             function: name,
                             span,
-                        }
-                        .into());
+                        });
                     }
                     Entry::Vacant(e) => e.insert(index),
                 };
@@ -204,7 +205,7 @@ fn parse_function_def(
             }
             // end of the arguments
             TokenKind::RightParen => break,
-            _ => return Err(ParserError::Token(token, span).into()),
+            _ => return Err(Error::Token(token, span)),
         }
     }
     expect_tag(tokens.next(), "=")?;
@@ -233,14 +234,14 @@ fn parse_point_list(
                 (Some(multiplier), ident)
             }
             TokenKind::Tag(ident) => (None, ident),
-            _ => return Err(ParserError::Token(token.kind, token.span).into()),
+            _ => return Err(Error::Token(token.kind, token.span)),
         };
         points.push(point);
         let Some(next) = tokens.next().transpose()? else {
             break;
         };
         if next.kind != TokenKind::Comma {
-            return Err(ParserError::Token(next.kind, next.span).into());
+            return Err(Error::Token(next.kind, next.span));
         }
     }
     Ok(points)
@@ -251,7 +252,7 @@ fn parse_route(mut tokens: impl Iterator<Item = TokenResult>) -> Result<Vec<Segm
     let mut start = expect_get_tag(tokens.next())?;
     while let Some(token) = tokens.next().transpose()? {
         expect_if(Some(Ok(token)), None, |tok| tok.as_tag() == Some("--"))?;
-        let token = tokens.next().ok_or(ParserError::EndOfInput)??;
+        let token = tokens.next().ok_or(Error::EndOfInput)??;
         let (offset, end) = match token.kind {
             TokenKind::LeftParen => {
                 let offset = parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
@@ -262,7 +263,7 @@ fn parse_route(mut tokens: impl Iterator<Item = TokenResult>) -> Result<Vec<Segm
                 // TODO: zero expression
                 (vec![], tag)
             }
-            _ => return Err(ParserError::Token(token.kind, token.span).into()),
+            _ => return Err(Error::Token(token.kind, token.span)),
         };
         let next = end.clone();
         route.push(Segment { start, end, offset });
@@ -324,7 +325,7 @@ fn parse_points_extend_statement(
     from: Variable,
     is_past: bool,
 ) -> Result<StatementKind> {
-    let token = tokens.next().ok_or(ParserError::EndOfInput)??;
+    let token = tokens.next().ok_or(Error::EndOfInput)??;
     let to = match token.kind {
         TokenKind::LeftParen => {
             let multiplier = parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens))?;
@@ -332,7 +333,7 @@ fn parse_points_extend_statement(
             (Some(multiplier), ident)
         }
         TokenKind::Tag(ident) => (None, ident),
-        _ => return Err(ParserError::Token(token.kind, token.span).into()),
+        _ => return Err(Error::Token(token.kind, token.span)),
     };
     expect_tag(tokens.next(), ":")?;
     let points = parse_point_list(tokens)?;
@@ -346,7 +347,7 @@ fn parse_points_extend_statement(
 
 fn parse_stop_statement(mut tokens: impl Iterator<Item = TokenResult>) -> Result<StatementKind> {
     let (styles, token) = parse_dot_list(&mut tokens)?;
-    let token = token.ok_or(ParserError::EndOfInput)?;
+    let token = token.ok_or(Error::EndOfInput)?;
     let point = parse_expression_until(iter::once(Ok(token)).chain(&mut tokens), |tok| {
         tok.as_tag() == Some("marker")
     })?;
@@ -368,22 +369,21 @@ fn parse_marker_params(
         match token.kind {
             TokenKind::Comma => {}
             TokenKind::Tag(tag) => {
-                let paren = tokens.next().ok_or(ParserError::EndOfInput)??;
+                let paren = tokens.next().ok_or(Error::EndOfInput)??;
                 let expr = parse_delimited_expression(iter::once(Ok(paren)).chain(&mut tokens))?;
                 match params.entry(tag) {
                     // there's already an argument with this name
                     Entry::Occupied(e) => {
-                        return Err(ParserError::Argument {
+                        return Err(Error::Argument {
                             argument: e.remove_entry().0,
                             function: "marker".into(),
                             span: token.span,
-                        }
-                        .into());
+                        });
                     }
                     Entry::Vacant(e) => e.insert(expr),
                 };
             }
-            _ => return Err(ParserError::Token(token.kind, token.span).into()),
+            _ => return Err(Error::Token(token.kind, token.span)),
         }
     }
     Ok(params)
@@ -396,12 +396,12 @@ fn expect_next_token<U>(
 ) -> Result<U> {
     let Token { kind, span } = token.ok_or({
         if let Some(span) = paren_span {
-            ParserError::Parentheses(span)
+            Error::Parentheses(span)
         } else {
-            ParserError::EndOfInput
+            Error::EndOfInput
         }
     })??;
-    pred(kind, span).map_err(|kind| ParserError::Token(kind, span).into())
+    pred(kind, span).map_err(|kind| Error::Token(kind, span))
 }
 
 fn expect_if(
@@ -443,12 +443,11 @@ mod tests {
 
     use crate::{
         expressions::tests::{b, dot, expression_full, u, var},
-        lexer::Lexer,
         operators::{COMMA, COMMA_UNARY, FN_CALL, FN_CALL_UNARY, PAREN_UNARY},
         statement::{StatementKind, Stop},
     };
 
-    use super::{parse_expression, parse_statement};
+    use super::{lexer::Lexer, parse_expression, parse_statement};
 
     macro_rules! assert_expression {
         ($text:expr, [$($expr:tt)*]) => {{
