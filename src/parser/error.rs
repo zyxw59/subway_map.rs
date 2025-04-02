@@ -13,10 +13,14 @@ pub enum Error {
     Token(TokenKind, Span<Position>),
     #[error("Unclosed parentheses starting at {0}")]
     Parentheses(Span<Position>),
-    #[error("Repeated argument {argument} to function {function} at {span}")]
+    #[error("Repeated argument {argument} in function definition at {span}")]
     Argument {
         argument: Variable,
-        function: Variable,
+        span: Span<Position>,
+    },
+    #[error("Repeated argument {argument} to marker at {span}")]
+    MarkerArgument {
+        argument: Variable,
         span: Span<Position>,
     },
     #[error(transparent)]
@@ -27,4 +31,17 @@ pub enum Error {
 pub enum LexerError {
     #[error("Unterminated string at {0}")]
     UnterminatedString(Position),
+}
+
+pub(super) trait ResultExt<T> {
+    fn or_push(self, errors: &mut Vec<Error>) -> Option<T>;
+}
+
+impl<T, E> ResultExt<T> for Result<T, E>
+where
+    Error: From<E>,
+{
+    fn or_push(self, errors: &mut Vec<Error>) -> Option<T> {
+        self.map_err(|err| errors.push(err.into())).ok()
+    }
 }

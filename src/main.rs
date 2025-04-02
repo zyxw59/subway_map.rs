@@ -38,7 +38,15 @@ fn main() -> Result<(), anyhow::Error> {
     } else {
         io::read_to_string(&mut io::stdin())?
     };
-    let statements = parser::parse(&input)?;
+    let statements = match parser::parse(&input) {
+        Ok(statements) => statements,
+        Err(errors) => {
+            for e in errors {
+                println!("{e}");
+            }
+            return Err(anyhow::anyhow!("failed to parse document"));
+        }
+    };
     let mut evaluator = evaluator::Evaluator::new();
     evaluator.evaluate_all(statements)?;
     if let Some(debug_output) = args.debug {
@@ -69,7 +77,7 @@ mod tests {
 
     fn test_example(input_file: impl AsRef<Path>) -> anyhow::Result<()> {
         let input = fs::read_to_string(input_file)?;
-        let statements = parse(&input)?;
+        let statements = parse(&input).unwrap();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(statements)?;
         let _document = evaluator.create_document()?;
