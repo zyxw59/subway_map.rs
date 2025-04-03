@@ -208,19 +208,17 @@ fn parse_function_def(
     errors: &mut Vec<Error>,
 ) -> Option<(Variable, Function)> {
     let name = expect_get_tag(tokens.next()).or_push(errors);
-    let (_, start_span) = expect_if(tokens.next(), None, |tok| {
+    let start_span = expect_if(tokens.next(), None, |tok| {
         matches!(tok, TokenKind::LeftParen)
     })
     .or_push(errors)
-    .unzip();
+    .map(|token| token.span);
     // maps argument names to their index in the function signature
     let mut args = HashMap::new();
     loop {
-        let (token, span) =
-            expect_next_token(tokens.next(), start_span, |token, span| Ok((token, span)))
-                .or_push(errors)?;
+        let token = expect_next_token(tokens.next(), start_span, Some).or_push(errors)?;
         let index = args.len();
-        match token {
+        match token.kind {
             // a named argument
             TokenKind::Tag(arg) => {
                 // insert the new argument into the hashmap
@@ -229,7 +227,7 @@ fn parse_function_def(
                     Entry::Occupied(e) => {
                         errors.push(Error::Argument {
                             argument: e.key().clone(),
-                            span,
+                            span: token.span,
                         });
                     }
                     Entry::Vacant(e) => {
@@ -240,10 +238,10 @@ fn parse_function_def(
                 // parse the whole (invalid) statement, but it's hard to tell what the proper
                 // recovery strategy here is.
                 let should_break =
-                    expect_next_token(tokens.next(), start_span, |tok, _| match tok {
-                        TokenKind::Comma => Ok(false),
-                        TokenKind::RightParen => Ok(true),
-                        _ => Err(tok),
+                    expect_next_token(tokens.next(), start_span, |token| match token.kind {
+                        TokenKind::Comma => Some(false),
+                        TokenKind::RightParen => Some(true),
+                        _ => None,
                     })
                     .or_push(errors)
                     .unwrap_or(false);
@@ -254,7 +252,7 @@ fn parse_function_def(
             // end of the arguments
             TokenKind::RightParen => break,
             _ => {
-                errors.push(Error::Token(token, span));
+                errors.push(Error::Token(token.kind, token.span));
                 return None;
             }
         }
@@ -372,11 +370,11 @@ fn parse_points_statement(
         To,
         Past,
     }
-    let kind = expect_next_token(tokens.next(), None, |tok, _| match tok.as_tag() {
-        Some("spaced") => Ok(PointsKind::Spaced),
-        Some("to") => Ok(PointsKind::To),
-        Some("past") => Ok(PointsKind::Past),
-        _ => Err(tok),
+    let kind = expect_next_token(tokens.next(), None, |token| match token.kind.as_tag() {
+        Some("spaced") => Some(PointsKind::Spaced),
+        Some("to") => Some(PointsKind::To),
+        Some("past") => Some(PointsKind::Past),
+        _ => None,
     })
     .or_push(errors)?;
     match kind {
@@ -404,11 +402,7 @@ fn parse_points_extend_statement(
     is_past: bool,
     errors: &mut Vec<Error>,
 ) -> Option<StatementKind> {
-    let token = tokens
-        .next()
-        .ok_or(Error::EndOfInput)
-        .or_push(errors)?
-        .or_push(errors)?;
+    let token = expect_next_token(tokens.next(), None, Some).or_push(errors)?;
     let to = match token.kind {
         TokenKind::LeftParen => {
             let multiplier =
@@ -460,13 +454,7 @@ fn parse_marker_params(
         match token.kind {
             TokenKind::Comma => {}
             TokenKind::Tag(tag) => {
-                let paren = tokens
-                    .next()
-                    .ok_or(Error::EndOfInput)
-                    .or_push(errors)?
-                    .or_push(errors)?;
-                let expr =
-                    parse_delimited_expression(iter::once(Ok(paren)).chain(&mut tokens), errors);
+                let expr = parse_delimited_expression(&mut tokens, errors);
                 match params.entry(tag) {
                     // there's already an argument with this name
                     Entry::Occupied(e) => {
@@ -491,43 +479,39 @@ fn parse_marker_params(
 fn expect_next_token<U>(
     token: Option<TokenResult>,
     paren_span: Option<Span>,
-    pred: impl FnOnce(TokenKind, Span) -> Result<U, TokenKind>,
+    pred: impl FnOnce(Token) -> Option<U>,
 ) -> Result<U> {
-    let Token { kind, span } = token.ok_or({
+    let token = token.ok_or({
         if let Some(span) = paren_span {
             Error::Parentheses(span)
         } else {
             Error::EndOfInput
         }
     })??;
-    pred(kind, span).map_err(|kind| Error::Token(kind, span))
+    pred(token.clone()).ok_or(Error::Token(token.kind, token.span))
 }
 
 fn expect_if(
     token: Option<TokenResult>,
     paren_span: Option<Span>,
     pred: impl FnOnce(&TokenKind) -> bool,
-) -> Result<(TokenKind, Span)> {
-    expect_next_token(token, paren_span, |tok, span| {
-        if pred(&tok) {
-            Ok((tok, span))
-        } else {
-            Err(tok)
-        }
+) -> Result<Token> {
+    expect_next_token(token, paren_span, |token| {
+        pred(&token.kind).then_some(token)
     })
 }
 
 fn expect_get_tag(token: Option<TokenResult>) -> Result<Variable> {
-    expect_next_token(token, None, |tok, _| match tok {
-        TokenKind::Tag(t) => Ok(t),
-        _ => Err(tok),
+    expect_next_token(token, None, |token| match token.kind {
+        TokenKind::Tag(t) => Some(t),
+        _ => None,
     })
 }
 
 fn expect_get_string(token: Option<TokenResult>) -> Result<String> {
-    expect_next_token(token, None, |tok, _| match tok {
-        TokenKind::String(s) => Ok(s),
-        _ => Err(tok),
+    expect_next_token(token, None, |token| match token.kind {
+        TokenKind::String(s) => Some(s),
+        _ => None,
     })
 }
 
