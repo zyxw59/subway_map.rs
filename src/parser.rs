@@ -115,13 +115,13 @@ fn parse_statement_kind(
                 "points" => parse_points_statement(tokens, errors),
                 // route
                 "route" => {
-                    let (styles, next) = parse_dot_list(&mut tokens).or_push(errors).unzip();
-                    let name = expect_get_tag(next.flatten().map(Ok)).or_push(errors);
+                    let (styles, next) = parse_dot_list(&mut tokens);
+                    let name = expect_get_tag(next).or_push(errors);
                     expect_tag(tokens.next(), ":").or_push(errors);
                     let segments = parse_route(tokens, errors);
                     Some(StatementKind::Route {
                         name: name?,
-                        styles: styles?,
+                        styles,
                         segments: segments?,
                     })
                 }
@@ -139,10 +139,10 @@ fn parse_statement_kind(
                 }
                 // other (variable assignment)
                 _ => {
-                    let (fields, next) = parse_dot_list(&mut tokens).or_push(errors).unzip();
-                    expect_tag(next.flatten().map(Ok), "=").or_push(errors);
+                    let (fields, next) = parse_dot_list(&mut tokens);
+                    expect_tag(next, "=").or_push(errors);
                     let expr = parse_expression(tokens, HashMap::new(), errors);
-                    Some(StatementKind::Variable(tag, fields?, expr?))
+                    Some(StatementKind::Variable(tag, fields, expr?))
                 }
             }
         }
@@ -345,18 +345,20 @@ fn parse_route(
 
 fn parse_dot_list(
     mut tokens: impl Iterator<Item = TokenResult>,
-) -> Result<(Vec<Variable>, Option<Token>)> {
+) -> (Vec<Variable>, Option<TokenResult>) {
     let mut list = Vec::new();
-    let mut next = None;
-    while let Some(token) = tokens.next().transpose()? {
+    loop {
+        let token = match tokens.next() {
+            Some(Ok(token)) => token,
+            Some(Err(e)) => return (list, Some(Err(e))),
+            None => return (list, None),
+        };
         if let TokenKind::DotTag(tag) = token.kind {
             list.push(tag);
         } else {
-            next = Some(token);
-            break;
+            return (list, Some(Ok(token)));
         }
     }
-    Ok((list, next))
 }
 
 fn parse_points_statement(
@@ -435,16 +437,15 @@ fn parse_stop_statement(
     mut tokens: impl Iterator<Item = TokenResult>,
     errors: &mut Vec<Error>,
 ) -> Option<StatementKind> {
-    let (styles, token) = parse_dot_list(&mut tokens).or_push(errors).unzip();
-    let token = token.flatten().ok_or(Error::EndOfInput).or_push(errors)?;
-    let point = parse_expression_until(iter::once(Ok(token)).chain(&mut tokens), errors, |tok| {
+    let (styles, token) = parse_dot_list(&mut tokens);
+    let point = parse_expression_until(token.into_iter().chain(&mut tokens), errors, |tok| {
         tok.as_tag() == Some("marker")
     });
     let marker_type = expect_get_tag(tokens.next()).or_push(errors);
     let marker_parameters = parse_marker_params(tokens, errors);
     Some(StatementKind::Stop(Stop {
         point: point?,
-        styles: styles?,
+        styles,
         marker_type: marker_type?,
         marker_parameters: marker_parameters?,
     }))
