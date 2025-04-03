@@ -208,15 +208,15 @@ fn parse_function_def(
     errors: &mut Vec<Error>,
 ) -> Option<(Variable, Function)> {
     let name = expect_get_tag(tokens.next()).or_push(errors);
-    let start_span = expect_if(tokens.next(), None, |tok| {
-        matches!(tok, TokenKind::LeftParen)
+    let start_span = expect_map(tokens.next(), None, |token| match token.kind {
+        TokenKind::LeftParen => Some(token.span),
+        _ => None,
     })
-    .or_push(errors)
-    .map(|token| token.span);
+    .or_push(errors);
     // maps argument names to their index in the function signature
     let mut args = HashMap::new();
     loop {
-        let token = expect_next_token(tokens.next(), start_span, Some).or_push(errors)?;
+        let token = expect(tokens.next(), start_span).or_push(errors)?;
         let index = args.len();
         match token.kind {
             // a named argument
@@ -238,7 +238,7 @@ fn parse_function_def(
                 // parse the whole (invalid) statement, but it's hard to tell what the proper
                 // recovery strategy here is.
                 let should_break =
-                    expect_next_token(tokens.next(), start_span, |token| match token.kind {
+                    expect_map(tokens.next(), start_span, |token| match token.kind {
                         TokenKind::Comma => Some(false),
                         TokenKind::RightParen => Some(true),
                         _ => None,
@@ -309,13 +309,8 @@ fn parse_route(
 ) -> Option<Vec<Segment>> {
     let mut route = Vec::new();
     let mut start = expect_get_tag(tokens.next()).or_push(errors);
-    while let Some(token) = tokens.next().transpose().or_push(errors)? {
-        expect_if(Some(Ok(token)), None, |tok| tok.as_tag() == Some("--")).or_push(errors);
-        let token = tokens
-            .next()
-            .ok_or(Error::EndOfInput)
-            .or_push(errors)?
-            .or_push(errors)?;
+    while expect_tag(tokens.next(), "--").or_push(errors).is_some() {
+        let token = expect(tokens.next(), None).or_push(errors)?;
         let offset_and_end = match token.kind {
             TokenKind::LeftParen => {
                 let offset =
@@ -363,14 +358,14 @@ fn parse_points_statement(
     mut tokens: impl Iterator<Item = TokenResult>,
     errors: &mut Vec<Error>,
 ) -> Option<StatementKind> {
-    expect_tag(tokens.next(), "from").or_push(errors)?;
-    let from = expect_get_tag(tokens.next()).or_push(errors)?;
+    expect_tag(tokens.next(), "from").or_push(errors);
+    let from = expect_get_tag(tokens.next()).or_push(errors);
     enum PointsKind {
         Spaced,
         To,
         Past,
     }
-    let kind = expect_next_token(tokens.next(), None, |token| match token.kind.as_tag() {
+    let kind = expect_map(tokens.next(), None, |token| match token.kind.as_tag() {
         Some("spaced") => Some(PointsKind::Spaced),
         Some("to") => Some(PointsKind::To),
         Some("past") => Some(PointsKind::Past),
@@ -384,7 +379,7 @@ fn parse_points_statement(
                 parse_expression_until(&mut tokens, errors, |tok| tok.as_tag() == Some(":"));
             let points = parse_point_list(tokens, errors);
             Some(StatementKind::PointSpaced {
-                from,
+                from: from?,
                 spaced: spaced?,
                 points,
             })
@@ -398,11 +393,11 @@ fn parse_points_statement(
 
 fn parse_points_extend_statement(
     mut tokens: impl Iterator<Item = TokenResult>,
-    from: Variable,
+    from: Option<Variable>,
     is_past: bool,
     errors: &mut Vec<Error>,
 ) -> Option<StatementKind> {
-    let token = expect_next_token(tokens.next(), None, Some).or_push(errors)?;
+    let token = expect(tokens.next(), None).or_push(errors)?;
     let to = match token.kind {
         TokenKind::LeftParen => {
             let multiplier =
@@ -420,7 +415,7 @@ fn parse_points_extend_statement(
     expect_tag(tokens.next(), ":").or_push(errors);
     let points = parse_point_list(tokens, errors);
     Some(StatementKind::PointExtend {
-        from,
+        from: from?,
         to: to?,
         points,
         is_past,
@@ -450,7 +445,7 @@ fn parse_marker_params(
     errors: &mut Vec<Error>,
 ) -> Option<HashMap<Variable, Expression>> {
     let mut params = HashMap::new();
-    while let Some(token) = tokens.next().transpose().or_push(errors)? {
+    while let Some(token) = expect(tokens.next(), None).or_push(errors) {
         match token.kind {
             TokenKind::Comma => {}
             TokenKind::Tag(tag) => {
@@ -476,48 +471,48 @@ fn parse_marker_params(
     Some(params)
 }
 
-fn expect_next_token<U>(
-    token: Option<TokenResult>,
-    paren_span: Option<Span>,
-    pred: impl FnOnce(Token) -> Option<U>,
-) -> Result<U> {
-    let token = token.ok_or({
+fn expect(token: Option<TokenResult>, paren_span: Option<Span>) -> Result<Token> {
+    token.transpose()?.ok_or({
         if let Some(span) = paren_span {
             Error::Parentheses(span)
         } else {
             Error::EndOfInput
         }
-    })??;
-    pred(token.clone()).ok_or(Error::Token(token.kind, token.span))
+    })
 }
 
-fn expect_if(
+fn expect_map<U>(
     token: Option<TokenResult>,
     paren_span: Option<Span>,
-    pred: impl FnOnce(&TokenKind) -> bool,
-) -> Result<Token> {
-    expect_next_token(token, paren_span, |token| {
-        pred(&token.kind).then_some(token)
-    })
+    map: impl FnOnce(&Token) -> Option<U>,
+) -> Result<U> {
+    let token = expect(token, paren_span)?;
+    map(&token).ok_or(Error::Token(token.kind, token.span))
 }
 
 fn expect_get_tag(token: Option<TokenResult>) -> Result<Variable> {
-    expect_next_token(token, None, |token| match token.kind {
-        TokenKind::Tag(t) => Some(t),
-        _ => None,
-    })
+    let token = expect(token, None)?;
+    match token.kind {
+        TokenKind::Tag(t) => Ok(t),
+        _ => Err(Error::Token(token.kind, token.span)),
+    }
 }
 
 fn expect_get_string(token: Option<TokenResult>) -> Result<String> {
-    expect_next_token(token, None, |token| match token.kind {
-        TokenKind::String(s) => Some(s),
-        _ => None,
-    })
+    let token = expect(token, None)?;
+    match token.kind {
+        TokenKind::String(s) => Ok(s),
+        _ => Err(Error::Token(token.kind, token.span)),
+    }
 }
 
 fn expect_tag(token: Option<TokenResult>, tag: &str) -> Result<()> {
-    expect_if(token, None, |tok| tok.as_tag() == Some(tag))?;
-    Ok(())
+    let token = expect(token, None)?;
+    if token.kind.as_tag() == Some(tag) {
+        Ok(())
+    } else {
+        Err(Error::Token(token.kind, token.span))
+    }
 }
 
 #[cfg(test)]
