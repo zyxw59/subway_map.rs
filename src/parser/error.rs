@@ -2,7 +2,7 @@ use std::fmt;
 
 use thiserror::Error;
 
-use super::{Position, Span, TokenKind, Variable};
+use super::{Position, Span};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -28,7 +28,7 @@ impl fmt::Display for Errors<'_> {
             // TODO: these could be formatted nicer probably
             match err {
                 Error::EndOfInput => f.write_str("Unexpected end of input\n")?,
-                Error::Token(_, span) => writeln!(
+                Error::Token(span) => writeln!(
                     f,
                     "Unexpected token {:?} at {}",
                     self.index(*span),
@@ -37,13 +37,13 @@ impl fmt::Display for Errors<'_> {
                 Error::Parentheses(span) => {
                     writeln!(f, "Unclosed parentheses starting at {}", span.start)?
                 }
-                Error::Argument { span, .. } => writeln!(
+                Error::Argument(span) => writeln!(
                     f,
                     "Repeated argument {:?} in function definition at {}",
                     self.index(*span),
                     span
                 )?,
-                Error::MarkerArgument { span, .. } => writeln!(
+                Error::MarkerArgument(span) => writeln!(
                     f,
                     "Repeated argument {:?} to marker at {}",
                     self.index(*span),
@@ -59,10 +59,10 @@ impl fmt::Display for Errors<'_> {
 #[derive(Debug)]
 pub enum Error {
     EndOfInput,
-    Token(TokenKind, Span),
+    Token(Span),
     Parentheses(Span),
-    Argument { argument: Variable, span: Span },
-    MarkerArgument { argument: Variable, span: Span },
+    Argument(Span),
+    MarkerArgument(Span),
     Lexer(LexerError),
 }
 

@@ -79,7 +79,7 @@ pub fn parse_statement(
             for err in &mut errors[errors_start..] {
                 // handle unexpected end of input caused by semicolons
                 if let (Error::EndOfInput, Some(span)) = (&err, semicolon) {
-                    *err = Error::Token(TokenKind::Semicolon, span)
+                    *err = Error::Token(span)
                 }
             }
             continue;
@@ -150,7 +150,7 @@ fn parse_statement_kind(
         TokenKind::Semicolon => None,
         // other token; unexpected
         _ => {
-            errors.push(Error::Token(initial_token.kind, initial_token.span));
+            errors.push(Error::Token(initial_token.span));
             None
         }
     }
@@ -224,11 +224,8 @@ fn parse_function_def(
                 // insert the new argument into the hashmap
                 match args.entry(arg) {
                     // there's already an argument with this name
-                    Entry::Occupied(e) => {
-                        errors.push(Error::Argument {
-                            argument: e.key().clone(),
-                            span: token.span,
-                        });
+                    Entry::Occupied(_) => {
+                        errors.push(Error::Argument(token.span));
                     }
                     Entry::Vacant(e) => {
                         e.insert(index);
@@ -252,7 +249,7 @@ fn parse_function_def(
             // end of the arguments
             TokenKind::RightParen => break,
             _ => {
-                errors.push(Error::Token(token.kind, token.span));
+                errors.push(Error::Token(token.span));
                 return None;
             }
         }
@@ -286,7 +283,7 @@ fn parse_point_list(
             }
             TokenKind::Tag(ident) => Some((None, ident)),
             _ => {
-                errors.push(Error::Token(token.kind, token.span));
+                errors.push(Error::Token(token.span));
                 None
             }
         };
@@ -297,7 +294,7 @@ fn parse_point_list(
             break;
         };
         if next.kind != TokenKind::Comma {
-            errors.push(Error::Token(next.kind, next.span));
+            errors.push(Error::Token(next.span));
         }
     }
     points
@@ -324,7 +321,7 @@ fn parse_route(
                 Some((vec![], tag))
             }
             _ => {
-                errors.push(Error::Token(token.kind, token.span));
+                errors.push(Error::Token(token.span));
                 None
             }
         };
@@ -409,7 +406,7 @@ fn parse_points_extend_statement(
         }
         TokenKind::Tag(ident) => Some((None, ident)),
         _ => {
-            errors.push(Error::Token(token.kind, token.span));
+            errors.push(Error::Token(token.span));
             None
         }
     };
@@ -453,11 +450,8 @@ fn parse_marker_params(
                 let expr = parse_delimited_expression(&mut tokens, errors);
                 match params.entry(tag) {
                     // there's already an argument with this name
-                    Entry::Occupied(e) => {
-                        errors.push(Error::MarkerArgument {
-                            argument: e.key().clone(),
-                            span: token.span,
-                        });
+                    Entry::Occupied(_) => {
+                        errors.push(Error::MarkerArgument(token.span));
                     }
                     Entry::Vacant(e) => {
                         if let Some(expr) = expr {
@@ -466,7 +460,7 @@ fn parse_marker_params(
                     }
                 };
             }
-            _ => errors.push(Error::Token(token.kind, token.span)),
+            _ => errors.push(Error::Token(token.span)),
         }
     }
     Some(params)
@@ -488,14 +482,14 @@ fn expect_map<U>(
     map: impl FnOnce(&Token) -> Option<U>,
 ) -> Result<U> {
     let token = expect(token, paren_span)?;
-    map(&token).ok_or(Error::Token(token.kind, token.span))
+    map(&token).ok_or(Error::Token(token.span))
 }
 
 fn expect_get_tag(token: Option<TokenResult>) -> Result<Variable> {
     let token = expect(token, None)?;
     match token.kind {
         TokenKind::Tag(t) => Ok(t),
-        _ => Err(Error::Token(token.kind, token.span)),
+        _ => Err(Error::Token(token.span)),
     }
 }
 
@@ -503,7 +497,7 @@ fn expect_get_string(token: Option<TokenResult>) -> Result<String> {
     let token = expect(token, None)?;
     match token.kind {
         TokenKind::String(s) => Ok(s),
-        _ => Err(Error::Token(token.kind, token.span)),
+        _ => Err(Error::Token(token.span)),
     }
 }
 
@@ -512,7 +506,7 @@ fn expect_tag(token: Option<TokenResult>, tag: &str) -> Result<()> {
     if token.kind.as_tag() == Some(tag) {
         Ok(())
     } else {
-        Err(Error::Token(token.kind, token.span))
+        Err(Error::Token(token.span))
     }
 }
 
