@@ -309,7 +309,8 @@ fn parse_route(
 ) -> Option<Vec<Segment>> {
     let mut route = Vec::new();
     let mut start = expect_get_tag(tokens.next()).or_push(errors);
-    while expect_tag(tokens.next(), "--").or_push(errors).is_some() {
+    while let Some(token) = tokens.next().or_push(errors) {
+        expect_tag(Some(Ok(token)), "--").or_push(errors);
         let token = expect(tokens.next(), None).or_push(errors)?;
         let offset_and_end = match token.kind {
             TokenKind::LeftParen => {
@@ -445,7 +446,7 @@ fn parse_marker_params(
     errors: &mut Vec<Error>,
 ) -> Option<HashMap<Variable, Expression>> {
     let mut params = HashMap::new();
-    while let Some(token) = expect(tokens.next(), None).or_push(errors) {
+    while let Some(token) = tokens.next().or_push(errors) {
         match token.kind {
             TokenKind::Comma => {}
             TokenKind::Tag(tag) => {

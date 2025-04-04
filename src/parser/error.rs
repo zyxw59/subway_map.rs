@@ -45,3 +45,12 @@ where
         self.map_err(|err| errors.push(err.into())).ok()
     }
 }
+
+impl<T, E> ResultExt<T> for Option<Result<T, E>>
+where
+    Error: From<E>,
+{
+    fn or_push(self, errors: &mut Vec<Error>) -> Option<T> {
+        self.and_then(|res| res.or_push(errors))
+    }
+}
