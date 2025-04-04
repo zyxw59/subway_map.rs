@@ -341,7 +341,7 @@ impl EvaluationContext for () {
 mod tests {
     use crate::{
         parser::parse,
-        values::{Point, Value},
+        values::{tests::value, Point, Value},
     };
 
     use super::{EvaluationContext, Evaluator};

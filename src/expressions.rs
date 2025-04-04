@@ -62,102 +62,68 @@ pub enum Term {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use expr_parser::expression::ExpressionKind;
-
     use crate::{
-        expressions::Term,
+        expressions::{ExpressionBit, Term},
         operators::{BinaryOperator, UnaryOperator},
     };
 
-    macro_rules! expression_map {
-        ($id:ident => $mapped:expr; $($x:expr),* $(,)?) => {
-            [$({
-                let $id = ::expr_parser::expression::ExpressionKind::from(
-                    $crate::expressions::tests::Expr::from($x),
-                );
-                $mapped
-            }),*]
-        };
+    pub type Expr = expr_parser::expression::ExpressionKind<BinaryOperator, UnaryOperator, Term>;
+
+    pub fn expression_full<const N: usize>(expr: [Expr; N]) -> [ExpressionBit; N] {
+        use crate::parser::{Position, Span};
+        expr.map(|kind| ExpressionBit {
+            kind,
+            span: Span::new(Position::default()..Position::default()),
+        })
     }
 
-    macro_rules! expression {
-        ($($x:expr),* $(,)?) => {
-            $crate::expressions::tests::expression_map!(expr => expr; $($x),*)
-        };
-    }
-
-    macro_rules! expression_full {
-        ($($x:expr),* $(,)?) => {
-            $crate::expressions::tests::expression_map!(kind => ::expr_parser::expression::Expression {
-                kind,
-                span: ::expr_parser::Span::new(
-                    $crate::parser::Position::default()..$crate::parser::Position::default()
-                ),
-            }; $($x),*)
-        };
-    }
-
-    pub(crate) use {expression, expression_full, expression_map};
-
-    pub enum Expr {
-        Term(Term),
-        UnaryOperator(UnaryOperator),
-        BinaryOperator(BinaryOperator),
-    }
-
-    impl From<Expr> for ExpressionKind<BinaryOperator, UnaryOperator, Term> {
-        fn from(expr: Expr) -> Self {
-            match expr {
-                Expr::Term(t) => Self::Term(t),
-                Expr::UnaryOperator(u) => Self::UnaryOperator(u),
-                Expr::BinaryOperator(b) => Self::BinaryOperator(b),
-            }
-        }
-    }
-
-    impl From<f64> for Expr {
+    impl From<f64> for Term {
         fn from(x: f64) -> Self {
-            Self::Term(Term::Number(x))
+            Term::Number(x)
         }
     }
 
-    impl From<i32> for Expr {
+    impl From<i32> for Term {
         fn from(x: i32) -> Self {
-            Self::Term(Term::Number(x as _))
+            Term::Number(x as _)
         }
     }
 
-    impl From<BinaryOperator> for Expr {
-        fn from(op: BinaryOperator) -> Self {
-            Self::BinaryOperator(op)
-        }
-    }
-
-    impl From<UnaryOperator> for Expr {
-        fn from(op: UnaryOperator) -> Self {
-            Self::UnaryOperator(op)
-        }
-    }
-
-    impl From<&str> for Expr {
+    impl From<&str> for Term {
         fn from(s: &str) -> Self {
-            Self::Term(Term::String(s.into()))
+            Term::String(s.into())
         }
     }
 
-    pub fn b(s: &str) -> Expr {
-        Expr::BinaryOperator(BinaryOperator::get(s).unwrap().1)
+    impl From<&str> for UnaryOperator {
+        fn from(s: &str) -> Self {
+            Self::get(s).unwrap().1
+        }
     }
 
-    pub fn u(s: &str) -> Expr {
-        Expr::UnaryOperator(UnaryOperator::get(s).unwrap().1)
+    impl From<&str> for BinaryOperator {
+        fn from(s: &str) -> Self {
+            Self::get(s).unwrap().1
+        }
     }
 
     pub fn var(s: &str) -> Expr {
         Expr::Term(Term::Variable(s.into()))
     }
 
+    pub fn t(t: impl Into<Term>) -> Expr {
+        Expr::Term(t.into())
+    }
+
+    pub fn u(u: impl Into<UnaryOperator>) -> Expr {
+        Expr::UnaryOperator(u.into())
+    }
+
     pub fn dot(s: &str) -> Expr {
         Expr::UnaryOperator(UnaryOperator::FieldAccess(s.into()))
+    }
+
+    pub fn b(b: impl Into<BinaryOperator>) -> Expr {
+        Expr::BinaryOperator(b.into())
     }
 }

@@ -520,316 +520,191 @@ fn expect_tag(token: Option<TokenResult>, tag: &str) -> Result<()> {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::{
-        expressions::tests::{b, dot, expression_full, u, var},
-        operators::{COMMA, COMMA_UNARY, FN_CALL, FN_CALL_UNARY, PAREN_UNARY},
-        statement::{StatementKind, Stop},
-    };
+    use test_case::test_case;
 
     use super::{lexer::Lexer, parse_expression, parse_statement};
+    use crate::{
+        expressions::tests::{b, dot, expression_full, t, u, var, Expr},
+        operators::{COMMA, COMMA_UNARY, FN_CALL, FN_CALL_UNARY, PAREN_UNARY},
+        statement::{Segment, StatementKind, Stop},
+    };
 
-    macro_rules! assert_expression {
-        ($text:expr, [$($expr:tt)*]) => {{
-            let mut errors = Vec::new();
-            let result = parse_expression(Lexer::new($text), HashMap::new(), &mut errors)
-                .ok_or(errors)
-                .unwrap()
-                .into_iter()
-                .map(|expr| expr.kind)
-                .collect::<Vec<_>>();
-            assert_eq!(result, crate::expressions::tests::expression!($($expr)*));
-        }};
+    #[test_case("1+2*3+4", [t(1), t(2), t(3), b("*"), b("+"), t(4), b("+")]; "basic arithmetic")]
+    #[test_case("1-2*3+4", [t(1), t(2), t(3), b("*"), b("-"), t(4), b("+")]; "basic arithmetic 2")]
+    #[test_case("1-3/2*5", [t(1), t(3), t(2), b("/"), t(5), b("*"), b("-")]; "basic arithmetic 3")]
+    #[test_case("3++4", [t(3), t(4), b("++")]; "hypot")]
+    #[test_case("5+-+3", [t(5), t(3), b("+-+")]; "hypot_sub")]
+    #[test_case("3^4^5", [t(3), t(4), t(5), b("^"), b("^")]; "pow")]
+    #[test_case("(1+2)*3+4", [t(1), t(2), b("+"), u(PAREN_UNARY), t(3), b("*"), t(4), b("+")]; "parentheses")]
+    #[test_case("(1,2) + (3,4)", [t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("+")]; "points")]
+    #[test_case("(1, 2,)", [t(1), t(2), b(COMMA), u(COMMA_UNARY), u(PAREN_UNARY)]; "trailing comma")]
+    #[test_case("angle (3, 3)", [t(3), t(3), b(COMMA), u(PAREN_UNARY), u("angle")]; "angle")]
+    #[test_case("3* -2", [t(3), t(2), u("-"), b("*")]; "unary minus")]
+    #[test_case("-(1,2)*3", [t(1), t(2), b(COMMA), u(PAREN_UNARY), u("-"), t(3), b("*")]; "unary minus 2")]
+    #[test_case("3*x", [t(3), var("x"), b("*")]; "variable")]
+    #[test_case("3*x.y", [t(3), var("x"), dot("y"), b("*")]; "dotted variable")]
+    #[test_case(r#""foobar""#, [t("foobar")]; "string")]
+    #[test_case("a() + b(1) + c(2, 3)", [var("a"), u(FN_CALL_UNARY), var("b"), t(1), b(FN_CALL), b("+"), var("c"), t(2), t(3), b(COMMA), b(FN_CALL), b("+")]; "function call")]
+    fn expression<const N: usize>(input: &str, expected: [Expr; N]) {
+        let mut errors = Vec::new();
+        let result = parse_expression(Lexer::new(input), HashMap::new(), &mut errors)
+            .ok_or(errors)
+            .unwrap()
+            .into_iter()
+            .map(|expr| expr.kind)
+            .collect::<Vec<_>>();
+        assert_eq!(result, expected.map(Into::into));
     }
 
-    #[test]
-    fn basic_arithmetic() {
-        assert_expression!("1+2*3+4", [1, 2, 3, b("*"), b("+"), 4, b("+")]);
+    fn segment<const N: usize>(start: &str, end: &str, offset: [Expr; N]) -> Segment {
+        Segment {
+            start: start.into(),
+            end: end.into(),
+            offset: expression_full(offset).into(),
+        }
     }
 
-    #[test]
-    fn basic_arithmetic_2() {
-        assert_expression!("1-2*3+4", [1, 2, 3, b("*"), b("-"), 4, b("+")]);
-    }
-
-    #[test]
-    fn basic_arithmetic_3() {
-        assert_expression!("1-3/2*5", [1, 3, 2, b("/"), 5, b("*"), b("-")]);
-    }
-
-    #[test]
-    fn hypot() {
-        assert_expression!("3++4", [3, 4, b("++")]);
-    }
-
-    #[test]
-    fn hypot_sub() {
-        assert_expression!("5+-+3", [5, 3, b("+-+")]);
-    }
-
-    #[test]
-    fn pow() {
-        assert_expression!("3^4^5", [3, 4, 5, b("^"), b("^")]);
-    }
-
-    #[test]
-    fn parentheses() {
-        assert_expression!(
-            "(1+2)*3+4",
-            [1, 2, b("+"), PAREN_UNARY, 3, b("*"), 4, b("+")]
+    #[test_case(
+        "a = b",
+        StatementKind::Variable(
+            "a".into(),
+            Vec::new(),
+            expression_full([var("b")]).into()
         );
-    }
-
-    #[test]
-    fn points() {
-        assert_expression!(
-            "(1,2) + (3,4)",
-            [1, 2, COMMA, PAREN_UNARY, 3, 4, COMMA, PAREN_UNARY, b("+")]
+        "variable assignment"
+    )]
+    #[test_case(
+        "a.b = c",
+        StatementKind::Variable(
+            "a".into(),
+            vec!["b".into()],
+            expression_full([var("c")]).into()
         );
-    }
-
-    #[test]
-    fn trailing_comma() {
-        assert_expression!("(1, 2,)", [1, 2, COMMA, COMMA_UNARY, PAREN_UNARY]);
-    }
-
-    #[test]
-    fn dot_product() {
-        assert_expression!(
-            "(1,2) * (3,4)",
-            [1, 2, COMMA, PAREN_UNARY, 3, 4, COMMA, PAREN_UNARY, b("*")]
-        );
-    }
-
-    #[test]
-    fn scalar_product() {
-        assert_expression!("3 * (1,2)", [3, 1, 2, COMMA, PAREN_UNARY, b("*")]);
-    }
-
-    #[test]
-    fn angle() {
-        assert_expression!("angle (3, 3)", [3, 3, COMMA, PAREN_UNARY, u("angle")]);
-    }
-
-    #[test]
-    fn unary_minus() {
-        assert_expression!("3* -2", [3, 2, u("-"), b("*")]);
-    }
-
-    #[test]
-    fn unary_minus_2() {
-        assert_expression!(
-            "-(1,2)*(3,4)",
-            [
-                1,
-                2,
-                COMMA,
-                PAREN_UNARY,
-                u("-"),
-                3,
-                4,
-                COMMA,
-                PAREN_UNARY,
-                b("*"),
-            ]
-        );
-    }
-
-    #[test]
-    fn variable() {
-        assert_expression!("3*x", [3, var("x"), b("*")]);
-    }
-
-    #[test]
-    fn dotted_variable() {
-        assert_expression!("3*x.y", [3, var("x"), dot("y"), b("*")]);
-    }
-
-    #[test]
-    fn string() {
-        assert_expression!(r#""foobar""#, ["foobar"]);
-    }
-
-    #[test]
-    fn function_call() {
-        assert_expression!(
-            "a() + b(1) + c(2, 3)",
-            [
-                var("a"),
-                FN_CALL_UNARY,
-                var("b"),
-                1,
-                FN_CALL,
-                b("+"),
-                var("c"),
-                2,
-                3,
-                COMMA,
-                FN_CALL,
-                b("+"),
-            ]
-        )
-    }
-
-    macro_rules! assert_statement {
-        ($text:expr, $statement:expr) => {{
-            let result = parse_statement(Lexer::new($text), &mut Vec::new()).unwrap();
-            assert_eq!(result.statement, $statement);
-        }};
-    }
-
-    #[test]
-    fn variable_assignment() {
-        assert_statement!(
-            "a = b",
-            StatementKind::Variable("a".into(), Vec::new(), expression_full![var("b")].into())
-        );
-    }
-
-    #[test]
-    fn dotted_variable_assignment() {
-        assert_statement!(
-            "a.b = c",
-            StatementKind::Variable(
-                "a".into(),
-                vec!["b".into()],
-                expression_full![var("c")].into()
-            )
-        );
-    }
-
-    #[test]
-    fn point_single() {
-        assert_statement!(
-            "point a = b",
-            StatementKind::PointSingle("a".into(), expression_full![var("b")].into())
-        );
-    }
-
-    #[test]
-    fn points_spaced() {
-        assert_statement!(
-            "points from a spaced x: (1/2) b, c, (1/2) d",
-            StatementKind::PointSpaced {
-                from: "a".into(),
-                spaced: expression_full![var("x")].into(),
-                points: vec![
-                    (
-                        Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
-                        "b".into()
-                    ),
-                    (None, "c".into()),
-                    (
-                        Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
-                        "d".into()
-                    ),
-                ],
-            }
-        );
-    }
-
-    #[test]
-    fn points_between() {
-        assert_statement!(
-            "points from a to (1/2) d: (1/2) b, c",
-            StatementKind::PointExtend {
-                from: "a".into(),
-                to: (
-                    Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
+        "dotted variable assignment"
+    )]
+    #[test_case(
+        "point a = b",
+        StatementKind::PointSingle("a".into(), expression_full([var("b")]).into());
+        "point single"
+    )]
+    #[test_case(
+        "points from a spaced x: (1/2) b, c, (1/2) d",
+        StatementKind::PointSpaced {
+            from: "a".into(),
+            spaced: expression_full([var("x")]).into(),
+            points: vec![
+                (
+                    Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
+                    "b".into()
+                ),
+                (None, "c".into()),
+                (
+                    Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
                     "d".into()
                 ),
-                points: vec![
-                    (
-                        Some(expression_full![1, 2, b("/"), PAREN_UNARY].into()),
-                        "b".into()
-                    ),
-                    (None, "c".into()),
-                ],
-                is_past: false,
-            }
-        );
-    }
-
-    #[test]
-    fn route() {
-        assert_statement!(
-            "route red: a --(1) b --(1) c",
-            StatementKind::Route {
-                styles: vec![],
-                name: "red".into(),
-                segments: vec![
-                    segment!("a", "b", [1, PAREN_UNARY]),
-                    segment!("b", "c", [1, PAREN_UNARY]),
-                ],
-            }
-        )
-    }
-
-    #[test]
-    fn route_with_style() {
-        assert_statement!(
-            "route.narrow red: a --(1) b --(1) c",
-            StatementKind::Route {
-                styles: vec!["narrow".into()],
-                name: "red".into(),
-                segments: vec![
-                    segment!("a", "b", [1, PAREN_UNARY]),
-                    segment!("b", "c", [1, PAREN_UNARY]),
-                ],
-            }
-        )
-    }
-
-    #[test]
-    fn stop() {
-        assert_statement!(
-            r#"stop a marker circle r(10)"#,
-            StatementKind::Stop(Stop {
-                styles: vec![],
-                point: expression_full![var("a")].into(),
-                marker_type: "circle".into(),
-                marker_parameters: [("r".into(), expression_full![10, PAREN_UNARY].into())]
-                    .into_iter()
-                    .collect(),
-            })
-        )
-    }
-
-    #[test]
-    fn stop_with_style() {
-        assert_statement!(
-            r#"stop.terminus a marker double_tick length(20), angle(45)"#,
-            StatementKind::Stop(Stop {
-                styles: vec!["terminus".into()],
-                point: expression_full![var("a")].into(),
-                marker_type: "double_tick".into(),
-                marker_parameters: [
-                    ("length".into(), expression_full![20, PAREN_UNARY].into()),
-                    ("angle".into(), expression_full![45, PAREN_UNARY].into())
-                ]
+            ],
+        };
+        "points spaced"
+    )]
+    #[test_case(
+        "points from a to (1/2) d: (1/2) b, c",
+        StatementKind::PointExtend {
+            from: "a".into(),
+            to: (
+                Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
+                "d".into()
+            ),
+            points: vec![
+                (
+                    Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
+                    "b".into()
+                ),
+                (None, "c".into()),
+            ],
+            is_past: false,
+        };
+        "points between"
+    )]
+    #[test_case(
+        "route red: a --(1) b --(1) c",
+        StatementKind::Route {
+            styles: vec![],
+            name: "red".into(),
+            segments: vec![
+                segment("a", "b", [t(1), u(PAREN_UNARY)]),
+                segment("b", "c", [t(1), u(PAREN_UNARY)]),
+            ],
+        };
+        "route"
+    )]
+    #[test_case(
+        "route.narrow red: a --(1) b --(1) c",
+        StatementKind::Route {
+            styles: vec!["narrow".into()],
+            name: "red".into(),
+            segments: vec![
+                segment("a", "b", [t(1), u(PAREN_UNARY)]),
+                segment("b", "c", [t(1), u(PAREN_UNARY)]),
+            ],
+        };
+        "route with style"
+    )]
+    #[test_case(
+        r#"stop a marker circle r(10)"#,
+        StatementKind::Stop(Stop {
+            styles: vec![],
+            point: expression_full([var("a")]).into(),
+            marker_type: "circle".into(),
+            marker_parameters: [("r".into(), expression_full([t(10), u(PAREN_UNARY)]).into())]
                 .into_iter()
                 .collect(),
-            })
-        )
-    }
-
-    #[test]
-    fn stop_with_text() {
-        assert_statement!(
-            r#"stop.terminus a marker text text("A station") angle(0)"#,
-            StatementKind::Stop(Stop {
-                styles: vec!["terminus".into()],
-                point: expression_full![var("a")].into(),
-                marker_type: "text".into(),
-                marker_parameters: [
-                    (
-                        "text".into(),
-                        expression_full!["A station", PAREN_UNARY].into()
-                    ),
-                    ("angle".into(), expression_full![0, PAREN_UNARY].into())
-                ]
-                .into_iter()
-                .collect(),
-            })
-        )
+        });
+        "stop"
+    )]
+    #[test_case(
+        r#"stop.terminus a marker double_tick length(20), angle(45)"#,
+        StatementKind::Stop(Stop {
+            styles: vec!["terminus".into()],
+            point: expression_full([var("a")]).into(),
+            marker_type: "double_tick".into(),
+            marker_parameters: [
+                (
+                    "length".into(),
+                    expression_full([t(20), u(PAREN_UNARY)]).into()
+                ),
+                (
+                    "angle".into(),
+                    expression_full([t(45), u(PAREN_UNARY)]).into()
+                )
+            ]
+            .into_iter()
+            .collect(),
+        });
+        "stop with style"
+    )]
+    #[test_case(
+        r#"stop.terminus a marker text text("A station") angle(0)"#,
+        StatementKind::Stop(Stop {
+            styles: vec!["terminus".into()],
+            point: expression_full([var("a")]).into(),
+            marker_type: "text".into(),
+            marker_parameters: [
+                (
+                    "text".into(),
+                    expression_full([t("A station"), u(PAREN_UNARY)]).into()
+                ),
+                (
+                    "angle".into(),
+                    expression_full([t(0), u(PAREN_UNARY)]).into()
+                )
+            ]
+            .into_iter()
+            .collect(),
+        });
+        "stop with text"
+    )]
+    fn statement(input: &str, expected: StatementKind) {
+        let result = parse_statement(Lexer::new(input), &mut Vec::new()).unwrap();
+        assert_eq!(result.statement, expected);
     }
 }

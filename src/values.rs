@@ -681,183 +681,99 @@ fn vector_parallel_float_eq(v1: Point, v2: Point) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use test_case::test_case;
+
     use crate::{
         evaluator::evaluate_expression,
-        expressions::tests::{b, u},
+        expressions::tests::{b, expression_full, t, u, Expr},
         operators::{COMMA, PAREN_UNARY},
+        values::Value,
     };
 
-    macro_rules! assert_eval {
-        ([$($expr:expr),*$(,)?], $($val:tt)*) => {{
-            let expr = crate::expressions::tests::expression_full![$($expr),*];
-            assert_eq!(evaluate_expression(&(), expr).unwrap(), value!($($val)*));
-        }};
+    macro_rules! value {
+        (($x:expr, $y:expr)) => {
+            value!($x, $y)
+        };
+        (($x:expr, $y:expr, $id:expr)) => {
+            value!($x, $y, $id)
+        };
+        ($x:expr) => {
+            $crate::values::Value::Number($x as f64)
+        };
+        ($x:expr, $y:expr) => {
+            $crate::values::Value::Point(
+                $crate::values::Point($x as f64, $y as f64),
+                $crate::values::PointProvenance::None,
+            )
+        };
+        ($x:expr, $y:expr, $id:expr) => {
+            $crate::values::Value::Point(
+                $crate::values::Point($x as f64, $y as f64),
+                $crate::values::PointProvenance::Named($id),
+            )
+        };
+        (($x1:expr, $y1:expr) -> ($x2:expr, $y2:expr)) => {
+            $crate::values::Value::Line(
+                $crate::values::Point($x1 as f64, $y1 as f64),
+                $crate::values::Point(($x2 - $x1) as f64, ($y2 - $y1) as f64),
+                None,
+            )
+        };
+        (@$s:expr) => {
+            $crate::values::Value::String(std::rc::Rc::new($s.into()))
+        };
     }
 
-    #[test]
-    fn basic_arithmetic() {
-        // 1 + 2 * 3 + 4 == 11
-        assert_eval!([1, 2, 3, b("*"), b("+"), 4, b("+")], 11)
-    }
+    pub(crate) use value;
 
-    #[test]
-    fn basic_arithmetic_2() {
-        // 1 - 2 * 3 + 4 == -1
-        assert_eval!([1, 2, 3, b("*"), b("-"), 4, b("+")], -1);
-    }
-
-    #[test]
-    fn basic_arithmetic_3() {
-        // 1 - 3 / 2 * 5 == -6.5
-        assert_eval!([1, 3, 2, b("/"), 5, b("*"), b("-")], -6.5);
-    }
-
-    #[test]
-    fn hypot() {
-        // 3 ++ 4 == 5
-        assert_eval!([3, 4, b("++")], 5);
-    }
-
-    #[test]
-    fn hypot_sub() {
-        // 5 +-+ 3 == 4
-        assert_eval!([5, 3, b("+-+")], 4);
-    }
-
-    #[test]
-    fn pow() {
-        // 3 ^ 4 == 81
-        assert_eval!([3, 4, b("^")], 81);
-    }
-
-    #[test]
-    fn points() {
-        // (1, 2) + (3, 4) == (4, 6)
-        assert_eval!(
-            [1, 2, COMMA, PAREN_UNARY, 3, 4, COMMA, PAREN_UNARY, b("+")],
-            (4, 6)
+    // 1 + 2 * 3 + 4 == 11
+    #[test_case([t(1), t(2), t(3), b("*"), b("+"), t(4), b("+")], value!(11); "basic arithmetic")]
+    // 1 - 2 * 3 + 4 == -1
+    #[test_case([t(1), t(2), t(3), b("*"), b("-"), t(4), b("+")], value!(-1); "basic arithmetic 2")]
+    // 1 - 3 / 2 * 5 == -6.5
+    #[test_case([t(1), t(3), t(2), b("/"), t(5), b("*"), b("-")], value!(-6.5); "basic arithmetic 3")]
+    // 3 ++ 4 == 5
+    #[test_case([t(3), t(4), b("++")], value!(5); "hypot")]
+    // 5 +-+ 3 == 4
+    #[test_case([t(5), t(3), b("+-+")], value!(4); "hypot sub")]
+    // 3 ^ 4 == 81
+    #[test_case([t(3), t(4), b("^")], value!(81); "pow")]
+    // (1, 2) + (3, 4) == (4, 6)
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("+")], value!(4, 6); "vector addition")]
+    // (1, 2) * (3, 4) == 11
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], value!(11); "dot product")]
+    // 3 * (1, 2) == (3, 6)
+    #[test_case([t(3), t(1), t(2), b(COMMA), u(PAREN_UNARY), b("*")], value!(3, 6); "scalar product")]
+    // angle (3, 3) == 45
+    #[test_case([t(3), t(3), b(COMMA), u(PAREN_UNARY), u("angle")], value!(45); "angle")]
+    // 3 * - 2 == -6
+    #[test_case([t(3), t(2), u("-"), b("*")], value!(-6); "unary minus")]
+    // - 2 * 3 == -6
+    #[test_case([t(2), u("-"), t(3), b("*")], value!(-6); "unary minus 2")]
+    // -(1, 2) * (3, 4) == -11
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), u("-"), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], value!(-11); "unary minus 3")]
+    // cos 90 == 0
+    #[test_case([t(90), u("cos")], value!(0); "unary cos")]
+    // sin 90 == 1
+    #[test_case([t(90), u("sin")], value!(1); "unary sin")]
+    // (1, 2) <> (3, 4) & (1, 4) <> (3, 2) == (2, 3)
+    #[test_case([
+        t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
+        t(1), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(2), b(COMMA), u(PAREN_UNARY), b("<>"), b("&")
+    ], value!(2, 3); "intersect")]
+    // (0, 0) <> (3, 4) ^^ 5 == (4, -3) -> (7, 1)
+    #[test_case([t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"), t(5), b("^^")], value!((4, -3) -> (7, 1)); "offset")]
+    // (2, 4) min (3, 1) == (2, 1)
+    #[test_case([t(2), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(1), b(COMMA), u(PAREN_UNARY), b("min")], value!(2, 1); "min")]
+    // "foo" + "bar" == "foobar"
+    #[test_case([t("foo"), t("bar"), b("+")], value!(@"foobar"); "string concat")]
+    // "a" max "b" == "b"
+    #[test_case([t("a"), t("b"), b("max")], value!(@"b"); "string max")]
+    fn eval<const N: usize>(expression: [Expr; N], expected: Value) {
+        assert_eq!(
+            evaluate_expression(&(), expression_full(expression)).unwrap(),
+            expected
         );
-    }
-
-    #[test]
-    fn dot_product() {
-        // (1, 2) * (3, 4) == 11
-        assert_eval!(
-            [1, 2, COMMA, PAREN_UNARY, 3, 4, COMMA, PAREN_UNARY, b("*")],
-            11
-        );
-    }
-
-    #[test]
-    fn scalar_product() {
-        // 3 * (1, 2) == (3, 6)
-        assert_eval!([3, 1, 2, COMMA, PAREN_UNARY, b("*")], (3, 6));
-    }
-
-    #[test]
-    fn angle() {
-        // angle (3, 3) == 45
-        assert_eval!([3, 3, COMMA, PAREN_UNARY, u("angle")], 45);
-    }
-
-    #[test]
-    fn unary_minus() {
-        // 3 * -2 == -6
-        assert_eval!([3, 2, u("-"), b("*")], -6);
-    }
-
-    #[test]
-    fn unary_minus_2() {
-        // -2 * 3 == -6
-        assert_eval!([2, u("-"), 3, b("*")], -6);
-    }
-
-    #[test]
-    fn unary_minus_3() {
-        // -(1, 2) * (3, 4) == -11
-        assert_eval!(
-            [
-                1,
-                2,
-                COMMA,
-                PAREN_UNARY,
-                u("-"),
-                3,
-                4,
-                COMMA,
-                PAREN_UNARY,
-                b("*")
-            ],
-            -11
-        );
-    }
-
-    #[test]
-    fn unary_cos() {
-        // cos 90 == 0
-        assert_eval!([90, u("cos")], 0);
-    }
-
-    #[test]
-    fn unary_sin() {
-        // sin 90 == 1
-        assert_eval!([90, u("sin")], 1);
-    }
-
-    #[test]
-    fn intersect() {
-        // (1, 2) <> (3, 4) & (1, 4) <> (3, 2) == (2, 3)
-        assert_eval!(
-            [
-                1,
-                2,
-                COMMA,
-                PAREN_UNARY,
-                3,
-                4,
-                COMMA,
-                PAREN_UNARY,
-                b("<>"),
-                1,
-                4,
-                COMMA,
-                PAREN_UNARY,
-                3,
-                2,
-                COMMA,
-                PAREN_UNARY,
-                b("<>"),
-                b("&")
-            ],
-            (2, 3)
-        )
-    }
-
-    #[test]
-    fn offset() {
-        // (0, 0) <> (3, 4) ^^ 5 == (4, -3) -> (7, 1)
-        assert_eval!([0, 0, COMMA, PAREN_UNARY, 3, 4, COMMA, PAREN_UNARY, b("<>"), 5, b("^^")], (4, -3) -> (7, 1))
-    }
-
-    #[test]
-    fn min() {
-        // (2, 4) min (3, 1) == (2, 1)
-        assert_eval!(
-            [2, 4, COMMA, PAREN_UNARY, 3, 1, COMMA, PAREN_UNARY, b("min")],
-            (2, 1)
-        )
-    }
-
-    #[test]
-    fn string_concat() {
-        // "foo" + "bar" == "foobar"
-        assert_eval!(["foo", "bar", b("+")], @"foobar");
-    }
-
-    #[test]
-    fn string_max() {
-        // "a" max "b" == "b"
-        assert_eval!(["a", "b", b("max")], @"b");
     }
 }

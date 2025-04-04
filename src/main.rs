@@ -4,8 +4,6 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-#[macro_use]
-mod macros;
 mod corner;
 mod document;
 mod error;
