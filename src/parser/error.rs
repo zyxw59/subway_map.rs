@@ -1,30 +1,75 @@
-use expr_parser::Span;
+use std::fmt;
+
 use thiserror::Error;
 
-use super::{Position, TokenKind, Variable};
+use super::{Position, Span, TokenKind, Variable};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
+pub struct Errors<'a> {
+    input: &'a str,
+    errors: Vec<Error>,
+}
+
+impl<'a> Errors<'a> {
+    pub(super) fn new(input: &'a str, errors: Vec<Error>) -> Self {
+        Self { input, errors }
+    }
+
+    fn index(&self, span: Span) -> &'a str {
+        &self.input[span.start.byte_idx..span.end.byte_idx]
+    }
+}
+
+impl fmt::Display for Errors<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for err in &self.errors {
+            // TODO: these could be formatted nicer probably
+            match err {
+                Error::EndOfInput => f.write_str("Unexpected end of input\n")?,
+                Error::Token(_, span) => writeln!(
+                    f,
+                    "Unexpected token {:?} at {}",
+                    self.index(*span),
+                    span.start
+                )?,
+                Error::Parentheses(span) => {
+                    writeln!(f, "Unclosed parentheses starting at {}", span.start)?
+                }
+                Error::Argument { span, .. } => writeln!(
+                    f,
+                    "Repeated argument {:?} in function definition at {}",
+                    self.index(*span),
+                    span
+                )?,
+                Error::MarkerArgument { span, .. } => writeln!(
+                    f,
+                    "Repeated argument {:?} to marker at {}",
+                    self.index(*span),
+                    span
+                )?,
+                Error::Lexer(err) => writeln!(f, "{err}")?,
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub enum Error {
-    #[error("Unexpected end of input")]
     EndOfInput,
-    #[error("Unexpected token {0:?} at {1}")]
-    Token(TokenKind, Span<Position>),
-    #[error("Unclosed parentheses starting at {0}")]
-    Parentheses(Span<Position>),
-    #[error("Repeated argument {argument} in function definition at {span}")]
-    Argument {
-        argument: Variable,
-        span: Span<Position>,
-    },
-    #[error("Repeated argument {argument} to marker at {span}")]
-    MarkerArgument {
-        argument: Variable,
-        span: Span<Position>,
-    },
-    #[error(transparent)]
-    Lexer(#[from] LexerError),
+    Token(TokenKind, Span),
+    Parentheses(Span),
+    Argument { argument: Variable, span: Span },
+    MarkerArgument { argument: Variable, span: Span },
+    Lexer(LexerError),
+}
+
+impl From<LexerError> for Error {
+    fn from(error: LexerError) -> Error {
+        Error::Lexer(error)
+    }
 }
 
 #[derive(Error, Debug)]

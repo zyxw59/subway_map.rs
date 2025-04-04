@@ -36,15 +36,7 @@ fn main() -> Result<(), anyhow::Error> {
     } else {
         io::read_to_string(&mut io::stdin())?
     };
-    let statements = match parser::parse(&input) {
-        Ok(statements) => statements,
-        Err(errors) => {
-            for e in errors {
-                println!("{e}");
-            }
-            return Err(anyhow::anyhow!("failed to parse document"));
-        }
-    };
+    let statements = parser::parse(&input).map_err(|err| anyhow::anyhow!("{err}"))?;
     let mut evaluator = evaluator::Evaluator::new();
     evaluator.evaluate_all(statements)?;
     if let Some(debug_output) = args.debug {

@@ -14,22 +14,22 @@ mod error;
 mod expression;
 mod lexer;
 
-pub use error::{Error, LexerError};
+pub use error::{Error, Errors, LexerError};
 use error::{Result, ResultExt};
 use lexer::{Lexer, Token, TokenKind};
 
 type TokenResult = Result<Token, LexerError>;
 
-pub fn parse(source: &str) -> Result<Vec<Statement>, Vec<Error>> {
+pub fn parse(input: &str) -> Result<Vec<Statement>, Errors<'_>> {
     use itertools::Itertools;
     let mut errors = Vec::new();
-    let statements = Lexer::new(source)
+    let statements = Lexer::new(input)
         .batching(|tokens| parse_statement(tokens, &mut errors))
         .collect();
     if errors.is_empty() {
         Ok(statements)
     } else {
-        Err(errors)
+        Err(Errors::new(input, errors))
     }
 }
 
