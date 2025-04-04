@@ -3,13 +3,16 @@ use std::collections::HashMap;
 use expr_parser::{
     operator::Fixity,
     parser::{self, Element, ParserElement, Postfix, Prefix},
+    ParseError,
 };
 
-use super::lexer::TokenKind;
+use super::{error::LexerError, lexer::TokenKind, Position};
 use crate::{
     expressions::{Term, Variable},
     operators::{self, BinaryOperator, Precedence, UnaryOperator},
 };
+
+pub type ExpressionError = ParseError<UnexpectedToken, LexerError, Position>;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Delimiter {
@@ -22,11 +25,8 @@ impl expr_parser::parser::Delimiter for Delimiter {
     }
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Unexpected token: {0:?}")]
-    UnexpectedToken(TokenKind),
-}
+#[derive(Debug)]
+pub struct UnexpectedToken;
 
 #[derive(Clone, Default)]
 pub struct Parser {
@@ -45,7 +45,7 @@ impl parser::Parser<TokenKind> for Parser {
     type BinaryOperator = BinaryOperator;
     type UnaryOperator = UnaryOperator;
     type Term = Term;
-    type Error = Error;
+    type Error = UnexpectedToken;
 
     fn parse_token(&self, token: TokenKind) -> Result<ParserElement<Self, TokenKind>, Self::Error> {
         Ok(match token {
@@ -124,7 +124,7 @@ impl parser::Parser<TokenKind> for Parser {
                 },
             },
             TokenKind::Semicolon => {
-                return Err(Error::UnexpectedToken(token));
+                return Err(UnexpectedToken);
             }
         })
     }

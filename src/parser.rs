@@ -165,7 +165,7 @@ pub fn parse_expression(
     state.extend(tokens);
     state
         .finish()
-        .map_err(|es| errors.extend(es.errors.into_iter().map(|e| panic!("{e}"))))
+        .map_err(|es| errors.extend(es.errors.into_iter().map(Error::from)))
         .ok()
 }
 
@@ -196,7 +196,7 @@ fn parse_delimited_expression(
     }
     state
         .finish()
-        .map_err(|es| errors.extend(es.errors.into_iter().map(|e| panic!("{e}"))))
+        .map_err(|es| errors.extend(es.errors.into_iter().map(Error::from)))
         .ok()
 }
 

@@ -2,7 +2,7 @@ use std::fmt;
 
 use thiserror::Error;
 
-use super::{Position, Span};
+use super::{expression::ExpressionError, Position, Span};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -69,6 +69,24 @@ pub enum Error {
 impl From<LexerError> for Error {
     fn from(error: LexerError) -> Error {
         Error::Lexer(error)
+    }
+}
+
+impl From<ExpressionError> for Error {
+    fn from(error: ExpressionError) -> Self {
+        use super::expression::UnexpectedToken;
+        use expr_parser::ParseErrorKind as E;
+        match error.kind {
+            E::EndOfInput { .. } => Error::EndOfInput,
+            E::UnexpectedToken { .. } => Error::Token(error.span),
+            // TODO: mismatched delimiter
+            E::MismatchedDelimiter { .. } => Error::Token(error.span),
+            // TODO: unmatche right delimiter
+            E::UnmatchedRightDelimiter => Error::Token(error.span),
+            E::UnmatchedLeftDelimiter => Error::Parentheses(error.span),
+            E::Parser(UnexpectedToken) => Error::Token(error.span),
+            E::Tokenizer(lexer_error) => lexer_error.into(),
+        }
     }
 }
 
