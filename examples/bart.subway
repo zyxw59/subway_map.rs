@@ -4,7 +4,7 @@
 # these variables have special meaning:
 # line_sep determines the separation between the centers of parallel lines
 # to define a style for thinner lines (e.g. for a different mode), use
-# `{style}.fake`, where `{style}` is the name of the style.
+# `{style}.line_sep`, where `{style}` is the name of the style.
 # To access a style you've defined in this way, use `line.{style}` when
 # defining a line.
 line_sep = 10;
