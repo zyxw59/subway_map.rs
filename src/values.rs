@@ -55,7 +55,12 @@ impl Point {
         Point(self.1, -self.0)
     }
 
+    pub fn dot(self, other: Point) -> f64 {
+        self * other
+    }
+
     /// Positive if `other` is clockwise of `self`.
+    /// Equal to `self.dot(other.perp())`
     pub fn cross(self, other: Point) -> f64 {
         self.0 * other.1 - self.1 * other.0
     }
@@ -165,6 +170,14 @@ impl ops::Deref for UnitVector {
 
     fn deref(&self) -> &Point {
         &self.0
+    }
+}
+
+impl ops::Neg for UnitVector {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self(-self.0)
     }
 }
 

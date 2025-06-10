@@ -16,6 +16,7 @@ mod document;
 mod error;
 pub mod evaluator;
 mod expressions;
+mod intermediate_representation;
 pub mod lexer;
 mod operators;
 pub mod parser;
