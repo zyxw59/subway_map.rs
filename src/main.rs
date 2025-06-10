@@ -1,3 +1,8 @@
+#![allow(
+    clippy::needless_lifetimes,
+    clippy::redundant_guards,
+    clippy::legacy_numeric_constants
+)]
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
