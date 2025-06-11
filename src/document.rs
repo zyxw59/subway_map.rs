@@ -1,7 +1,9 @@
 use svg::node::{
-    element::{Definitions, Group, Path, Style, Title, Use, SVG},
+    element::{Definitions, Group, Style, Title, Use, SVG},
     Node, Text,
 };
+
+use crate::intermediate_representation::Path;
 
 #[derive(Debug)]
 pub struct Document {
@@ -22,22 +24,24 @@ impl Document {
         self.title.append(Text::new(title));
     }
 
-    pub fn add_route(&mut self, id: &str, style: &str, path: Path) {
-        self.routes_def.append(path);
+    pub fn add_route(&mut self, path: Path) {
+        let id = &path.name;
+        let style = &path.style;
+        self.routes_def.append(path.to_svg());
         self.routes_use.append(
             Use::new()
-                .set("href", format!("#route-{}", id))
-                .set("class", format!("route bg {} {}", id, style)),
+                .set("href", format!("#route-{id}"))
+                .set("class", format!("route bg {id} {style}")),
         );
         self.routes_use.append(
             Use::new()
-                .set("href", format!("#route-{}", id))
-                .set("class", format!("route mg {} {}", id, style)),
+                .set("href", format!("#route-{id}"))
+                .set("class", format!("route mg {id} {style}")),
         );
         self.routes_use.append(
             Use::new()
-                .set("href", format!("#route-{}", id))
-                .set("class", format!("route fg {} {}", id, style)),
+                .set("href", format!("#route-{id}"))
+                .set("class", format!("route fg {id} {style}")),
         );
     }
 

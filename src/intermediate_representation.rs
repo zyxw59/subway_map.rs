@@ -1,10 +1,34 @@
-use svg::node::element::path::Data;
+use svg::node::element::{path::Data, Path as SvgPath};
 
 use crate::values::{Point, UnitVector};
 
 #[derive(Clone, Debug)]
 pub struct Path {
     pub operations: Vec<Operation>,
+    pub name: String,
+    pub style: String,
+}
+
+impl Path {
+    pub fn new(name: String, style: String) -> Self {
+        Self {
+            name,
+            style,
+            operations: Vec::new(),
+        }
+    }
+
+    pub fn to_svg(&self) -> SvgPath {
+        SvgPath::new()
+            .set("id", format!("route-{}", self.name))
+            .set("class", format!("route {}", self.style))
+            .set(
+                "d",
+                self.operations
+                    .iter()
+                    .fold(Data::new(), |data, op| op.to_svg(data)),
+            )
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -40,12 +64,8 @@ impl Operation {
     pub fn to_svg(self, data: Data) -> Data {
         let base_point = self.point + self.kind.base_point_offset();
         match self.kind {
-            OperationKind::Start { .. } => {
-                data.move_to(base_point)
-            }
-            OperationKind::End { .. } => {
-                data.line_to(base_point)
-            }
+            OperationKind::Start { .. } => data.move_to(base_point),
+            OperationKind::End { .. } => data.line_to(base_point),
             OperationKind::Corner {
                 direction_in,
                 direction_out,
@@ -68,17 +88,18 @@ impl Operation {
                 direction,
                 offset_in,
                 offset_out,
+                ..
             } => {
                 let sweep = offset_in < -offset_out;
                 let radius = offset_in + offset_out;
-                data.line_to(direction.perp().mul_add(offset_in, self.point))
+                data.line_to(direction.perp().mul_add(offset_in, base_point))
                     .elliptical_arc_to((
                         radius,
                         radius,
                         0,
                         0,
                         sweep as u8,
-                        (-direction.perp()).mul_add(offset_out, self.point),
+                        (-direction.perp()).mul_add(offset_out, base_point),
                     ))
             }
             OperationKind::Shift {
@@ -123,6 +144,7 @@ pub enum OperationKind {
         direction: UnitVector,
         offset_in: f64,
         offset_out: f64,
+        longitudinal: f64,
     },
     Shift {
         direction: UnitVector,
@@ -153,7 +175,7 @@ impl OperationKind {
                     offset_in,
                 )
             }
-            OperationKind::UTurn { .. } => Point(0.0, 0.0),
+            OperationKind::UTurn { direction, longitudinal, .. } => longitudinal * *direction,
             OperationKind::Shift {
                 direction,
                 longitudinal_in,
