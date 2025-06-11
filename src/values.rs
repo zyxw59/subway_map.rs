@@ -58,12 +58,17 @@ impl Point {
 
     /// Rotates `self` 90 degrees clockwise.
     pub fn perp(self) -> Point {
-        Point(self.1, -self.0)
+        Point(-self.1, self.0)
     }
 
-    /// Positive if `other` is clockwise of `self`.
+    pub fn dot(self, other: Point) -> f64 {
+        self * other
+    }
+
+    /// Positive if `self` is clockwise of `other`.
+    /// Equal to `self.dot(other.perp())`
     pub fn cross(self, other: Point) -> f64 {
-        self.0 * other.1 - self.1 * other.0
+        self.dot(other.perp())
     }
 
     /// Fused multiply-add. Computes `(self * a) + b with only one rounding error, yielding a more
@@ -150,7 +155,8 @@ impl ops::Div<f64> for Point {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(transparent)]
 pub struct UnitVector(Point);
 
 impl UnitVector {
@@ -171,6 +177,14 @@ impl ops::Deref for UnitVector {
 
     fn deref(&self) -> &Point {
         &self.0
+    }
+}
+
+impl ops::Neg for UnitVector {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self(-self.0)
     }
 }
 
@@ -276,15 +290,15 @@ impl PartialEq for PointProvenance {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub enum Value {
     Number(f64),
-    Point(Point, PointProvenance),
+    Point(Point, #[serde(skip)] PointProvenance),
     Line(Point, Point, Option<(PointId, PointId)>),
     String(Rc<String>),
     List(Rc<Vec<Value>>),
     Struct(Rc<HashMap<Variable, Value>>),
-    Function(crate::expressions::Function),
+    Function(#[serde(skip)] crate::expressions::Function),
 }
 
 impl Value {

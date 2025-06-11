@@ -1,0 +1,17 @@
+style "bart.css";
+line_sep = 30;
+narrow.line_sep = 15;
+inner_radius = 10;
+
+point A = (0, 0);
+point B = A + 100 * dir 270;
+points from B spaced 100 * dir 180: C, D;
+points from A spaced 100 * dir 0: E, F;
+
+top = ypart F - 100;
+bottom = ypart D + 100;
+left = xpart B - 100;
+right = xpart A + 100;
+
+route.narrow yellow: F --(0) A --(0) B --(0) C;
+route.narrow red: E --(1) A --(1) B --(1) D;

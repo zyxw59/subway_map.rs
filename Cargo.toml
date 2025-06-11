@@ -11,7 +11,7 @@ expr-parser = { git = "https://github.com/zyxw59/expr-parser", version = "0.1.0"
 float_eq = "1.0.1"
 itertools = "0.13"
 regex-syntax = "0.8"
-serde = { version = "1.0.195", features = ["derive"] }
+serde = { version = "1.0.195", features = ["derive", "rc"] }
 serde_json = "1.0.111"
 smol_str = { version = "0.2.2", features = ["serde"] }
 svg = "0.17"

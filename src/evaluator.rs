@@ -6,14 +6,14 @@ use std::{
 use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
 
 use crate::{
-    document::Document,
     error::{Error, MathError, Result},
     expressions::{ExpressionBit, Term, Variable},
+    intermediate_representation::Document,
     operators::{BinaryOperator, UnaryOperator},
     parser::Position,
     points::PointCollection,
     statement::{Statement, StatementKind},
-    stops::{Stop, StopCollection},
+    stops::Stop,
     values::{Point, PointProvenance, Value},
 };
 
@@ -72,7 +72,7 @@ const INNER_RADIUS: Variable = Variable::new_static("inner_radius");
 pub struct Evaluator {
     variables: HashMap<Variable, Value>,
     points: PointCollection,
-    stops: StopCollection,
+    stops: Vec<Stop>,
     stylesheets: Vec<String>,
     title: Option<String>,
 }
@@ -272,19 +272,17 @@ impl Evaluator {
         serde_json::to_writer_pretty(file, &self.points).map_err(Into::into)
     }
 
-    pub fn create_document(&self) -> Result<Document> {
-        let mut document = Document::new();
-        if let Some(ref title) = self.title {
-            document.set_title(title);
+    pub fn into_document(self) -> Document {
+        Document {
+            view_box: self.view_box(),
+            title: self.title,
+            stylesheets: self.stylesheets,
+            routes: self.points.routes(),
+            stops: self.stops,
         }
-        document.add_stylesheets(&self.stylesheets);
-        self.set_view_box(&mut document);
-        self.draw_routes(&mut document);
-        self.draw_stops(&mut document)?;
-        Ok(document)
     }
 
-    pub fn set_view_box(&self, document: &mut Document) {
+    fn view_box(&self) -> (f64, f64, f64, f64) {
         let top = self
             .get_variable("top")
             .and_then(Value::into_number)
@@ -301,15 +299,7 @@ impl Evaluator {
             .get_variable("right")
             .and_then(Value::into_number)
             .unwrap_or(0.0);
-        document.set_view_box(top, left, bottom, right);
-    }
-
-    pub fn draw_routes(&self, document: &mut Document) {
-        self.points.draw_routes(document);
-    }
-
-    pub fn draw_stops(&self, document: &mut Document) -> Result<()> {
-        self.stops.draw(document)
+        (top, left, bottom, right)
     }
 }
 
