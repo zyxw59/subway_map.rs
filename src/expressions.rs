@@ -52,6 +52,13 @@ pub type Variable = SmolStr;
 pub type ExpressionBit = expression::Expression<Position, BinaryOperator, UnaryOperator, Term>;
 pub type Expression = Vec<ExpressionBit>;
 
+pub fn zero_expression(span: crate::parser::Span) -> Expression {
+    vec![ExpressionBit {
+        span,
+        kind: expression::ExpressionKind::Term(Term::Number(0.0)),
+    }]
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {
     Number(f64),

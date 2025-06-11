@@ -6,7 +6,7 @@ use std::{
 use expr_parser::parser::ParseState;
 
 use crate::{
-    expressions::{Expression, Function, Variable},
+    expressions::{zero_expression, Expression, Function, Variable},
     statement::{Segment, Statement, StatementKind, Stop},
 };
 
@@ -316,10 +316,7 @@ fn parse_route(
                 let end = expect_get_tag(tokens.next()).or_push(errors);
                 offset.zip(end)
             }
-            TokenKind::Tag(tag) => {
-                // TODO: zero expression
-                Some((vec![], tag))
-            }
+            TokenKind::Tag(tag) => Some((zero_expression(token.span), tag)),
             _ => {
                 errors.push(Error::Token(token.span));
                 None
