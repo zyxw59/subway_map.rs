@@ -593,12 +593,12 @@ impl PointCollection {
         let line_in = &self[(start_id, corner_id)];
         let line_out = &self[(corner_id, end_id)];
         let (reverse_in, seg_in) = line_in.get_segment(start, corner);
-        let (reverse_out, seg_out) = line_out.get_segment(corner, end);
+        let (reverse_out, seg_out) = line_out.get_segment(end, corner);
 
         let transverse_in =
             seg_in.calculate_offset(segment_in.offset, reverse_in, self.default_width);
         let transverse_out =
-            seg_out.calculate_offset(segment_out.offset, reverse_out, self.default_width);
+            seg_out.calculate_offset(segment_out.offset, !reverse_out, self.default_width);
 
         let (long_in, long_out) = calculate_longitudinal_offsets(
             (start.value - corner.value).unit(),
