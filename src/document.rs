@@ -24,7 +24,7 @@ impl Document {
         self.title.append(Text::new(title));
     }
 
-    pub fn add_route(&mut self, path: Path) {
+    pub fn add_route(&mut self, path: &Path) {
         let id = &path.name;
         let style = &path.style;
         self.routes_def.append(path.to_svg());
@@ -51,7 +51,7 @@ impl Document {
         self.stops.append(stop);
     }
 
-    pub fn set_view_box(&mut self, top: f64, left: f64, bottom: f64, right: f64) {
+    pub fn set_view_box(&mut self, (top, left, bottom, right): (f64, f64, f64, f64)) {
         self.view_box = (left, top, right - left, bottom - top)
     }
 

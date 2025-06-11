@@ -331,6 +331,18 @@ impl PointCollection {
         Ok(())
     }
 
+    pub fn routes(&self) -> Vec<Path> {
+        let mut route_corners = HashMap::new();
+        for route in &self.routes {
+            self.extend_route_corners(route, &mut route_corners);
+        }
+
+        self.routes
+            .iter()
+            .map(|route| self.route_to_path(route, &route_corners))
+            .collect()
+    }
+
     pub fn draw_routes(&self, document: &mut Document) {
         let mut route_corners = HashMap::new();
         for route in &self.routes {
@@ -339,7 +351,7 @@ impl PointCollection {
 
         for route in &self.routes {
             let path = self.route_to_path(route, &route_corners);
-            document.add_route(path);
+            document.add_route(&path);
         }
     }
 

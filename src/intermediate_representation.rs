@@ -1,6 +1,37 @@
-use svg::node::element::{path::Data, Path as SvgPath};
+use svg::node::element::{path::Data, Path as SvgPath, SVG};
 
-use crate::values::{Point, UnitVector};
+use crate::{
+    error::EvaluatorError,
+    stops::Stop,
+    values::{Point, UnitVector},
+};
+
+#[derive(Debug)]
+pub struct Document {
+    pub title: Option<String>,
+    pub view_box: (f64, f64, f64, f64),
+    pub stylesheets: Vec<String>,
+    pub routes: Vec<Path>,
+    pub stops: Vec<Stop>,
+}
+
+impl Document {
+    pub fn to_svg(&self) -> Result<SVG, EvaluatorError> {
+        let mut document = crate::document::Document::new();
+        if let Some(title) = &self.title {
+            document.set_title(title);
+        }
+        document.add_stylesheets(&self.stylesheets);
+        document.set_view_box(self.view_box);
+        for route in &self.routes {
+            document.add_route(route);
+        }
+        for stop in &self.stops {
+            stop.draw(&mut document)?;
+        }
+        Ok(document.compile())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Path {
@@ -175,7 +206,11 @@ impl OperationKind {
                     offset_in,
                 )
             }
-            OperationKind::UTurn { direction, longitudinal, .. } => longitudinal * *direction,
+            OperationKind::UTurn {
+                direction,
+                longitudinal,
+                ..
+            } => longitudinal * *direction,
             OperationKind::Shift {
                 direction,
                 longitudinal_in,

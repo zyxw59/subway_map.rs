@@ -65,8 +65,8 @@ fn main() -> Result<(), anyhow::Error> {
     } else {
         Box::new(io::stdout())
     };
+    let document = evaluator.into_document();
     write!(output, r#"<?xml version="1.0" encoding="utf-8" ?>"#)?;
-    svg::write(&mut output, &evaluator.create_document()?.compile())
-        .map_err(error::EvaluatorError::Io)?;
+    svg::write(&mut output, &document.to_svg()?).map_err(error::EvaluatorError::Io)?;
     Ok(())
 }

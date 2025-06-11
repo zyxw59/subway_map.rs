@@ -116,24 +116,6 @@ impl Stop {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct StopCollection {
-    pub stops: Vec<Stop>,
-}
-
-impl StopCollection {
-    pub fn push(&mut self, stop: Stop) {
-        self.stops.push(stop);
-    }
-
-    pub fn draw(&self, document: &mut Document) -> Result<(), EvaluatorError> {
-        for stop in &self.stops {
-            stop.draw(document)?;
-        }
-        Ok(())
-    }
-}
-
 macro_rules! anchor_enum {
     ($(#[$attrs:meta])*
      $vis:vis enum $ty_name:ident {
