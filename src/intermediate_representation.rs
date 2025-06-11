@@ -1,6 +1,7 @@
 use svg::node::element::{path::Data, Path as SvgPath, SVG};
 
 use crate::{
+    corner::{calculate_longitudinal_offsets, calculate_tan_half_angle},
     error::EvaluatorError,
     stops::Stop,
     values::{Point, UnitVector},
@@ -201,11 +202,13 @@ impl OperationKind {
                 offset_out,
                 ..
             } => {
-                let cross = direction_out.cross(*direction_in);
-                direction_in.basis(
-                    direction_in.dot(direction_out.basis(offset_in * cross, offset_out)),
+                let (longitudinal_in, _) = calculate_longitudinal_offsets(
+                    direction_in,
+                    direction_out,
                     offset_in,
-                )
+                    offset_out,
+                );
+                direction_in.basis(longitudinal_in, offset_in)
             }
             OperationKind::UTurn {
                 direction,
@@ -220,11 +223,4 @@ impl OperationKind {
             } => *direction * (longitudinal_out - longitudinal_in),
         }
     }
-}
-
-/// Calculate `|tan(θ/2)|`, where `θ` is the angle formed by the two vectors.
-#[inline]
-pub fn calculate_tan_half_angle(in_dir: UnitVector, out_dir: UnitVector) -> f64 {
-    let cos = in_dir.dot(*out_dir);
-    ((1.0 - cos) / (1.0 + cos)).sqrt()
 }
