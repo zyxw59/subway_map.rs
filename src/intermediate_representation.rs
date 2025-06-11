@@ -73,7 +73,7 @@ impl Operation {
                 ..
             } => {
                 let arc_width = radius / calculate_tan_half_angle(-direction_in, direction_out);
-                let cross = direction_out.cross(*direction_in);
+                let cross = direction_in.cross(*direction_out);
                 data.line_to(direction_in.mul_add(-arc_width, base_point))
                     .elliptical_arc_to((
                         radius,

@@ -52,17 +52,17 @@ impl Point {
 
     /// Rotates `self` 90 degrees clockwise.
     pub fn perp(self) -> Point {
-        Point(self.1, -self.0)
+        Point(-self.1, self.0)
     }
 
     pub fn dot(self, other: Point) -> f64 {
         self * other
     }
 
-    /// Positive if `other` is clockwise of `self`.
+    /// Positive if `self` is clockwise of `other`.
     /// Equal to `self.dot(other.perp())`
     pub fn cross(self, other: Point) -> f64 {
-        self.0 * other.1 - self.1 * other.0
+        self.dot(other.perp())
     }
 
     /// Fused multiply-add. Computes `(self * a) + b with only one rounding error, yielding a more

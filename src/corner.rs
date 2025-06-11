@@ -17,7 +17,7 @@ pub fn calculate_longitudinal_offsets(
     transverse_out: f64,
 ) -> (f64, f64) {
     // positive if in_dir is clockwise of out_dir
-    let sin = out_dir.cross(*in_dir);
+    let sin = in_dir.cross(*out_dir);
     let cos = *in_dir * *out_dir;
     let transverse_in = -transverse_in;
     (
