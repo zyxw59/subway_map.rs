@@ -17,7 +17,7 @@ pub struct Document {
 
 impl Document {
     pub fn to_svg(&self) -> Result<SVG, EvaluatorError> {
-        let mut document = crate::document::Document::new();
+        let mut document = crate::svg::Document::new();
         if let Some(title) = &self.title {
             document.set_title(title);
         }
@@ -27,7 +27,7 @@ impl Document {
             document.add_route(route);
         }
         for stop in &self.stops {
-            stop.draw(&mut document)?;
+            document.add_stop(stop.to_svg()?);
         }
         Ok(document.compile())
     }

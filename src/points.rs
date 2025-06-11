@@ -9,7 +9,6 @@ mod line;
 mod route_corner;
 
 use crate::corner::{calculate_longitudinal_offsets, calculate_tan_half_angle};
-use crate::document::Document;
 use crate::error::{EvaluatorError, MathError};
 use crate::expressions::Variable;
 use crate::intermediate_representation::{Operation, OperationKind, Path};
@@ -341,18 +340,6 @@ impl PointCollection {
             .iter()
             .map(|route| self.route_to_path(route, &route_corners))
             .collect()
-    }
-
-    pub fn draw_routes(&self, document: &mut Document) {
-        let mut route_corners = HashMap::new();
-        for route in &self.routes {
-            self.extend_route_corners(route, &mut route_corners);
-        }
-
-        for route in &self.routes {
-            let path = self.route_to_path(route, &route_corners);
-            document.add_route(&path);
-        }
     }
 
     fn extend_route_corners(&self, route: &Route, route_corners: &mut RouteCorners) {

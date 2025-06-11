@@ -12,7 +12,7 @@ use clap::Parser;
 #[macro_use]
 mod macros;
 mod corner;
-mod document;
+mod svg;
 mod error;
 pub mod evaluator;
 mod expressions;
@@ -67,6 +67,6 @@ fn main() -> Result<(), anyhow::Error> {
     };
     let document = evaluator.into_document();
     write!(output, r#"<?xml version="1.0" encoding="utf-8" ?>"#)?;
-    svg::write(&mut output, &document.to_svg()?).map_err(error::EvaluatorError::Io)?;
+    ::svg::write(&mut output, &document.to_svg()?).map_err(error::EvaluatorError::Io)?;
     Ok(())
 }

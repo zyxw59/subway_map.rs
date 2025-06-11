@@ -6,7 +6,6 @@ use svg::node::{
 };
 
 use crate::{
-    document::Document,
     error::{EvaluatorError, MathError},
     values::{Point, Value},
 };
@@ -27,7 +26,7 @@ pub struct Stop {
 }
 
 impl Stop {
-    pub fn draw(&self, document: &mut Document) -> Result<(), EvaluatorError> {
+    pub fn to_svg(&self) -> Result<Group, EvaluatorError> {
         let mut group = Group::new().set(
             "class",
             format!("stop {} {}", self.marker_type, self.styles.join(" ")),
@@ -71,8 +70,7 @@ impl Stop {
                 })
             }
         }
-        document.add_stop(group);
-        Ok(())
+        Ok(group)
     }
 
     fn get_parameter(&self, arg: &'static str) -> Result<&Value, EvaluatorError> {
