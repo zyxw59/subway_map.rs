@@ -71,6 +71,7 @@ pub struct Operation {
 }
 
 impl Operation {
+    #[doc = include_str!("doc-operation-new_corner.svg")]
     pub fn new_corner(
         from: Point,
         corner: Point,
