@@ -25,7 +25,7 @@ impl<'a> Errors<'a> {
 impl fmt::Display for Errors<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for err in &self.errors {
-            // TODO: these could be formatted nicer probably
+            // TODO(#27): these could be formatted nicer probably
             match err {
                 Error::EndOfInput => f.write_str("Unexpected end of input\n")?,
                 Error::Token(span) => writeln!(
@@ -79,9 +79,9 @@ impl From<ExpressionError> for Error {
         match error.kind {
             E::EndOfInput { .. } => Error::EndOfInput,
             E::UnexpectedToken { .. } => Error::Token(error.span),
-            // TODO: mismatched delimiter
+            // TODO(#27): mismatched delimiter
             E::MismatchedDelimiter { .. } => Error::Token(error.span),
-            // TODO: unmatched right delimiter
+            // TODO(#27): unmatched right delimiter
             E::UnmatchedRightDelimiter => Error::Token(error.span),
             E::UnmatchedLeftDelimiter => Error::Parentheses(error.span),
             E::Parser(UnexpectedToken) => Error::Token(error.span),
