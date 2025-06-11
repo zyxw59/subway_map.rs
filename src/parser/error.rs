@@ -81,7 +81,7 @@ impl From<ExpressionError> for Error {
             E::UnexpectedToken { .. } => Error::Token(error.span),
             // TODO: mismatched delimiter
             E::MismatchedDelimiter { .. } => Error::Token(error.span),
-            // TODO: unmatche right delimiter
+            // TODO: unmatched right delimiter
             E::UnmatchedRightDelimiter => Error::Token(error.span),
             E::UnmatchedLeftDelimiter => Error::Parentheses(error.span),
             E::Parser(UnexpectedToken) => Error::Token(error.span),
