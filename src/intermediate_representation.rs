@@ -2,7 +2,8 @@ use svg::node::element::{path::Data, Path as SvgPath, SVG};
 
 use crate::{
     corner::{calculate_longitudinal_offsets, calculate_tan_half_angle},
-    error::EvaluatorError,
+    error::Result,
+    expressions::Variable,
     stops::Stop,
     values::{Point, UnitVector},
 };
@@ -17,7 +18,7 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn to_svg(&self) -> Result<SVG, EvaluatorError> {
+    pub fn to_svg(&self) -> Result<SVG> {
         let mut document = crate::svg::Document::new();
         if let Some(title) = &self.title {
             document.set_title(title);
@@ -37,12 +38,12 @@ impl Document {
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct Path {
     pub operations: Vec<Operation>,
-    pub name: String,
+    pub name: Variable,
     pub style: String,
 }
 
 impl Path {
-    pub fn new(name: String, style: String) -> Self {
+    pub fn new(name: Variable, style: String) -> Self {
         Self {
             name,
             style,

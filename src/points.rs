@@ -1,18 +1,22 @@
-use std::collections::{btree_map::Entry, BTreeMap, HashMap, HashSet};
-use std::fmt;
-use std::ops::{Index, IndexMut};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
+    fmt,
+    ops::{Index, IndexMut},
+};
 
 use itertools::Itertools;
 use serde::Serialize;
 
+use crate::{
+    corner::{calculate_longitudinal_offsets, calculate_tan_half_angle},
+    error::{Error, MathError, Result},
+    expressions::Variable,
+    intermediate_representation::{Operation, OperationKind, Path},
+    values::{Point, PointProvenance},
+};
+
 mod line;
 mod route_corner;
-
-use crate::corner::{calculate_longitudinal_offsets, calculate_tan_half_angle};
-use crate::error::{EvaluatorError, MathError};
-use crate::expressions::Variable;
-use crate::intermediate_representation::{Operation, OperationKind, Path};
-use crate::values::{Point, PointProvenance};
 
 use line::{Line, LineId};
 use route_corner::{RouteCorners, RouteTurn};
@@ -46,7 +50,7 @@ impl PointCollection {
     fn get_point_info(&self, k: &str) -> Option<&PointInfo> {
         self.point_ids
             .get(k)
-            .and_then(|&PointId(id)| self.points.get(id))
+            .and_then(|&PointId(id)| self.points.get(id as usize))
     }
 
     pub fn get_point_and_id(&self, k: &str) -> Option<(Point, PointId)> {
@@ -77,11 +81,11 @@ impl PointCollection {
         width: f64,
         styles: Vec<Variable>,
         line_number: usize,
-    ) -> Result<RouteId, EvaluatorError> {
+    ) -> Result<RouteId> {
         match self.route_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::RouteRedefinition {
+                Err(Error::RouteRedefinition {
                     name: e.key().clone(),
                     line: line_number,
                     original_line: self[id].line_number,
@@ -102,18 +106,23 @@ impl PointCollection {
         name: Variable,
         value: Point,
         line_number: usize,
-    ) -> Result<PointId, EvaluatorError> {
+    ) -> Result<PointId> {
         match self.point_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::PointRedefinition {
+                Err(Error::PointRedefinition {
                     name: e.key().clone(),
                     line: line_number,
                     original_line: self[id].info.line_number,
                 })
             }
             Entry::Vacant(e) => {
-                let id = PointId(self.points.len());
+                let id = PointId(
+                    self.points
+                        .len()
+                        .try_into()
+                        .expect("more than 65535 points not supported"),
+                );
                 self.points.push(PointInfo::new(value, id, line_number));
                 e.insert(id);
                 Ok(id)
@@ -121,16 +130,11 @@ impl PointCollection {
         }
     }
 
-    fn insert_alias(
-        &mut self,
-        name: Variable,
-        id: PointId,
-        line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    fn insert_alias(&mut self, name: Variable, id: PointId, line_number: usize) -> Result<()> {
         match self.point_ids.entry(name) {
             Entry::Occupied(e) => {
                 let &id = e.get();
-                Err(EvaluatorError::PointRedefinition {
+                Err(Error::PointRedefinition {
                     name: e.key().clone(),
                     line: line_number,
                     original_line: self[id].info.line_number,
@@ -186,7 +190,7 @@ impl PointCollection {
         value: Point,
         provenance: PointProvenance,
         line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    ) -> Result<()> {
         match provenance {
             PointProvenance::None => {
                 // just insert the point
@@ -236,8 +240,8 @@ impl PointCollection {
     ) {
         pairs.insert((p1, p2), line);
         pairs.insert((p2, p1), line);
-        points[p1.0].lines.insert(line);
-        points[p2.0].lines.insert(line);
+        points[p1.0 as usize].lines.insert(line);
+        points[p2.0 as usize].lines.insert(line);
     }
 
     /// Creates a new line from a start point, a direction, and (name, distance) pairs along the
@@ -250,15 +254,12 @@ impl PointCollection {
         direction: Point,
         points: impl IntoIterator<Item = (Variable, f64)>,
         line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    ) -> Result<()> {
         let line_id = LineId(self.lines.len());
         let &start_id = self
             .point_ids
             .get(&start_point)
-            .ok_or(EvaluatorError::Math(
-                MathError::Variable(start_point),
-                line_number,
-            ))?;
+            .ok_or(Error::Math(MathError::Variable(start_point), line_number))?;
         let origin = self[start_id].info;
         let mut line = Line::from_origin_direction(origin, direction);
         let mut total_distance = 0.0;
@@ -283,18 +284,15 @@ impl PointCollection {
         end_point: Variable,
         points: impl IntoIterator<Item = (Variable, f64)>,
         line_number: usize,
-    ) -> Result<(), EvaluatorError> {
+    ) -> Result<()> {
         let start_id = *self
             .point_ids
             .get(&start_point)
-            .ok_or(EvaluatorError::Math(
-                MathError::Variable(start_point),
-                line_number,
-            ))?;
-        let end_id = *self.point_ids.get(&end_point).ok_or(EvaluatorError::Math(
-            MathError::Variable(end_point),
-            line_number,
-        ))?;
+            .ok_or(Error::Math(MathError::Variable(start_point), line_number))?;
+        let end_id = *self
+            .point_ids
+            .get(&end_point)
+            .ok_or(Error::Math(MathError::Variable(end_point), line_number))?;
         let line_id = self.get_or_insert_line(start_id, end_id);
         let start = self[start_id].info.value;
         let end = self[end_id].info.value;
@@ -675,13 +673,13 @@ impl Index<PointId> for PointCollection {
     type Output = PointInfo;
 
     fn index(&self, PointId(idx): PointId) -> &PointInfo {
-        &self.points[idx]
+        &self.points[idx as usize]
     }
 }
 
 impl IndexMut<PointId> for PointCollection {
     fn index_mut(&mut self, PointId(idx): PointId) -> &mut PointInfo {
-        &mut self.points[idx]
+        &mut self.points[idx as usize]
     }
 }
 
@@ -761,7 +759,7 @@ impl PointInfo {
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct PointId(usize);
+pub struct PointId(u16);
 
 impl fmt::Debug for PointId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

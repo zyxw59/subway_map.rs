@@ -1,98 +1,136 @@
-use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::error::MathError;
-use crate::evaluator::EvaluationContext;
-use crate::operators::{BinaryOperator, UnaryOperator};
-use crate::values::Value;
+pub use expr_parser::expression;
+use smol_str::SmolStr;
 
-pub type EResult<T> = Result<T, MathError>;
+use crate::{
+    error::MathError,
+    evaluator::{evaluate_expression, EvaluationContext},
+    operators::{BinaryOperator, UnaryOperator},
+    parser::Position,
+    values::{Result, Value},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub name: Variable,
-    pub args: HashMap<Variable, usize>,
-    pub expression: Expression,
+    pub expression: Rc<[ExpressionBit]>,
+    pub num_args: usize,
 }
 
 impl Function {
-    fn apply(&self, args: &[Expression], context: &impl EvaluationContext) -> EResult<Value> {
-        let expected = self.args.len();
+    pub fn apply(&self, args: &[Value], context: &dyn EvaluationContext) -> Result<Value> {
+        let expected = self.num_args;
         let actual = args.len();
         if expected != actual {
-            return Err(MathError::Arguments {
-                name: self.name.clone(),
-                expected,
-                actual,
-            });
+            return Err(MathError::Arguments { expected, actual });
         }
         let locals = FunctionEvaluator {
             parent: context,
-            arg_order: &self.args,
-            args: args
-                .iter()
-                .map(|arg| arg.evaluate(context))
-                .collect::<EResult<Vec<Value>>>()?,
+            args,
         };
-        self.expression.evaluate(&locals)
+        evaluate_expression(&locals, self.expression.iter().cloned())
     }
 }
 
-pub struct FunctionEvaluator<'a, 'b> {
+pub struct FunctionEvaluator<'a> {
     parent: &'a dyn EvaluationContext,
-    arg_order: &'b HashMap<Variable, usize>,
-    args: Vec<Value>,
+    args: &'a [Value],
 }
 
-impl<'a, 'b> EvaluationContext for FunctionEvaluator<'a, 'b> {
+impl EvaluationContext for FunctionEvaluator<'_> {
     fn get_variable(&self, name: &str) -> Option<Value> {
-        self.arg_order
-            .get(name)
-            .and_then(|&i| self.args.get(i))
-            .cloned()
-            .or_else(|| self.parent.get_variable(name))
+        self.parent.get_variable(name)
     }
 
-    fn get_function(&self, name: &str) -> Option<&Function> {
-        self.parent.get_function(name)
+    fn get_fn_arg(&self, idx: usize) -> Option<Value> {
+        self.args.get(idx).cloned()
     }
 }
 
-pub type Variable = String;
+pub type Variable = SmolStr;
+
+pub type ExpressionBit = expression::Expression<Position, BinaryOperator, UnaryOperator, Term>;
+pub type Expression = Vec<ExpressionBit>;
+
+pub fn zero_expression(span: crate::parser::Span) -> Expression {
+    vec![ExpressionBit {
+        span,
+        kind: expression::ExpressionKind::Term(Term::Number(0.0)),
+    }]
+}
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expression {
-    Value(Value),
-    Point(Box<(Expression, Expression)>),
-    BinaryOperator(
-        &'static BinaryOperator<'static>,
-        Box<(Expression, Expression)>,
-    ),
-    UnaryOperator(&'static UnaryOperator<'static>, Box<Expression>),
-    Function(Variable, Vec<Expression>),
+pub enum Term {
+    Number(f64),
+    String(String),
     Variable(Variable),
+    FnArg(usize),
 }
 
-impl Expression {
-    pub fn evaluate(&self, context: &impl EvaluationContext) -> EResult<Value> {
-        Ok(match self {
-            Expression::Value(v) => v.clone(),
-            Expression::Point(p) => {
-                let (x, y) = p.as_ref();
-                Value::point(x.evaluate(context)?, y.evaluate(context)?)?
-            }
-            Expression::BinaryOperator(op, args) => {
-                let (lhs, rhs) = args.as_ref();
-                op.apply(lhs.evaluate(context)?, rhs.evaluate(context)?)?
-            }
-            Expression::UnaryOperator(op, arg) => op.apply(arg.evaluate(context)?)?,
-            Expression::Function(func_name, args) => match context.get_function(func_name) {
-                None => return Err(MathError::Function(func_name.clone())),
-                Some(func) => func.apply(args, context)?,
-            },
-            Expression::Variable(var) => match context.get_variable(var) {
-                None => return Err(MathError::Variable(var.clone())),
-                Some(val) => val,
-            },
+#[cfg(test)]
+pub(crate) mod tests {
+    use crate::{
+        expressions::{ExpressionBit, Term},
+        operators::{BinaryOperator, UnaryOperator},
+    };
+
+    pub type Expr = expr_parser::expression::ExpressionKind<BinaryOperator, UnaryOperator, Term>;
+
+    pub fn expression_full<const N: usize>(expr: [Expr; N]) -> [ExpressionBit; N] {
+        use crate::parser::{Position, Span};
+        expr.map(|kind| ExpressionBit {
+            kind,
+            span: Span::new(Position::default()..Position::default()),
         })
+    }
+
+    impl From<f64> for Term {
+        fn from(x: f64) -> Self {
+            Term::Number(x)
+        }
+    }
+
+    impl From<i32> for Term {
+        fn from(x: i32) -> Self {
+            Term::Number(x as _)
+        }
+    }
+
+    impl From<&str> for Term {
+        fn from(s: &str) -> Self {
+            Term::String(s.into())
+        }
+    }
+
+    impl From<&str> for UnaryOperator {
+        fn from(s: &str) -> Self {
+            Self::get(s).unwrap().1
+        }
+    }
+
+    impl From<&str> for BinaryOperator {
+        fn from(s: &str) -> Self {
+            Self::get(s).unwrap().1
+        }
+    }
+
+    pub fn var(s: &str) -> Expr {
+        Expr::Term(Term::Variable(s.into()))
+    }
+
+    pub fn t(t: impl Into<Term>) -> Expr {
+        Expr::Term(t.into())
+    }
+
+    pub fn u(u: impl Into<UnaryOperator>) -> Expr {
+        Expr::UnaryOperator(u.into())
+    }
+
+    pub fn dot(s: &str) -> Expr {
+        Expr::UnaryOperator(UnaryOperator::FieldAccess(s.into()))
+    }
+
+    pub fn b(b: impl Into<BinaryOperator>) -> Expr {
+        Expr::BinaryOperator(b.into())
     }
 }

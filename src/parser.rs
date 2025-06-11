@@ -1,711 +1,701 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt, iter,
+};
 
-use crate::error::{ParserError, Result as EResult};
-use crate::expressions::{Expression, Function, Variable};
-use crate::lexer::Token;
-use crate::operators::{BinaryBuiltins, UnaryBuiltins};
-use crate::statement::{Segment, Statement, StatementKind, Stop};
-use crate::values::Value;
+use expr_parser::parser::ParseState;
 
-pub trait LexerExt: Iterator<Item = EResult<Token>> {
-    fn put_back(&mut self, put_back: Token);
+use crate::{
+    expressions::{zero_expression, Expression, Function, Variable},
+    statement::{Segment, Statement, StatementKind, Stop},
+};
 
-    fn line(&self) -> usize;
+mod error;
+mod expression;
+mod lexer;
 
-    fn into_parser(self) -> Parser<Self>
-    where
-        Self: Sized,
-    {
-        Parser { tokens: self }
+pub use error::{Error, Errors, LexerError};
+use error::{Result, ResultExt};
+use lexer::{Lexer, Token, TokenKind};
+
+type TokenResult = Result<Token, LexerError>;
+
+pub fn parse(input: &str) -> Result<Vec<Statement>, Errors<'_>> {
+    use itertools::Itertools;
+    let mut errors = Vec::new();
+    let statements = Lexer::new(input)
+        .batching(|tokens| parse_statement(tokens, &mut errors))
+        .collect();
+    if errors.is_empty() {
+        Ok(statements)
+    } else {
+        Err(Errors::new(input, errors))
     }
 }
 
-impl<'a, T> LexerExt for &'a mut T
-where
-    T: LexerExt,
-{
-    fn put_back(&mut self, put_back: Token) {
-        (**self).put_back(put_back);
-    }
+pub type Span<T = Position> = expr_parser::Span<T>;
 
-    fn line(&self) -> usize {
-        (**self).line()
+#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+    pub byte_idx: usize,
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
     }
 }
 
-macro_rules! expect {
-    ($self:ident, $token:pat $(if $guard:expr)?) => {
-        expect!($self, $token $(if $guard)? => ())
-    };
-    ($self:ident, $($token:pat $(if $guard:expr)? => $capture:expr),*$(,)*) => {
-        match $self.next().transpose()? {
-            $(Some($token) $(if $guard)? => $capture),*,
-            #[allow(unreachable_patterns)] // to allow for expect!(self, tok, tok)
-            Some(tok) => return Err(ParserError::Token(tok, $self.line()).into()),
-            None => return Err(ParserError::EndOfInput($self.line()).into()),
-        }
-    };
-}
-
-pub struct Parser<T> {
-    tokens: T,
-}
-
-impl<T> Parser<T>
-where
-    T: LexerExt,
-{
-    fn next(&mut self) -> Option<EResult<Token>> {
-        self.tokens.next()
-    }
-
-    fn put_back(&mut self, put_back: Token) {
-        self.tokens.put_back(put_back);
-    }
-
-    fn line(&self) -> usize {
-        self.tokens.line()
-    }
-
-    fn parse_expression(&mut self, min_precedence: usize) -> EResult<Expression> {
-        // initial left-hand side
-        let mut lhs = self.parse_primary()?;
-        // as long as we encounter operators with precedence >= min_precedence, we can accumulate
-        // them into `lhs`.
-        while let Some(tok) = self.next().transpose()? {
-            if let Some(op) = tok
-                .as_tag()
-                .and_then(|tag| BinaryBuiltins.get(tag))
-                .filter(|op| op.precedence >= min_precedence)
-            {
-                // we have an operator; now to get the right hand side, accumulating operators with
-                // greater precedence than the current one
-                let rhs = self.parse_expression(op.precedence + 1)?;
-                lhs = op.expression(lhs, rhs);
-            } else {
-                // the token wasn't an operator, so put it back on the stack
-                self.put_back(tok);
-                break;
+pub fn parse_statement(
+    tokens: impl IntoIterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<Statement> {
+    let mut tokens = tokens.into_iter();
+    loop {
+        let initial_token = tokens.by_ref().find_map(|res| match res {
+            Ok(token) => Some(token),
+            Err(err) => {
+                errors.push(err.into());
+                None
             }
-        }
-        Ok(lhs)
-    }
-
-    fn parse_primary(&mut self) -> EResult<Expression> {
-        match self.next().transpose()? {
-            None => Err(ParserError::EndOfInput(self.line()).into()),
-            Some(Token::LeftParen) => self.parse_parentheses(),
-            Some(Token::Number(num)) => Ok(Expression::Value(Value::Number(num))),
-            Some(Token::Tag(tag)) => match UnaryBuiltins.get(&tag) {
-                Some(op) => Ok(op.expression(self.parse_expression(op.precedence)?)),
-                None => {
-                    let tag = self.parse_dotted_ident(tag)?;
-                    let next_tok = self.next().transpose()?;
-                    if let Some(Token::LeftParen) = next_tok {
-                        // function call
-                        let start_line = self.line();
-                        let args = self.parse_comma_list()?;
-                        match self.next().transpose()? {
-                            Some(Token::RightParen) => {}
-                            Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
-                            None => return Err(ParserError::Parentheses(start_line).into()),
-                        };
-                        Ok(Expression::Function(tag, args))
-                    } else {
-                        if let Some(tok) = next_tok {
-                            self.put_back(tok);
-                        }
-                        Ok(Expression::Variable(tag))
-                    }
+        })?;
+        let mut semicolon = None;
+        let tokens = tokens.by_ref().take_while(|res| {
+            res.as_ref().map_or(true, |tok| {
+                if tok.kind == TokenKind::Semicolon {
+                    semicolon = Some(tok.span);
+                    false
+                } else {
+                    true
                 }
-            },
-            Some(Token::String(string)) => Ok(Expression::Value(Value::String(string))),
-            Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
-        }
-    }
-
-    fn parse_dotted_ident(&mut self, tag: String) -> EResult<String> {
-        let mut arr = vec![tag];
-        while let Some(tok) = self.next().transpose()? {
-            match tok {
-                Token::Dot => arr.push(expect!(self, Token::Tag(tag) => tag)),
-                _ => {
-                    self.put_back(tok);
-                    break;
-                }
-            }
-        }
-        Ok(arr.join("."))
-    }
-
-    fn parse_parentheses(&mut self) -> EResult<Expression> {
-        let start_line = self.line();
-        let mut list = self.parse_comma_list()?;
-        let exp = match list.len() {
-            1 => list.pop().unwrap(),
-            2 => {
-                let y = list.pop().unwrap();
-                let x = list.pop().unwrap();
-                Expression::Point(Box::new((x, y)))
-            }
-            n => return Err(ParserError::ParenList(n, start_line).into()),
-        };
-        match self.next().transpose()? {
-            Some(Token::RightParen) => Ok(exp),
-            Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
-            None => Err(ParserError::Parentheses(start_line).into()),
-        }
-    }
-
-    fn parse_comma_list(&mut self) -> EResult<Vec<Expression>> {
-        let mut list = Vec::new();
-        while let Some(tok) = self.next().transpose()? {
-            match tok {
-                Token::Comma => {}
-                Token::RightParen => {
-                    self.put_back(tok);
-                    break;
-                }
-                _ => self.put_back(tok),
-            }
-            list.push(self.parse_expression(0)?);
-        }
-        Ok(list)
-    }
-
-    /// Parses a function definition.
-    ///
-    /// On success, returns a tuple of the function name and the function definition.
-    fn parse_function_def(&mut self) -> EResult<(Variable, Function)> {
-        let name = expect!(self, Token::Tag(name) => name);
-        expect!(self, Token::LeftParen);
-        // maps argument names to their index in the function signature
-        let mut args = HashMap::new();
-        let mut index = 0;
-        let start_line = self.line();
-        loop {
-            match self.next().transpose()? {
-                // a named argument
-                Some(Token::Tag(arg)) => {
-                    // insert the new argument into the hashmap
-                    match args.entry(arg) {
-                        // there's already an argument with this name
-                        Entry::Occupied(e) => {
-                            return Err(ParserError::Argument {
-                                argument: e.remove_entry().0,
-                                function: name,
-                                line: self.line(),
-                            }
-                            .into());
-                        }
-                        Entry::Vacant(e) => e.insert(index),
-                    };
-                    index += 1;
-                    match self.next().transpose()? {
-                        Some(Token::Comma) => {}
-                        Some(Token::RightParen) => break,
-                        Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
-                        None => return Err(ParserError::Parentheses(start_line).into()),
-                    }
-                }
-                // end of the arguments
-                Some(Token::RightParen) => break,
-                Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
-                None => return Err(ParserError::Parentheses(start_line).into()),
-            }
-        }
-        expect!(self, Token::Equal);
-        // get the function body, as an expression tree
-        let expression = self.parse_expression(0)?;
-        Ok((
-            name.clone(),
-            Function {
-                name,
-                args,
-                expression,
-            },
-        ))
-    }
-
-    fn parse_comma_point_list(&mut self) -> EResult<Vec<(Option<Expression>, Variable)>> {
-        let mut points = Vec::new();
-        while let Some(tok) = self.next().transpose()? {
-            let point = match tok {
-                Token::Comma => continue,
-                Token::LeftParen => {
-                    let multiplier = self.parse_expression(0)?;
-                    expect!(self, Token::RightParen);
-                    let ident = expect!(self, Token::Tag(tag) => tag);
-                    (Some(multiplier), ident)
-                }
-                Token::Tag(ident) => (None, ident),
-                _ => return Err(ParserError::Token(tok, self.line()).into()),
-            };
-            points.push(point);
-            match self.next().transpose()? {
-                None => break,
-                Some(Token::Comma) => continue,
-                Some(Token::Semicolon) => {
-                    self.put_back(Token::Semicolon);
-                    break;
-                }
-                Some(tok) => return Err(ParserError::Token(tok, self.line()).into()),
-            }
-        }
-        Ok(points)
-    }
-
-    fn parse_route(&mut self) -> EResult<Vec<Segment>> {
-        let mut route = Vec::new();
-        let mut start = expect!(self, Token::Tag(tag) => tag);
-        while let Some(tok) = self.next().transpose()? {
-            self.put_back(tok);
-            expect! { self,
-                Token::Tag(ref tag) if tag == "--" => {},
-                Token::Semicolon => {
-                    self.put_back(Token::Semicolon);
-                    break
-                },
-            };
-            expect!(self, Token::LeftParen);
-            let offset = self.parse_expression(0)?;
-            expect!(self, Token::RightParen);
-            let end = expect!(self, Token::Tag(tag) => tag);
-            let next = end.clone();
-            route.push(Segment { start, end, offset });
-            start = next;
-        }
-        Ok(route)
-    }
-
-    fn parse_statement(&mut self) -> EResult<Option<StatementKind>> {
-        match self.next().transpose()? {
-            // tag; start of an assignment expression or function definition
-            Some(Token::Tag(tag)) => {
-                match tag.as_ref() {
-                    // function definition
-                    "fn" => {
-                        let (func_name, func) = self.parse_function_def()?;
-                        Ok(Some(StatementKind::Function(func_name, func)))
-                    }
-                    // single point
-                    "point" => {
-                        let name = expect!(self, Token::Tag(tag) => tag);
-                        expect!(self, Token::Equal);
-                        let expr = self.parse_expression(0)?;
-                        Ok(Some(StatementKind::PointSingle(name, expr)))
-                    }
-                    // sequence of points
-                    "points" => self.parse_points_statement(),
-                    // route
-                    "route" => {
-                        let styles = self.parse_dot_list()?;
-                        let name = expect!(self, Token::Tag(name) => name);
-                        expect!(self, Token::Tag(ref tag) if tag == ":");
-                        let segments = self.parse_route()?;
-                        Ok(Some(StatementKind::Route {
-                            name,
-                            styles,
-                            segments,
-                        }))
-                    }
-                    // stop
-                    "stop" => self.parse_stop_statement(),
-                    // stylesheet
-                    "style" => {
-                        expect! { self,
-                            Token::String(style) => Ok(Some(StatementKind::Style(style)))
-                        }
-                    }
-                    // title
-                    "title" => {
-                        expect! { self,
-                            Token::String(title) => Ok(Some(StatementKind::Title(title)))
-                        }
-                    }
-                    // other (variable assignment)
-                    _ => {
-                        let tag = self.parse_dotted_ident(tag)?;
-                        expect!(self, Token::Equal);
-                        let expr = self.parse_expression(0)?;
-                        Ok(Some(StatementKind::Variable(tag, expr)))
-                    }
-                }
-            }
-            // semicolon; null statement
-            Some(Token::Semicolon) => {
-                self.put_back(Token::Semicolon);
-                Ok(Some(StatementKind::Null))
-            }
-            // other token; unexpected
-            Some(tok) => Err(ParserError::Token(tok, self.line()).into()),
-            // empty statement, end of input
-            None => Ok(None),
-        }
-    }
-
-    fn parse_dot_list(&mut self) -> EResult<Vec<Variable>> {
-        let mut list = Vec::new();
-        loop {
-            match self.next().transpose()? {
-                Some(Token::Dot) => expect!(self, Token::Tag(tag) => list.push(tag)),
-                Some(tok) => {
-                    self.put_back(tok);
-                    break;
-                }
-                _ => break,
-            }
-        }
-        Ok(list)
-    }
-
-    fn parse_points_statement(&mut self) -> EResult<Option<StatementKind>> {
-        expect!(self, Token::Tag(ref tag) if tag == "from");
-        let from = expect!(self, Token::Tag(tag) => tag);
-        let kind = expect!(self, Token::Tag(tag) => tag);
-        match kind.as_ref() {
-            // from ... spaced
-            "spaced" => {
-                let spaced = self.parse_expression(0)?;
-                expect!(self, Token::Tag(ref tag) if tag == ":");
-                let points = self.parse_comma_point_list()?;
-                Ok(Some(StatementKind::PointSpaced {
-                    from,
-                    spaced,
-                    points,
-                }))
-            }
-            // from ... to
-            "to" => self.parse_points_extend_statement(from, false),
-            // from ... past
-            "past" => self.parse_points_extend_statement(from, true),
-            _ => Err(ParserError::Token(Token::Tag(kind), self.line()).into()),
-        }
-    }
-
-    fn parse_points_extend_statement(
-        &mut self,
-        from: Variable,
-        is_past: bool,
-    ) -> EResult<Option<StatementKind>> {
-        let to = expect! { self,
-            Token::LeftParen => {
-                let multiplier = self.parse_expression(0)?;
-                expect!(self, Token::RightParen);
-                let ident = expect!(self, Token::Tag(tag) => tag);
-                (Some(multiplier), ident)
-            },
-            Token::Tag(ident) => (None, ident),
-        };
-        expect!(self, Token::Tag(ref tag) if tag == ":");
-        let points = self.parse_comma_point_list()?;
-        Ok(Some(StatementKind::PointExtend {
-            from,
-            to,
-            points,
-            is_past,
-        }))
-    }
-
-    fn parse_stop_statement(&mut self) -> EResult<Option<StatementKind>> {
-        let styles = self.parse_dot_list()?;
-        let point = self.parse_expression(0)?;
-        expect!(self, Token::Tag(ref tag) if tag == "marker");
-        let marker_type = expect!(self, Token::Tag(tag) => tag);
-        let marker_parameters = self.parse_marker_params()?;
-        Ok(Some(StatementKind::Stop(Stop {
-            point,
-            styles,
-            marker_type,
-            marker_parameters,
-        })))
-    }
-
-    fn parse_marker_params(&mut self) -> EResult<HashMap<String, Expression>> {
-        let mut params = HashMap::new();
-        while let Some(tok) = self.next().transpose()? {
-            match tok {
-                Token::Comma => continue,
-                Token::Semicolon => {
-                    self.put_back(tok);
-                    break;
-                }
-                Token::Tag(tag) => {
-                    expect!(self, Token::Equal);
-                    let expr = self.parse_expression(0)?;
-                    match params.entry(tag) {
-                        // there's already an argument with this name
-                        Entry::Occupied(e) => {
-                            return Err(ParserError::Argument {
-                                argument: e.remove_entry().0,
-                                function: "marker".to_owned(),
-                                line: self.line(),
-                            }
-                            .into());
-                        }
-                        Entry::Vacant(e) => e.insert(expr),
-                    };
-                }
-                tok => return Err(ParserError::Token(tok, self.line()).into()),
-            }
-        }
-        Ok(params)
-    }
-}
-
-impl<T> Iterator for Parser<T>
-where
-    T: LexerExt,
-{
-    type Item = EResult<Statement>;
-
-    fn next(&mut self) -> Option<EResult<Statement>> {
-        self.parse_statement().transpose().map(|res| {
-            res.and_then(|statement| {
-                expect!(self, Token::Semicolon);
-                Ok(Statement {
-                    statement,
-                    line: self.line(),
-                })
             })
-        })
+        });
+        let line = initial_token.span.start.line;
+        let errors_start = errors.len();
+        let maybe_statement = parse_statement_kind(initial_token, tokens, errors);
+        if errors.len() > errors_start {
+            for err in &mut errors[errors_start..] {
+                // handle unexpected end of input caused by semicolons
+                if let (Error::EndOfInput, Some(span)) = (&err, semicolon) {
+                    *err = Error::Token(span)
+                }
+            }
+            continue;
+        }
+        if let Some(statement) = maybe_statement {
+            return Some(Statement { line, statement });
+        }
+    }
+}
+
+fn parse_statement_kind(
+    initial_token: Token,
+    mut tokens: impl Iterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<StatementKind> {
+    match initial_token.kind {
+        // tag; start of an assignment expression or function definition
+        TokenKind::Tag(tag) => {
+            match tag.as_ref() {
+                // function definition
+                "fn" => {
+                    let (func_name, func) = parse_function_def(tokens, errors)?;
+                    Some(StatementKind::Function(func_name, func))
+                }
+                // single point
+                "point" => {
+                    let name = expect_get_tag(tokens.next()).or_push(errors);
+                    expect_tag(tokens.next(), "=").or_push(errors);
+                    let expr = parse_expression(tokens, HashMap::new(), errors);
+                    Some(StatementKind::PointSingle(name?, expr?))
+                }
+                // sequence of points
+                "points" => parse_points_statement(tokens, errors),
+                // route
+                "route" => {
+                    let (styles, next) = parse_dot_list(&mut tokens);
+                    let name = expect_get_tag(next).or_push(errors);
+                    expect_tag(tokens.next(), ":").or_push(errors);
+                    let segments = parse_route(tokens, errors);
+                    Some(StatementKind::Route {
+                        name: name?,
+                        styles,
+                        segments: segments?,
+                    })
+                }
+                // stop
+                "stop" => parse_stop_statement(tokens, errors),
+                // stylesheet
+                "style" => {
+                    let style = expect_get_string(tokens.next()).or_push(errors)?;
+                    Some(StatementKind::Style(style))
+                }
+                // title
+                "title" => {
+                    let title = expect_get_string(tokens.next()).or_push(errors)?;
+                    Some(StatementKind::Title(title))
+                }
+                // other (variable assignment)
+                _ => {
+                    let (fields, next) = parse_dot_list(&mut tokens);
+                    expect_tag(next, "=").or_push(errors);
+                    let expr = parse_expression(tokens, HashMap::new(), errors);
+                    Some(StatementKind::Variable(tag, fields, expr?))
+                }
+            }
+        }
+        // semicolon; no statement
+        TokenKind::Semicolon => None,
+        // other token; unexpected
+        _ => {
+            errors.push(Error::Token(initial_token.span));
+            None
+        }
+    }
+}
+
+pub fn parse_expression(
+    tokens: impl Iterator<Item = TokenResult>,
+    args: HashMap<Variable, usize>,
+    errors: &mut Vec<Error>,
+) -> Option<Expression> {
+    let mut state = ParseState::new(expression::Parser::new(args));
+    state.extend(tokens);
+    state
+        .finish()
+        .map_err(|es| errors.extend(es.errors.into_iter().map(Error::from)))
+        .ok()
+}
+
+fn parse_expression_until(
+    tokens: impl IntoIterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+    mut until: impl for<'a> FnMut(&'a TokenKind) -> bool,
+) -> Option<Expression> {
+    parse_expression(
+        tokens
+            .into_iter()
+            .take_while(|res| res.as_ref().map_or(true, |tok| !until(&tok.kind))),
+        HashMap::new(),
+        errors,
+    )
+}
+
+fn parse_delimited_expression(
+    tokens: impl IntoIterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<Expression> {
+    let mut state = ParseState::new(expression::Parser::new(HashMap::new()));
+    for token in tokens {
+        state.parse_result(token);
+        if state.has_parsed_expression() {
+            break;
+        }
+    }
+    state
+        .finish()
+        .map_err(|es| errors.extend(es.errors.into_iter().map(Error::from)))
+        .ok()
+}
+
+/// Parses a function definition.
+///
+/// On success, returns a tuple of the function name and the function definition.
+fn parse_function_def(
+    mut tokens: impl Iterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<(Variable, Function)> {
+    let name = expect_get_tag(tokens.next()).or_push(errors);
+    let start_span = expect_map(tokens.next(), None, |token| match token.kind {
+        TokenKind::LeftParen => Some(token.span),
+        _ => None,
+    })
+    .or_push(errors);
+    // maps argument names to their index in the function signature
+    let mut args = HashMap::new();
+    loop {
+        let token = expect(tokens.next(), start_span).or_push(errors)?;
+        let index = args.len();
+        match token.kind {
+            // a named argument
+            TokenKind::Tag(arg) => {
+                // insert the new argument into the hashmap
+                match args.entry(arg) {
+                    // there's already an argument with this name
+                    Entry::Occupied(_) => {
+                        errors.push(Error::Argument(token.span));
+                    }
+                    Entry::Vacant(e) => {
+                        e.insert(index);
+                    }
+                };
+                // TODO: not sure the best way to handle bad tokens here. ideally we try and
+                // parse the whole (invalid) statement, but it's hard to tell what the proper
+                // recovery strategy here is.
+                let should_break =
+                    expect_map(tokens.next(), start_span, |token| match token.kind {
+                        TokenKind::Comma => Some(false),
+                        TokenKind::RightParen => Some(true),
+                        _ => None,
+                    })
+                    .or_push(errors)
+                    .unwrap_or(false);
+                if should_break {
+                    break;
+                }
+            }
+            // end of the arguments
+            TokenKind::RightParen => break,
+            _ => {
+                errors.push(Error::Token(token.span));
+                return None;
+            }
+        }
+    }
+    expect_tag(tokens.next(), "=").or_push(errors);
+    // get the function body, as an expression tree
+    let num_args = args.len();
+    let expression = parse_expression(tokens, args, errors);
+    Some((
+        name?,
+        Function {
+            expression: expression?.into(),
+            num_args,
+        },
+    ))
+}
+
+fn parse_point_list(
+    mut tokens: impl Iterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Vec<(Option<Expression>, Variable)> {
+    let mut points = Vec::new();
+    while let Some(token) = tokens.next().transpose().or_push(errors).flatten() {
+        let point = match token.kind {
+            TokenKind::LeftParen => {
+                let multiplier =
+                    parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens), errors)
+                        .map(Some);
+                let ident = expect_get_tag(tokens.next()).or_push(errors);
+                multiplier.zip(ident)
+            }
+            TokenKind::Tag(ident) => Some((None, ident)),
+            _ => {
+                errors.push(Error::Token(token.span));
+                None
+            }
+        };
+        if let Some(point) = point {
+            points.push(point);
+        }
+        let Some(next) = tokens.next().transpose().or_push(errors).flatten() else {
+            break;
+        };
+        if next.kind != TokenKind::Comma {
+            errors.push(Error::Token(next.span));
+        }
+    }
+    points
+}
+
+fn parse_route(
+    mut tokens: impl Iterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<Vec<Segment>> {
+    let mut route = Vec::new();
+    let mut start = expect_get_tag(tokens.next()).or_push(errors);
+    while let Some(token) = tokens.next().or_push(errors) {
+        expect_tag(Some(Ok(token)), "--").or_push(errors);
+        let token = expect(tokens.next(), None).or_push(errors)?;
+        let offset_and_end = match token.kind {
+            TokenKind::LeftParen => {
+                let offset =
+                    parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens), errors);
+                let end = expect_get_tag(tokens.next()).or_push(errors);
+                offset.zip(end)
+            }
+            TokenKind::Tag(tag) => Some((zero_expression(token.span), tag)),
+            _ => {
+                errors.push(Error::Token(token.span));
+                None
+            }
+        };
+        let next = offset_and_end.as_ref().map(|(_, end)| end.clone());
+        if let Some((start, (offset, end))) = start.zip(offset_and_end) {
+            route.push(Segment { start, end, offset });
+        }
+        start = next;
+    }
+    Some(route)
+}
+
+fn parse_dot_list(
+    mut tokens: impl Iterator<Item = TokenResult>,
+) -> (Vec<Variable>, Option<TokenResult>) {
+    let mut list = Vec::new();
+    loop {
+        let token = match tokens.next() {
+            Some(Ok(token)) => token,
+            Some(Err(e)) => return (list, Some(Err(e))),
+            None => return (list, None),
+        };
+        if let TokenKind::DotTag(tag) = token.kind {
+            list.push(tag);
+        } else {
+            return (list, Some(Ok(token)));
+        }
+    }
+}
+
+fn parse_points_statement(
+    mut tokens: impl Iterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<StatementKind> {
+    expect_tag(tokens.next(), "from").or_push(errors);
+    let from = expect_get_tag(tokens.next()).or_push(errors);
+    enum PointsKind {
+        Spaced,
+        To,
+        Past,
+    }
+    let kind = expect_map(tokens.next(), None, |token| match token.kind.as_tag() {
+        Some("spaced") => Some(PointsKind::Spaced),
+        Some("to") => Some(PointsKind::To),
+        Some("past") => Some(PointsKind::Past),
+        _ => None,
+    })
+    .or_push(errors)?;
+    match kind {
+        // from ... spaced
+        PointsKind::Spaced => {
+            let spaced =
+                parse_expression_until(&mut tokens, errors, |tok| tok.as_tag() == Some(":"));
+            let points = parse_point_list(tokens, errors);
+            Some(StatementKind::PointSpaced {
+                from: from?,
+                spaced: spaced?,
+                points,
+            })
+        }
+        // from ... to
+        PointsKind::To => parse_points_extend_statement(tokens, from, false, errors),
+        // from ... past
+        PointsKind::Past => parse_points_extend_statement(tokens, from, true, errors),
+    }
+}
+
+fn parse_points_extend_statement(
+    mut tokens: impl Iterator<Item = TokenResult>,
+    from: Option<Variable>,
+    is_past: bool,
+    errors: &mut Vec<Error>,
+) -> Option<StatementKind> {
+    let token = expect(tokens.next(), None).or_push(errors)?;
+    let to = match token.kind {
+        TokenKind::LeftParen => {
+            let multiplier =
+                parse_delimited_expression(iter::once(Ok(token)).chain(&mut tokens), errors)
+                    .map(Some);
+            let ident = expect_get_tag(tokens.next()).or_push(errors);
+            multiplier.zip(ident)
+        }
+        TokenKind::Tag(ident) => Some((None, ident)),
+        _ => {
+            errors.push(Error::Token(token.span));
+            None
+        }
+    };
+    expect_tag(tokens.next(), ":").or_push(errors);
+    let points = parse_point_list(tokens, errors);
+    Some(StatementKind::PointExtend {
+        from: from?,
+        to: to?,
+        points,
+        is_past,
+    })
+}
+
+fn parse_stop_statement(
+    mut tokens: impl Iterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<StatementKind> {
+    let (styles, token) = parse_dot_list(&mut tokens);
+    let point = parse_expression_until(token.into_iter().chain(&mut tokens), errors, |tok| {
+        tok.as_tag() == Some("marker")
+    });
+    let marker_type = expect_get_tag(tokens.next()).or_push(errors);
+    let marker_parameters = parse_marker_params(tokens, errors);
+    Some(StatementKind::Stop(Stop {
+        point: point?,
+        styles,
+        marker_type: marker_type?,
+        marker_parameters: marker_parameters?,
+    }))
+}
+
+fn parse_marker_params(
+    mut tokens: impl Iterator<Item = TokenResult>,
+    errors: &mut Vec<Error>,
+) -> Option<HashMap<Variable, Expression>> {
+    let mut params = HashMap::new();
+    while let Some(token) = tokens.next().or_push(errors) {
+        match token.kind {
+            TokenKind::Comma => {}
+            TokenKind::Tag(tag) => {
+                let expr = parse_delimited_expression(&mut tokens, errors);
+                match params.entry(tag) {
+                    // there's already an argument with this name
+                    Entry::Occupied(_) => {
+                        errors.push(Error::MarkerArgument(token.span));
+                    }
+                    Entry::Vacant(e) => {
+                        if let Some(expr) = expr {
+                            e.insert(expr);
+                        }
+                    }
+                };
+            }
+            _ => errors.push(Error::Token(token.span)),
+        }
+    }
+    Some(params)
+}
+
+fn expect(token: Option<TokenResult>, paren_span: Option<Span>) -> Result<Token> {
+    token.transpose()?.ok_or({
+        if let Some(span) = paren_span {
+            Error::Parentheses(span)
+        } else {
+            Error::EndOfInput
+        }
+    })
+}
+
+fn expect_map<U>(
+    token: Option<TokenResult>,
+    paren_span: Option<Span>,
+    map: impl FnOnce(&Token) -> Option<U>,
+) -> Result<U> {
+    let token = expect(token, paren_span)?;
+    map(&token).ok_or(Error::Token(token.span))
+}
+
+fn expect_get_tag(token: Option<TokenResult>) -> Result<Variable> {
+    let token = expect(token, None)?;
+    match token.kind {
+        TokenKind::Tag(t) => Ok(t),
+        _ => Err(Error::Token(token.span)),
+    }
+}
+
+fn expect_get_string(token: Option<TokenResult>) -> Result<String> {
+    let token = expect(token, None)?;
+    match token.kind {
+        TokenKind::String(s) => Ok(s),
+        _ => Err(Error::Token(token.span)),
+    }
+}
+
+fn expect_tag(token: Option<TokenResult>, tag: &str) -> Result<()> {
+    let token = expect(token, None)?;
+    if token.kind.as_tag() == Some(tag) {
+        Ok(())
+    } else {
+        Err(Error::Token(token.span))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::Lexer;
-    use crate::statement::{StatementKind, Stop};
+    use std::collections::HashMap;
 
-    use super::LexerExt;
+    use test_case::test_case;
 
-    macro_rules! assert_expression {
-        ($text:expr, ($($expr:tt)+)) => {{
-            let result = Lexer::new($text.as_bytes())
-                .into_parser()
-                .parse_expression(0)
-                .unwrap();
-            assert_eq!(result, expression!($($expr)+));
-        }};
+    use super::{lexer::Lexer, parse_expression, parse_statement};
+    use crate::{
+        expressions::tests::{b, dot, expression_full, t, u, var, Expr},
+        operators::{COMMA, COMMA_UNARY, FN_CALL, FN_CALL_UNARY, PAREN_UNARY},
+        statement::{Segment, StatementKind, Stop},
+    };
+
+    #[test_case("1+2*3+4", [t(1), t(2), t(3), b("*"), b("+"), t(4), b("+")]; "basic arithmetic")]
+    #[test_case("1-2*3+4", [t(1), t(2), t(3), b("*"), b("-"), t(4), b("+")]; "basic arithmetic 2")]
+    #[test_case("1-3/2*5", [t(1), t(3), t(2), b("/"), t(5), b("*"), b("-")]; "basic arithmetic 3")]
+    #[test_case("3++4", [t(3), t(4), b("++")]; "hypot")]
+    #[test_case("5+-+3", [t(5), t(3), b("+-+")]; "hypot_sub")]
+    #[test_case("3^4^5", [t(3), t(4), t(5), b("^"), b("^")]; "pow")]
+    #[test_case("(1+2)*3+4", [t(1), t(2), b("+"), u(PAREN_UNARY), t(3), b("*"), t(4), b("+")]; "parentheses")]
+    #[test_case("(1,2) + (3,4)", [t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("+")]; "points")]
+    #[test_case("(1, 2,)", [t(1), t(2), b(COMMA), u(COMMA_UNARY), u(PAREN_UNARY)]; "trailing comma")]
+    #[test_case("angle (3, 3)", [t(3), t(3), b(COMMA), u(PAREN_UNARY), u("angle")]; "angle")]
+    #[test_case("3* -2", [t(3), t(2), u("-"), b("*")]; "unary minus")]
+    #[test_case("-(1,2)*3", [t(1), t(2), b(COMMA), u(PAREN_UNARY), u("-"), t(3), b("*")]; "unary minus 2")]
+    #[test_case("3*x", [t(3), var("x"), b("*")]; "variable")]
+    #[test_case("3*x.y", [t(3), var("x"), dot("y"), b("*")]; "dotted variable")]
+    #[test_case(r#""foobar""#, [t("foobar")]; "string")]
+    #[test_case("a() + b(1) + c(2, 3)", [var("a"), u(FN_CALL_UNARY), var("b"), t(1), b(FN_CALL), b("+"), var("c"), t(2), t(3), b(COMMA), b(FN_CALL), b("+")]; "function call")]
+    fn expression<const N: usize>(input: &str, expected: [Expr; N]) {
+        let mut errors = Vec::new();
+        let result = parse_expression(Lexer::new(input), HashMap::new(), &mut errors)
+            .ok_or(errors)
+            .unwrap()
+            .into_iter()
+            .map(|expr| expr.kind)
+            .collect::<Vec<_>>();
+        assert_eq!(result, expected.map(Into::into));
     }
 
-    #[test]
-    fn basic_arithmetic() {
-        assert_expression!("1+2*3+4", ("+", ("+", 1, ("*", 2, 3)), 4));
+    fn segment<const N: usize>(start: &str, end: &str, offset: [Expr; N]) -> Segment {
+        Segment {
+            start: start.into(),
+            end: end.into(),
+            offset: expression_full(offset).into(),
+        }
     }
 
-    #[test]
-    fn basic_arithmetic_2() {
-        assert_expression!("1-2*3+4", ("+", ("-", 1, ("*", 2, 3)), 4));
-    }
-
-    #[test]
-    fn basic_arithmetic_3() {
-        assert_expression!("1-3/2*5", ("-", 1, ("*", ("/", 3, 2), 5)));
-    }
-
-    #[test]
-    fn hypot() {
-        assert_expression!("3++4", ("++", 3, 4));
-    }
-
-    #[test]
-    fn hypot_sub() {
-        assert_expression!("5+-+3", ("+-+", 5, 3));
-    }
-
-    #[test]
-    fn pow() {
-        assert_expression!("3^4", ("^", 3, 4));
-    }
-
-    #[test]
-    fn parentheses() {
-        assert_expression!("(1+2)*3+4", ("+", ("*", ("+", 1, 2), 3), 4));
-    }
-
-    #[test]
-    fn points() {
-        assert_expression!("(1,2) + (3,4)", ("+", (@1, 2), (@3, 4)));
-    }
-
-    #[test]
-    fn dot_product() {
-        assert_expression!("(1,2) * (3,4)", ("*", (@1, 2), (@3, 4)));
-    }
-
-    #[test]
-    fn scalar_product() {
-        assert_expression!("3 * (1,2)", ("*", 3, (@1, 2)));
-    }
-
-    #[test]
-    fn angle() {
-        assert_expression!("angle (3, 3)", ("angle", (@3, 3)));
-    }
-
-    #[test]
-    fn unary_minus() {
-        assert_expression!("3* -2", ("*", 3, ("-", 2)));
-    }
-
-    #[test]
-    fn unary_minus_3() {
-        assert_expression!("-(1,2)*(3,4)", ("-", ("*", (@1, 2), (@3, 4))));
-    }
-
-    #[test]
-    fn variable() {
-        assert_expression!("3*x", ("*", 3, (#"x")));
-    }
-
-    #[test]
-    fn dotted_variable() {
-        assert_expression!("3*x.y", ("*", 3, (#"x.y")));
-    }
-
-    #[test]
-    fn string() {
-        assert_expression!(r#""foobar""#, (@"foobar"));
-    }
-
-    macro_rules! assert_statement {
-        ($text:expr, $statement:expr) => {{
-            let result = Lexer::new($text.as_bytes())
-                .into_parser()
-                .parse_statement()
-                .unwrap()
-                .unwrap();
-            assert_eq!(result, $statement);
-        }};
-    }
-
-    #[test]
-    fn variable_assignment() {
-        assert_statement!(
-            "a = b",
-            StatementKind::Variable("a".into(), expression!(#"b"))
+    #[test_case(
+        "a = b",
+        StatementKind::Variable(
+            "a".into(),
+            Vec::new(),
+            expression_full([var("b")]).into()
         );
-    }
-
-    #[test]
-    fn dotted_variable_assignment() {
-        assert_statement!(
-            "a.b = c",
-            StatementKind::Variable("a.b".into(), expression!(#"c"))
+        "variable assignment"
+    )]
+    #[test_case(
+        "a.b = c",
+        StatementKind::Variable(
+            "a".into(),
+            vec!["b".into()],
+            expression_full([var("c")]).into()
         );
-    }
-
-    #[test]
-    fn point_single() {
-        assert_statement!(
-            "point a = b",
-            StatementKind::PointSingle("a".into(), expression!(#"b"))
-        );
-    }
-
-    #[test]
-    fn points_spaced() {
-        assert_statement!(
-            "points from a spaced x: (1/2) b, c, (1/2) d",
-            StatementKind::PointSpaced {
-                from: "a".into(),
-                spaced: expression!(#"x"),
-                points: vec![
-                    (Some(expression!("/", 1, 2)), "b".into()),
-                    (None, "c".into()),
-                    (Some(expression!("/", 1, 2)), "d".into()),
-                ],
-            }
-        );
-    }
-
-    #[test]
-    fn points_between() {
-        assert_statement!(
-            "points from a to (1/2) d: (1/2) b, c",
-            StatementKind::PointExtend {
-                from: "a".into(),
-                to: (Some(expression!("/", 1, 2)), "d".into()),
-                points: vec![
-                    (Some(expression!("/", 1, 2)), "b".into()),
-                    (None, "c".into()),
-                ],
-                is_past: false,
-            }
-        );
-    }
-
-    #[test]
-    fn route() {
-        assert_statement!(
-            "route red: a --(1) b --(1) c",
-            StatementKind::Route {
-                styles: vec![],
-                name: "red".into(),
-                segments: vec![segment!("a", "b", 1), segment!("b", "c", 1),],
-            }
-        )
-    }
-
-    #[test]
-    fn route_with_style() {
-        assert_statement!(
-            "route.narrow red: a --(1) b --(1) c",
-            StatementKind::Route {
-                styles: vec!["narrow".into()],
-                name: "red".into(),
-                segments: vec![segment!("a", "b", 1), segment!("b", "c", 1),],
-            }
-        )
-    }
-
-    #[test]
-    fn stop() {
-        assert_statement!(
-            r#"stop a marker circle r=10"#,
-            StatementKind::Stop(Stop {
-                styles: vec![],
-                point: expression!(#"a"),
-                marker_type: "circle".into(),
-                marker_parameters: [("r".to_owned(), expression!(10))].into_iter().collect(),
-            })
-        )
-    }
-
-    #[test]
-    fn stop_with_style() {
-        assert_statement!(
-            r#"stop.terminus a marker double_tick length=20, angle=45"#,
-            StatementKind::Stop(Stop {
-                styles: vec!["terminus".into()],
-                point: expression!(#"a"),
-                marker_type: "double_tick".into(),
-                marker_parameters: [
-                    ("length".to_owned(), expression!(20)),
-                    ("angle".to_owned(), expression!(45))
-                ]
+        "dotted variable assignment"
+    )]
+    #[test_case(
+        "point a = b",
+        StatementKind::PointSingle("a".into(), expression_full([var("b")]).into());
+        "point single"
+    )]
+    #[test_case(
+        "points from a spaced x: (1/2) b, c, (1/2) d",
+        StatementKind::PointSpaced {
+            from: "a".into(),
+            spaced: expression_full([var("x")]).into(),
+            points: vec![
+                (
+                    Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
+                    "b".into()
+                ),
+                (None, "c".into()),
+                (
+                    Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
+                    "d".into()
+                ),
+            ],
+        };
+        "points spaced"
+    )]
+    #[test_case(
+        "points from a to (1/2) d: (1/2) b, c",
+        StatementKind::PointExtend {
+            from: "a".into(),
+            to: (
+                Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
+                "d".into()
+            ),
+            points: vec![
+                (
+                    Some(expression_full([t(1), t(2), b("/"), u(PAREN_UNARY)]).into()),
+                    "b".into()
+                ),
+                (None, "c".into()),
+            ],
+            is_past: false,
+        };
+        "points between"
+    )]
+    #[test_case(
+        "route red: a --(1) b --(1) c",
+        StatementKind::Route {
+            styles: vec![],
+            name: "red".into(),
+            segments: vec![
+                segment("a", "b", [t(1), u(PAREN_UNARY)]),
+                segment("b", "c", [t(1), u(PAREN_UNARY)]),
+            ],
+        };
+        "route"
+    )]
+    #[test_case(
+        "route.narrow red: a --(1) b --(1) c",
+        StatementKind::Route {
+            styles: vec!["narrow".into()],
+            name: "red".into(),
+            segments: vec![
+                segment("a", "b", [t(1), u(PAREN_UNARY)]),
+                segment("b", "c", [t(1), u(PAREN_UNARY)]),
+            ],
+        };
+        "route with style"
+    )]
+    #[test_case(
+        r#"stop a marker circle r(10)"#,
+        StatementKind::Stop(Stop {
+            styles: vec![],
+            point: expression_full([var("a")]).into(),
+            marker_type: "circle".into(),
+            marker_parameters: [("r".into(), expression_full([t(10), u(PAREN_UNARY)]).into())]
                 .into_iter()
                 .collect(),
-            })
-        )
-    }
-
-    #[test]
-    fn stop_with_text() {
-        assert_statement!(
-            r#"stop.terminus a marker text text="A station", angle=0"#,
-            StatementKind::Stop(Stop {
-                styles: vec!["terminus".into()],
-                point: expression!(#"a"),
-                marker_type: "text".into(),
-                marker_parameters: [
-                    ("text".to_owned(), expression!(@"A station")),
-                    ("angle".to_owned(), expression!(0))
-                ]
-                .into_iter()
-                .collect(),
-            })
-        )
+        });
+        "stop"
+    )]
+    #[test_case(
+        r#"stop.terminus a marker double_tick length(20), angle(45)"#,
+        StatementKind::Stop(Stop {
+            styles: vec!["terminus".into()],
+            point: expression_full([var("a")]).into(),
+            marker_type: "double_tick".into(),
+            marker_parameters: [
+                (
+                    "length".into(),
+                    expression_full([t(20), u(PAREN_UNARY)]).into()
+                ),
+                (
+                    "angle".into(),
+                    expression_full([t(45), u(PAREN_UNARY)]).into()
+                )
+            ]
+            .into_iter()
+            .collect(),
+        });
+        "stop with style"
+    )]
+    #[test_case(
+        r#"stop.terminus a marker text text("A station") angle(0)"#,
+        StatementKind::Stop(Stop {
+            styles: vec!["terminus".into()],
+            point: expression_full([var("a")]).into(),
+            marker_type: "text".into(),
+            marker_parameters: [
+                (
+                    "text".into(),
+                    expression_full([t("A station"), u(PAREN_UNARY)]).into()
+                ),
+                (
+                    "angle".into(),
+                    expression_full([t(0), u(PAREN_UNARY)]).into()
+                )
+            ]
+            .into_iter()
+            .collect(),
+        });
+        "stop with text"
+    )]
+    fn statement(input: &str, expected: StatementKind) {
+        let result = parse_statement(Lexer::new(input), &mut Vec::new()).unwrap();
+        assert_eq!(result.statement, expected);
     }
 }

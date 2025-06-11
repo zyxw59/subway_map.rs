@@ -1,6 +1,6 @@
 style "bart.css";
 line_sep = 30;
-line_sep.narrow = 15;
+narrow.line_sep = 15;
 inner_radius = 10;
 
 point A = (0, 0);

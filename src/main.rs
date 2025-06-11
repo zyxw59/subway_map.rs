@@ -1,22 +1,14 @@
-#![allow(
-    clippy::needless_lifetimes,
-    clippy::redundant_guards,
-    clippy::legacy_numeric_constants
-)]
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
 
 use clap::Parser;
 
-#[macro_use]
-mod macros;
 mod corner;
 mod error;
 pub mod evaluator;
 mod expressions;
 mod intermediate_representation;
-pub mod lexer;
 mod operators;
 pub mod parser;
 pub mod points;
@@ -24,8 +16,6 @@ pub mod statement;
 mod stops;
 mod svg;
 mod values;
-
-use parser::LexerExt;
 
 #[derive(Parser)]
 struct Args {
@@ -52,14 +42,14 @@ enum OutputFormat {
 
 fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
-    let input: Box<dyn io::BufRead> = if let Some(path) = args.input {
-        Box::new(io::BufReader::new(File::open(path)?))
+    let input = if let Some(path) = args.input {
+        std::fs::read_to_string(path)?
     } else {
-        Box::new(io::BufReader::new(io::stdin()))
+        io::read_to_string(&mut io::stdin())?
     };
-    let parser = lexer::Lexer::new(input).into_parser();
+    let statements = parser::parse(&input).map_err(|err| anyhow::anyhow!("{err}"))?;
     let mut evaluator = evaluator::Evaluator::new();
-    evaluator.evaluate_all(parser)?;
+    evaluator.evaluate_all(statements)?;
     if let Some(debug_output) = args.debug {
         let mut debug_output: Box<dyn io::Write> = if let Some(path) = debug_output {
             Box::new(File::create(path)?)
@@ -79,9 +69,35 @@ fn main() -> Result<(), anyhow::Error> {
     match args.format {
         OutputFormat::Svg => {
             write!(output, r#"<?xml version="1.0" encoding="utf-8" ?>"#)?;
-            ::svg::write(&mut output, &document.to_svg()?).map_err(error::EvaluatorError::Io)?;
+            ::svg::write(&mut output, &document.to_svg()?)?;
         }
         OutputFormat::Json => serde_json::to_writer_pretty(output, &document)?,
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, path::Path};
+
+    use crate::{evaluator::Evaluator, parser::parse};
+
+    fn test_example(input_file: impl AsRef<Path>) -> anyhow::Result<()> {
+        let input = fs::read_to_string(input_file)?;
+        let statements = parse(&input).unwrap();
+        let mut evaluator = Evaluator::new();
+        evaluator.evaluate_all(statements)?;
+        let _document = evaluator.into_document().to_svg()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_bart_example() {
+        test_example("examples/bart.subway").unwrap();
+    }
+
+    #[test]
+    fn test_simple_wyes_example() {
+        test_example("examples/simple_wyes.subway").unwrap();
+    }
 }

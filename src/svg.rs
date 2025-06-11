@@ -86,7 +86,7 @@ impl Default for Document {
         Document {
             view_box: Default::default(),
             stylesheets: Default::default(),
-            title: Title::new(),
+            title: Title::new(""),
             routes_def: Definitions::new(),
             routes_use: Group::new().set("id", "routes"),
             stops: Group::new().set("id", "stops"),

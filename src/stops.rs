@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
+use smol_str::SmolStr;
 use svg::node::{
-    element::{Circle, Group, Text as TextElement},
-    Node, Text,
+    element::{Circle, Group, Text},
+    Node,
 };
 
 use crate::{
-    error::{EvaluatorError, MathError},
+    error::{Error, MathError, Result},
     values::{Point, Value},
 };
 
@@ -16,17 +17,17 @@ pub struct Stop {
     /// Location of the stop
     pub point: Point,
     /// Styles applying to the stop
-    pub styles: Vec<String>,
+    pub styles: Vec<SmolStr>,
     /// Type of marker to use for the stop
-    pub marker_type: String,
+    pub marker_type: SmolStr,
     /// The parameters for the marker
-    pub marker_parameters: HashMap<String, Value>,
+    pub marker_parameters: HashMap<SmolStr, Value>,
     /// The input line the stop is defined on
     pub input_line: usize,
 }
 
 impl Stop {
-    pub fn to_svg(&self) -> Result<Group, EvaluatorError> {
+    pub fn to_svg(&self) -> Result<Group> {
         let mut group = Group::new().set(
             "class",
             format!("stop {} {}", self.marker_type, self.styles.join(" ")),
@@ -49,7 +50,7 @@ impl Stop {
                     .get_optional_parameter_typed::<f64>("angle")?
                     .unwrap_or(0.0);
                 // TODO(#15): handle multi-line text
-                let text_el = TextElement::new()
+                let text_el = Text::new(text)
                     .set("x", self.point.0)
                     .set("y", self.point.1)
                     .set("text-anchor", anchor.horizontal_anchor())
@@ -57,14 +58,13 @@ impl Stop {
                     .set(
                         "transform",
                         format!("rotate({} {} {})", angle, self.point.0, self.point.1),
-                    )
-                    .add(Text::new(text));
+                    );
                 group.append(text_el);
             }
             // TODO(#16): more marker types?
             // TODO(#17): user-defined marker types?
             _ => {
-                return Err(EvaluatorError::UndefinedStopMarker {
+                return Err(Error::UndefinedStopMarker {
                     name: self.marker_type.clone(),
                     line: self.input_line,
                 })
@@ -73,17 +73,17 @@ impl Stop {
         Ok(group)
     }
 
-    fn get_parameter(&self, arg: &'static str) -> Result<&Value, EvaluatorError> {
+    fn get_parameter(&self, arg: &'static str) -> Result<&Value> {
         self.marker_parameters
             .get(arg)
-            .ok_or_else(|| EvaluatorError::MissingMarkerArg {
+            .ok_or_else(|| Error::MissingMarkerArg {
                 marker: self.marker_type.clone(),
                 arg,
                 line: self.input_line,
             })
     }
 
-    fn get_parameter_typed<'a, T>(&'a self, arg: &'static str) -> Result<T, EvaluatorError>
+    fn get_parameter_typed<'a, T>(&'a self, arg: &'static str) -> Result<T>
     where
         T: TryFrom<&'a Value, Error = MathError>,
     {
@@ -91,10 +91,7 @@ impl Stop {
             .and_then(|val| T::try_from(val).map_err(|err| self.invalid_arg_error(arg, err)))
     }
 
-    fn get_optional_parameter_typed<'a, T>(
-        &'a self,
-        arg: &'static str,
-    ) -> Result<Option<T>, EvaluatorError>
+    fn get_optional_parameter_typed<'a, T>(&'a self, arg: &'static str) -> Result<Option<T>>
     where
         T: TryFrom<&'a Value, Error = MathError>,
     {
@@ -104,8 +101,8 @@ impl Stop {
             .transpose()
     }
 
-    fn invalid_arg_error(&self, arg: &'static str, error: MathError) -> EvaluatorError {
-        EvaluatorError::InvalidMarkerArg {
+    fn invalid_arg_error(&self, arg: &'static str, error: MathError) -> Error {
+        Error::InvalidMarkerArg {
             marker: self.marker_type.clone(),
             arg,
             line: self.input_line,

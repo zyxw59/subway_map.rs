@@ -1,15 +1,21 @@
-use std::convert::TryFrom;
-use std::fmt;
-use std::ops;
-use std::result;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt, ops,
+    rc::Rc,
+    result,
+};
 
 use serde::Serialize;
 use svg::node::element::path::Parameters;
 
-use crate::error::{MathError, Type};
-use crate::points::PointId;
+use crate::{
+    error::{MathError, Type},
+    evaluator::EvaluationContext,
+    expressions::Variable,
+    points::PointId,
+};
 
-pub type Result = result::Result<Value, MathError>;
+pub type Result<T = Value, E = MathError> = result::Result<T, E>;
 
 macro_rules! numeric_fn {
     (($x:ident, $y:ident) => $val:expr) => {
@@ -185,7 +191,7 @@ impl ops::Neg for UnitVector {
 impl TryFrom<Value> for Point {
     type Error = MathError;
 
-    fn try_from(value: Value) -> result::Result<Point, MathError> {
+    fn try_from(value: Value) -> Result<Point> {
         match value {
             Value::Point(p, _) => Ok(p),
             _ => Err(MathError::Type(Type::Point, value.into())),
@@ -196,7 +202,7 @@ impl TryFrom<Value> for Point {
 impl TryFrom<Value> for (Point, PointProvenance) {
     type Error = MathError;
 
-    fn try_from(value: Value) -> result::Result<(Point, PointProvenance), MathError> {
+    fn try_from(value: Value) -> Result<(Point, PointProvenance)> {
         match value {
             Value::Point(point, provenance) => Ok((point, provenance)),
             _ => Err(MathError::Type(Type::Point, value.into())),
@@ -207,7 +213,7 @@ impl TryFrom<Value> for (Point, PointProvenance) {
 impl TryFrom<Value> for f64 {
     type Error = MathError;
 
-    fn try_from(value: Value) -> result::Result<f64, MathError> {
+    fn try_from(value: Value) -> Result<f64> {
         match value {
             Value::Number(x) => Ok(x),
             _ => Err(MathError::Type(Type::Number, value.into())),
@@ -218,7 +224,7 @@ impl TryFrom<Value> for f64 {
 impl TryFrom<&'_ Value> for f64 {
     type Error = MathError;
 
-    fn try_from(value: &Value) -> result::Result<f64, MathError> {
+    fn try_from(value: &Value) -> Result<f64> {
         match value {
             Value::Number(x) => Ok(*x),
             _ => Err(MathError::Type(Type::Number, value.into())),
@@ -226,21 +232,10 @@ impl TryFrom<&'_ Value> for f64 {
     }
 }
 
-impl TryFrom<Value> for String {
-    type Error = MathError;
-
-    fn try_from(value: Value) -> result::Result<String, MathError> {
-        match value {
-            Value::String(s) => Ok(s),
-            _ => Err(MathError::Type(Type::String, value.into())),
-        }
-    }
-}
-
 impl<'a> TryFrom<&'a Value> for &'a str {
     type Error = MathError;
 
-    fn try_from(value: &'a Value) -> result::Result<&'a str, MathError> {
+    fn try_from(value: &'a Value) -> Result<&'a str> {
         match value {
             Value::String(s) => Ok(s),
             _ => Err(MathError::Type(Type::String, value.into())),
@@ -300,7 +295,10 @@ pub enum Value {
     Number(f64),
     Point(Point, #[serde(skip)] PointProvenance),
     Line(Point, Point, Option<(PointId, PointId)>),
-    String(String),
+    String(Rc<String>),
+    List(Rc<Vec<Value>>),
+    Struct(Rc<HashMap<Variable, Value>>),
+    Function(#[serde(skip)] crate::expressions::Function),
 }
 
 impl Value {
@@ -308,6 +306,17 @@ impl Value {
         match self {
             Value::Number(x) => Some(x),
             _ => None,
+        }
+    }
+
+    pub fn new_struct() -> Self {
+        Self::Struct(Default::default())
+    }
+
+    pub fn slot(&mut self, field: Variable) -> Result<Entry<Variable, Value>> {
+        match self {
+            Self::Struct(fields) => Ok(Rc::make_mut(fields).entry(field)),
+            bad => Err(MathError::Type(Type::Struct, (&*bad).into())),
         }
     }
 
@@ -418,7 +427,7 @@ impl Value {
         }
     }
 
-    fn eq_bool(&self, other: &Value) -> std::result::Result<bool, MathError> {
+    fn eq_bool(&self, other: &Value) -> Result<bool> {
         match (self, other) {
             (&Value::Number(x), &Value::Number(y)) => Ok(float_eq(x, y)),
             (&Value::Point(p1, id1), &Value::Point(p2, id2)) => {
@@ -514,23 +523,41 @@ impl Value {
             (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
         }
     }
-}
 
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
-        self.eq_bool(other).unwrap_or(false)
+    pub fn comma(self, other: Value) -> Result {
+        Ok(match self {
+            Self::List(mut values) => {
+                Rc::make_mut(&mut values).push(other);
+                Self::List(values)
+            }
+            _ => Self::List(Rc::new(vec![self, other])),
+        })
     }
-}
 
-impl ops::Add for Value {
-    type Output = Result;
+    pub fn comma_unary(self) -> Result {
+        Ok(self)
+    }
 
-    fn add(self, rhs: Value) -> Result {
+    pub fn paren_unary(self) -> Result {
+        match self {
+            Self::List(values) => match &**values {
+                [value] => Ok(value.clone()),
+                [x, y] => Self::point(x.clone(), y.clone()),
+                _ => Err(MathError::Arguments {
+                    expected: 2,
+                    actual: values.len(),
+                }),
+            },
+            _ => Ok(self),
+        }
+    }
+
+    pub fn add(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a + b),
             (Point(p1, _), Point(p2, _)) => Point(p1 + p2, PointProvenance::None),
-            (String(s1), String(s2)) => String(s1 + &s2),
+            (String(s1), String(s2)) => String(Rc::new(Rc::unwrap_or_clone(s1) + &s2)),
             (bad, good @ (Number(..) | Point(..) | String(..)))
             | (good @ (Number(..) | Point(..) | String(..)), bad) => {
                 return Err(MathError::Type(good.into(), bad.into()))
@@ -538,12 +565,8 @@ impl ops::Add for Value {
             (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Sub for Value {
-    type Output = Result;
-
-    fn sub(self, rhs: Value) -> Result {
+    pub fn sub(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a - b),
@@ -554,12 +577,8 @@ impl ops::Sub for Value {
             (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Mul for Value {
-    type Output = Result;
-
-    fn mul(self, rhs: Value) -> Result {
+    pub fn mul(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a * b),
@@ -572,32 +591,52 @@ impl ops::Mul for Value {
             (bad, _) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Div for Value {
-    type Output = Result;
-
-    fn div(self, rhs: Value) -> Result {
+    pub fn div(self, rhs: Value) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
-            (_, Number(x)) if x == 0.0 => return Err(MathError::DivisionByZero),
+            (_, Number(0.0)) => return Err(MathError::DivisionByZero),
             (Number(a), Number(b)) => Number(a / b),
             (Point(p, _), Number(a)) => Point(p / a, PointProvenance::None),
             (bad, Number(..)) | (_, bad) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
-}
 
-impl ops::Neg for Value {
-    type Output = Result;
-
-    fn neg(self) -> Result {
+    pub fn neg(self) -> Result {
         use self::Value::*;
         Ok(match self {
             Number(x) => Number(-x),
             Point(p, _) => Point(-p, PointProvenance::None),
             _ => return Err(MathError::Type(Type::Number, self.into())),
         })
+    }
+
+    pub fn fn_call(self, args: Self, ctx: &dyn EvaluationContext) -> Result {
+        match (self, args) {
+            (Self::Function(f), Self::List(args)) => f.apply(&args, ctx),
+            (Self::Function(f), arg) => f.apply(&[arg], ctx),
+            (bad, _) => Err(MathError::Type(Type::Function, bad.into())),
+        }
+    }
+
+    pub fn fn_call_unary(self, ctx: &dyn EvaluationContext) -> Result {
+        match self {
+            Self::Function(f) => f.apply(&[], ctx),
+            bad => Err(MathError::Type(Type::Function, bad.into())),
+        }
+    }
+
+    pub fn field_access(self, name: Variable) -> Result {
+        match self {
+            Self::Struct(fields) => fields.get(&name).cloned().ok_or(MathError::Field(name)),
+            bad => Err(MathError::Type(Type::Struct, bad.into())),
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        self.eq_bool(other).unwrap_or(false)
     }
 }
 
@@ -638,7 +677,7 @@ pub fn intersect(p1: Point, d1: Point, p2: Point, d2: Point) -> Option<Point> {
     let cross = d1.cross(d2);
     // if `cross ~= 0`, the lines are (approximately) parallel; in this case there is no
     // intersection.
-    if cross.abs() < ::std::f64::EPSILON {
+    if cross.abs() < f64::EPSILON {
         None
     } else {
         Some(d1.mul_add((p2 - p1).cross(d2) / cross, p1))
@@ -659,131 +698,99 @@ fn vector_parallel_float_eq(v1: Point, v2: Point) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    macro_rules! assert_eval {
-        (($($expr:tt)+), ($($val:tt)*)) => {{
-            let expr = expression!($($expr)+);
-            assert_eq!(expr.evaluate(&()).unwrap(), value!($($val)*));
-        }};
-        (($($expr:tt)+), $($val:tt)*) => {{
-            let expr = expression!($($expr)+);
-            assert_eq!(expr.evaluate(&()).unwrap(), value!($($val)*));
-        }};
+pub(crate) mod tests {
+    use test_case::test_case;
+
+    use crate::{
+        evaluator::evaluate_expression,
+        expressions::tests::{b, expression_full, t, u, Expr},
+        operators::{COMMA, PAREN_UNARY},
+        values::Value,
+    };
+
+    macro_rules! value {
+        (($x:expr, $y:expr)) => {
+            value!($x, $y)
+        };
+        (($x:expr, $y:expr, $id:expr)) => {
+            value!($x, $y, $id)
+        };
+        ($x:expr) => {
+            $crate::values::Value::Number($x as f64)
+        };
+        ($x:expr, $y:expr) => {
+            $crate::values::Value::Point(
+                $crate::values::Point($x as f64, $y as f64),
+                $crate::values::PointProvenance::None,
+            )
+        };
+        ($x:expr, $y:expr, $id:expr) => {
+            $crate::values::Value::Point(
+                $crate::values::Point($x as f64, $y as f64),
+                $crate::values::PointProvenance::Named($id),
+            )
+        };
+        (($x1:expr, $y1:expr) -> ($x2:expr, $y2:expr)) => {
+            $crate::values::Value::Line(
+                $crate::values::Point($x1 as f64, $y1 as f64),
+                $crate::values::Point(($x2 - $x1) as f64, ($y2 - $y1) as f64),
+                None,
+            )
+        };
+        (@$s:expr) => {
+            $crate::values::Value::String(std::rc::Rc::new($s.into()))
+        };
     }
 
-    #[test]
-    fn basic_arithmetic() {
-        // 1 + 2 * 3 + 4 == 11
-        assert_eval!(("+", ("+", 1, ("*", 2, 3)), 4), 11)
-    }
+    pub(crate) use value;
 
-    #[test]
-    fn basic_arithmetic_2() {
-        // 1 - 2 * 3 + 4 == -1
-        assert_eval!(("+", ("-", 1, ("*", 2, 3)), 4), -1);
-    }
-
-    #[test]
-    fn basic_arithmetic_3() {
-        // 1 - 3 / 2 * 5 == -6.5
-        assert_eval!(("-", 1, ("*", ("/", 3, 2), 5)), -6.5);
-    }
-
-    #[test]
-    fn hypot() {
-        // 3 ++ 4 == 5
-        assert_eval!(("++", 3, 4), 5);
-    }
-
-    #[test]
-    fn hypot_sub() {
-        // 5 +-+ 3 == 4
-        assert_eval!(("+-+", 5, 3), 4);
-    }
-
-    #[test]
-    fn pow() {
-        // 3 ^ 4 == 81
-        assert_eval!(("^", 3, 4), 81);
-    }
-
-    #[test]
-    fn points() {
-        // (1, 2) + (3, 4) == (4, 6)
-        assert_eval!(("+", (@1, 2), (@3, 4)), (4, 6));
-    }
-
-    #[test]
-    fn dot_product() {
-        // (1, 2) * (3, 4) == 11
-        assert_eval!(("*", (@1, 2), (@3, 4)), 11);
-    }
-
-    #[test]
-    fn scalar_product() {
-        // 3 * (1, 2) == (3, 6)
-        assert_eval!(("*", 3, (@1, 2)), (3, 6));
-    }
-
-    #[test]
-    fn angle() {
-        // angle (3, 3) == 45
-        assert_eval!(("angle", (@3, 3)), 45);
-    }
-
-    #[test]
-    fn unary_minus() {
-        // 3 * -2 == -6
-        assert_eval!(("*", 3, ("-", 2)), -6);
-    }
-
-    #[test]
-    fn unary_minus_2() {
-        // -2 * 3 == -6
-        assert_eval!(("*", ("-", 2), 3), -6);
-    }
-
-    #[test]
-    fn unary_minus_3() {
-        // -(1, 2) * (3, 4) == -11
-        assert_eval!(("-", ("*", (@1, 2), (@3, 4))), -11);
-    }
-
-    #[test]
-    fn unary_cos() {
-        // cos 90 == 0
-        assert_eval!(("cos", 90), 0);
-    }
-
-    #[test]
-    fn unary_sin() {
-        // sin 90 == 1
-        assert_eval!(("sin", 90), 1);
-    }
-
-    #[test]
-    fn intersect() {
-        assert_eval!(("&", ("<>", (@1, 2), (@3, 4)), ("<>", (@1, 4), (@3, 2))), (2, 3))
-    }
-
-    #[test]
-    fn offset() {
-        assert_eval!(("^^", ("<>", (@0, 0), (@3, 4)), 5), ((4, -3) -> (7, 1)))
-    }
-
-    #[test]
-    fn min() {
-        // (2, 4) min (3, 1) == (2, 1)
-        assert_eval!(("min", (@2, 4), (@3, 1)), (2, 1))
-    }
-
-    #[test]
-    fn string_concat() {
-        assert_eval!(("+", (@"foo"), (@"bar")), @"foobar");
-    }
-
-    #[test]
-    fn string_max() {
-        assert_eval!(("max", (@"a"), (@"b")), @"b");
+    // 1 + 2 * 3 + 4 == 11
+    #[test_case([t(1), t(2), t(3), b("*"), b("+"), t(4), b("+")], value!(11); "basic arithmetic")]
+    // 1 - 2 * 3 + 4 == -1
+    #[test_case([t(1), t(2), t(3), b("*"), b("-"), t(4), b("+")], value!(-1); "basic arithmetic 2")]
+    // 1 - 3 / 2 * 5 == -6.5
+    #[test_case([t(1), t(3), t(2), b("/"), t(5), b("*"), b("-")], value!(-6.5); "basic arithmetic 3")]
+    // 3 ++ 4 == 5
+    #[test_case([t(3), t(4), b("++")], value!(5); "hypot")]
+    // 5 +-+ 3 == 4
+    #[test_case([t(5), t(3), b("+-+")], value!(4); "hypot sub")]
+    // 3 ^ 4 == 81
+    #[test_case([t(3), t(4), b("^")], value!(81); "pow")]
+    // (1, 2) + (3, 4) == (4, 6)
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("+")], value!(4, 6); "vector addition")]
+    // (1, 2) * (3, 4) == 11
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], value!(11); "dot product")]
+    // 3 * (1, 2) == (3, 6)
+    #[test_case([t(3), t(1), t(2), b(COMMA), u(PAREN_UNARY), b("*")], value!(3, 6); "scalar product")]
+    // angle (3, 3) == 45
+    #[test_case([t(3), t(3), b(COMMA), u(PAREN_UNARY), u("angle")], value!(45); "angle")]
+    // 3 * - 2 == -6
+    #[test_case([t(3), t(2), u("-"), b("*")], value!(-6); "unary minus")]
+    // - 2 * 3 == -6
+    #[test_case([t(2), u("-"), t(3), b("*")], value!(-6); "unary minus 2")]
+    // -(1, 2) * (3, 4) == -11
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), u("-"), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], value!(-11); "unary minus 3")]
+    // cos 90 == 0
+    #[test_case([t(90), u("cos")], value!(0); "unary cos")]
+    // sin 90 == 1
+    #[test_case([t(90), u("sin")], value!(1); "unary sin")]
+    // (1, 2) <> (3, 4) & (1, 4) <> (3, 2) == (2, 3)
+    #[test_case([
+        t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
+        t(1), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(2), b(COMMA), u(PAREN_UNARY), b("<>"), b("&")
+    ], value!(2, 3); "intersect")]
+    // (0, 0) <> (3, 4) ^^ 5 == (4, -3) -> (7, 1)
+    #[test_case([t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"), t(5), b("^^")], value!((4, -3) -> (7, 1)); "offset")]
+    // (2, 4) min (3, 1) == (2, 1)
+    #[test_case([t(2), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(1), b(COMMA), u(PAREN_UNARY), b("min")], value!(2, 1); "min")]
+    // "foo" + "bar" == "foobar"
+    #[test_case([t("foo"), t("bar"), b("+")], value!(@"foobar"); "string concat")]
+    // "a" max "b" == "b"
+    #[test_case([t("a"), t("b"), b("max")], value!(@"b"); "string max")]
+    fn eval<const N: usize>(expression: [Expr; N], expected: Value) {
+        assert_eq!(
+            evaluate_expression(&(), expression_full(expression)).unwrap(),
+            expected
+        );
     }
 }

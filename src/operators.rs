@@ -1,13 +1,15 @@
-use std::cmp::PartialEq;
 use std::fmt;
 
-use crate::error::MathError;
-use crate::expressions::Expression;
-use crate::values::Value;
+use crate::{
+    evaluator::EvaluationContext,
+    expressions::Variable,
+    values::{Result, Value},
+};
 
-type EResult<T> = Result<T, MathError>;
-
-enum Precedence {
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Precedence {
+    /// The `,` operator
+    Comma,
     /// Comparison operators, such as `==`, `>`, `<>`, etc.
     Comparison,
     /// Additive operators, such as `+`, `-`, `++`, etc.
@@ -16,164 +18,151 @@ enum Precedence {
     Multiplicative,
     /// Exponential operators, such as `^`, as well as unary sine and cosine.
     Exponential,
+    /// Field access operators
+    Field,
 }
 
-mod builtins {
-    use std::ops;
-
-    use crate::values::Value;
-
-    use super::{BinaryOperator, Precedence, UnaryOperator};
-
-    macro_rules! bin_op {
-        ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: BinaryOperator<'static> = BinaryOperator {
-                precedence: Precedence::$prec as usize,
-                function: &$fun,
-                name: $debug,
-            };
-        };
-    }
-
-    bin_op! {EQ(Comparison, Value::eq, "==")}
-    bin_op! {NE(Comparison, Value::ne, "!=")}
-    bin_op! {LT(Comparison, Value::lt, ">")}
-    bin_op! {LE(Comparison, Value::le, ">=")}
-    bin_op! {GT(Comparison, Value::gt, "<")}
-    bin_op! {GE(Comparison, Value::ge, "<=")}
-    bin_op! {MAX(Comparison, Value::max, "max")}
-    bin_op! {MIN(Comparison, Value::min, "min")}
-    bin_op! {ADD(Additive, ops::Add::add, "+")}
-    bin_op! {SUB(Additive, ops::Sub::sub, "-")}
-    bin_op! {HYPOT(Additive, Value::hypot, "++")}
-    bin_op! {HYPOT_SUB(Additive, Value::hypot_sub, "+-+")}
-    bin_op! {MUL(Multiplicative, ops::Mul::mul, "*")}
-    bin_op! {DIV(Multiplicative, ops::Div::div, "/")}
-    bin_op! {POW(Exponential, Value::pow, "^")}
-    bin_op! {LINE_BETWEEN(Exponential, Value::line_between, "<>")}
-    bin_op! {LINE_VECTOR(Exponential, Value::line_vector, ">>")}
-    bin_op! {INTERSECT(Multiplicative, Value::intersect, "&")}
-    bin_op! {LINE_OFFSET(Exponential, Value::line_offset, "^^")}
-
-    macro_rules! unary_op {
-        ($name:ident ( $prec:ident, $fun:path, $debug:literal )) => {
-            pub const $name: UnaryOperator<'static> = UnaryOperator {
-                precedence: Precedence::$prec as usize,
-                function: &$fun,
-                name: $debug,
-            };
-        };
-    }
-
-    unary_op! {NEG(Multiplicative, ops::Neg::neg, "-")}
-    unary_op! {COS(Exponential, Value::cos, "cos")}
-    unary_op! {SIN(Exponential, Value::sin, "sin")}
-    unary_op! {DIR(Exponential, Value::dir, "dir")}
-    unary_op! {ANGLE(Exponential, Value::angle, "angle")}
-    unary_op! {XPART(Multiplicative, Value::xpart, "xpart")}
-    unary_op! {YPART(Multiplicative, Value::ypart, "ypart")}
+macro_rules! as_binary_operator {
+    ($fn:path) => {{
+        fn _f(a: Value, b: Value, _: &dyn EvaluationContext) -> Result {
+            $fn(a, b)
+        }
+        _f
+    }};
 }
 
-pub struct BinaryBuiltins;
+macro_rules! as_unary_operator {
+    ($fn:path) => {{
+        fn _f(a: Value, _: &dyn EvaluationContext) -> Result {
+            $fn(a)
+        }
+        _f
+    }};
+}
 
-impl BinaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static BinaryOperator<'static>> {
-        match key {
-            "==" => Some(&builtins::EQ),
-            "!=" => Some(&builtins::NE),
-            "<" => Some(&builtins::LT),
-            "<=" => Some(&builtins::LE),
-            ">" => Some(&builtins::GT),
-            ">=" => Some(&builtins::GE),
-            "+" => Some(&builtins::ADD),
-            "-" => Some(&builtins::SUB),
-            "++" => Some(&builtins::HYPOT),
-            "+-+" => Some(&builtins::HYPOT_SUB),
-            "*" => Some(&builtins::MUL),
-            "/" => Some(&builtins::DIV),
-            "^" => Some(&builtins::POW),
-            "max" => Some(&builtins::MAX),
-            "min" => Some(&builtins::MIN),
-            "<>" => Some(&builtins::LINE_BETWEEN),
-            ">>" => Some(&builtins::LINE_VECTOR),
-            "&" => Some(&builtins::INTERSECT),
-            "^^" => Some(&builtins::LINE_OFFSET),
+pub const COMMA: BinaryOperator = BinaryOperator {
+    function: as_binary_operator!(Value::comma),
+    name: Variable::new_static(","),
+};
+
+pub const COMMA_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
+    function: as_unary_operator!(Value::comma_unary),
+    name: Variable::new_static(","),
+});
+
+pub const FN_CALL: BinaryOperator = BinaryOperator {
+    function: Value::fn_call,
+    name: Variable::new_static("()"),
+};
+
+pub const FN_CALL_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
+    function: Value::fn_call_unary,
+    name: Variable::new_static("()"),
+});
+
+pub const PAREN_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
+    function: as_unary_operator!(Value::paren_unary),
+    name: Variable::new_static("()"),
+});
+
+macro_rules! get_binary_builtin {
+    (match $key:ident { $($name:literal => ($fixity:expr, $fn:ident)),* $(,)? }) => {
+        match $key {
+            $($name => Some(($fixity, BinaryOperator {
+                function: as_binary_operator!(Value::$fn),
+                name: $name.into(),
+            })),)*
             _ => None,
         }
     }
 }
 
-pub struct UnaryBuiltins;
-
-impl UnaryBuiltins {
-    pub fn get(&self, key: &str) -> Option<&'static UnaryOperator<'static>> {
-        match key {
-            "-" => Some(&builtins::NEG),
-            "cos" => Some(&builtins::COS),
-            "sin" => Some(&builtins::SIN),
-            "dir" => Some(&builtins::DIR),
-            "angle" => Some(&builtins::ANGLE),
-            "xpart" => Some(&builtins::XPART),
-            "ypart" => Some(&builtins::YPART),
+macro_rules! get_unary_builtin {
+    (match $key:ident { $($name:literal => ($prec:ident, $fn:ident)),* $(,)? }) => {
+        match $key {
+            $($name => Some((Precedence::$prec, UnaryOperator::Function(NamedFunction {
+                function: as_unary_operator!(Value::$fn),
+                name: $name.into(),
+            }))),)*
             _ => None,
         }
     }
 }
 
-#[derive(Clone)]
-pub struct BinaryOperator<'a> {
-    pub precedence: usize,
-    function: &'a dyn Fn(Value, Value) -> EResult<Value>,
-    name: &'static str,
+#[derive(Clone, Eq, PartialEq)]
+pub struct NamedFunction<F> {
+    pub function: F,
+    pub name: Variable,
 }
 
-impl<'a> BinaryOperator<'a> {
-    pub fn apply(&self, lhs: Value, rhs: Value) -> EResult<Value> {
-        (self.function)(lhs, rhs)
-    }
-
-    pub fn expression(&'static self, lhs: Expression, rhs: Expression) -> Expression {
-        Expression::BinaryOperator(self, Box::new((lhs, rhs)))
-    }
-}
-
-impl<'a> fmt::Debug for BinaryOperator<'a> {
+impl<F> fmt::Debug for NamedFunction<F> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        f.write_str(&self.name)
     }
 }
 
-impl<'a> PartialEq for BinaryOperator<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.precedence == other.precedence && self.name == other.name
+pub type BinaryOperator = NamedFunction<fn(Value, Value, &dyn EvaluationContext) -> Result>;
+
+impl BinaryOperator {
+    pub fn get(key: &str) -> Option<(expr_parser::operator::Fixity<Precedence>, Self)> {
+        use self::Precedence::*;
+        use expr_parser::operator::Fixity::*;
+        get_binary_builtin!(match key {
+            "==" => (Left(Comparison), eq),
+            "!=" => (Left(Comparison), ne),
+            "<" => (Left(Comparison), lt),
+            "<=" => (Left(Comparison), le),
+            ">" => (Left(Comparison), gt),
+            ">=" => (Left(Comparison), ge),
+            "max" => (Left(Comparison), max),
+            "min" => (Left(Comparison), min),
+            "+" => (Left(Additive), add),
+            "-" => (Left(Additive), sub),
+            "++" => (Left(Additive), hypot),
+            "+-+" => (Left(Additive), hypot_sub),
+            "*" => (Left(Multiplicative), mul),
+            "/" => (Left(Multiplicative), div),
+            "&" => (Left(Multiplicative), intersect),
+            "^" => (Right(Exponential), pow),
+            "<>" => (Left(Exponential), line_between),
+            ">>" => (Left(Exponential), line_vector),
+            "^^" => (Left(Exponential), line_offset),
+        })
     }
 }
 
-#[derive(Clone)]
-pub struct UnaryOperator<'a> {
-    pub precedence: usize,
-    function: &'a dyn Fn(Value) -> EResult<Value>,
-    name: &'static str,
+#[derive(Clone, Eq, PartialEq)]
+pub enum UnaryOperator {
+    Function(NamedFunction<fn(Value, &dyn EvaluationContext) -> Result>),
+    FieldAccess(Variable),
 }
 
-impl<'a> UnaryOperator<'a> {
-    pub fn apply(&self, argument: Value) -> EResult<Value> {
-        (self.function)(argument)
+impl UnaryOperator {
+    pub fn call(&self, value: Value, ctx: &dyn EvaluationContext) -> Result {
+        match self {
+            Self::Function(f) => (f.function)(value, ctx),
+            Self::FieldAccess(field) => value.field_access(field.clone()),
+        }
     }
 
-    pub fn expression(&'static self, argument: Expression) -> Expression {
-        Expression::UnaryOperator(self, Box::new(argument))
+    pub fn get(key: &str) -> Option<(Precedence, Self)> {
+        get_unary_builtin!(match key {
+            "-" => (Multiplicative, neg),
+            "xpart" => (Multiplicative, xpart),
+            "ypart" => (Multiplicative, ypart),
+            "cos" => (Exponential, cos),
+            "sin" => (Exponential, sin),
+            "dir" => (Exponential, dir),
+            "angle" => (Exponential, angle),
+        })
     }
 }
 
-impl<'a> fmt::Debug for UnaryOperator<'a> {
+impl fmt::Debug for UnaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
-impl<'a> PartialEq for UnaryOperator<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.precedence == other.precedence && self.name == other.name
+        match self {
+            Self::Function(func) => fmt::Debug::fmt(func, f),
+            Self::FieldAccess(field) => write!(f, ".{field}"),
+        }
     }
 }
