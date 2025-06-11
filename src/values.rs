@@ -543,7 +543,10 @@ impl Value {
             Self::List(values) => match &**values {
                 [value] => Ok(value.clone()),
                 [x, y] => Self::point(x.clone(), y.clone()),
-                _ => todo!(),
+                _ => Err(MathError::Arguments {
+                    expected: 2,
+                    actual: values.len(),
+                }),
             },
             _ => Ok(self),
         }
