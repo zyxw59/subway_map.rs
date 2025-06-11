@@ -6,13 +6,12 @@ use svg::node::{
 };
 
 use crate::{
-    document::Document,
     error::{EvaluatorError, MathError},
     values::{Point, Value},
 };
 
 /// A stop.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct Stop {
     /// Location of the stop
     pub point: Point,
@@ -27,7 +26,7 @@ pub struct Stop {
 }
 
 impl Stop {
-    pub fn draw(&self, document: &mut Document) -> Result<(), EvaluatorError> {
+    pub fn to_svg(&self) -> Result<Group, EvaluatorError> {
         let mut group = Group::new().set(
             "class",
             format!("stop {} {}", self.marker_type, self.styles.join(" ")),
@@ -71,8 +70,7 @@ impl Stop {
                 })
             }
         }
-        document.add_stop(group);
-        Ok(())
+        Ok(group)
     }
 
     fn get_parameter(&self, arg: &'static str) -> Result<&Value, EvaluatorError> {
@@ -113,24 +111,6 @@ impl Stop {
             line: self.input_line,
             error,
         }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct StopCollection {
-    pub stops: Vec<Stop>,
-}
-
-impl StopCollection {
-    pub fn push(&mut self, stop: Stop) {
-        self.stops.push(stop);
-    }
-
-    pub fn draw(&self, document: &mut Document) -> Result<(), EvaluatorError> {
-        for stop in &self.stops {
-            stop.draw(document)?;
-        }
-        Ok(())
     }
 }
 

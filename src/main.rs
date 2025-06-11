@@ -1,3 +1,8 @@
+#![allow(
+    clippy::needless_lifetimes,
+    clippy::redundant_guards,
+    clippy::legacy_numeric_constants
+)]
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
@@ -7,16 +12,17 @@ use clap::Parser;
 #[macro_use]
 mod macros;
 mod corner;
-mod document;
 mod error;
 pub mod evaluator;
 mod expressions;
+mod intermediate_representation;
 pub mod lexer;
 mod operators;
 pub mod parser;
 pub mod points;
 pub mod statement;
 mod stops;
+mod svg;
 mod values;
 
 use parser::LexerExt;
@@ -29,9 +35,19 @@ struct Args {
     /// Output file, stdout if not present.
     #[clap(short, long)]
     output: Option<PathBuf>,
+    /// Output format
+    #[clap(short, long, default_value = "svg")]
+    format: OutputFormat,
     /// Whether to output debugging info, and file to output to.
     #[clap(short, long)]
     debug: Option<Option<PathBuf>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+enum OutputFormat {
+    #[default]
+    Svg,
+    Json,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -59,8 +75,13 @@ fn main() -> Result<(), anyhow::Error> {
     } else {
         Box::new(io::stdout())
     };
-    write!(output, r#"<?xml version="1.0" encoding="utf-8" ?>"#)?;
-    svg::write(&mut output, &evaluator.create_document()?.compile())
-        .map_err(error::EvaluatorError::Io)?;
+    let document = evaluator.into_document();
+    match args.format {
+        OutputFormat::Svg => {
+            write!(output, r#"<?xml version="1.0" encoding="utf-8" ?>"#)?;
+            ::svg::write(&mut output, &document.to_svg()?).map_err(error::EvaluatorError::Io)?;
+        }
+        OutputFormat::Json => serde_json::to_writer_pretty(output, &document)?,
+    }
     Ok(())
 }
