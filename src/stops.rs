@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// A stop.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct Stop {
     /// Location of the stop
     pub point: Point,

@@ -6,7 +6,7 @@ use crate::{
     values::{Point, UnitVector},
 };
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct Document {
     pub title: Option<String>,
     pub view_box: (f64, f64, f64, f64),
@@ -33,7 +33,7 @@ impl Document {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Path {
     pub operations: Vec<Operation>,
     pub name: String,
@@ -62,9 +62,10 @@ impl Path {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct Operation {
     pub point: Point,
+    #[serde(flatten)]
     pub kind: OperationKind,
 }
 
@@ -154,7 +155,7 @@ impl Operation {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 pub enum OperationKind {
     Start {
         direction: UnitVector,

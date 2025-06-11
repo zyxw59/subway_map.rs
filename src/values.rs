@@ -149,7 +149,8 @@ impl ops::Div<f64> for Point {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(transparent)]
 pub struct UnitVector(Point);
 
 impl UnitVector {
@@ -294,10 +295,10 @@ impl PartialEq for PointProvenance {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub enum Value {
     Number(f64),
-    Point(Point, PointProvenance),
+    Point(Point, #[serde(skip)] PointProvenance),
     Line(Point, Point, Option<(PointId, PointId)>),
     String(String),
 }
