@@ -50,16 +50,8 @@ impl Default for PointCollection {
 }
 
 impl PointCollection {
-    pub fn new() -> PointCollection {
-        Default::default()
-    }
-
     pub fn contains(&self, k: &str) -> bool {
         self.point_ids.contains_key(k)
-    }
-
-    pub fn point_iter(&self) -> impl Iterator<Item = &Point> {
-        self.points.iter().map(|info| &info.info.value)
     }
 
     fn get_point_info(&self, k: &str) -> Option<&PointInfo> {
@@ -70,10 +62,6 @@ impl PointCollection {
 
     pub fn get_point_and_id(&self, k: &str) -> Option<(Point, PointId)> {
         self.point_ids.get(k).map(|&id| (self[id].info.value, id))
-    }
-
-    pub fn get_point(&self, k: &str) -> Option<Point> {
-        self.get_point_info(k).map(|info| info.info.value)
     }
 
     pub fn get_point_line_number(&self, k: &str) -> Option<usize> {
@@ -93,7 +81,6 @@ impl PointCollection {
     pub fn insert_route_get_id(
         &mut self,
         name: Variable,
-        width: f64,
         styles: Vec<Variable>,
         line_number: usize,
     ) -> Result<RouteId> {
@@ -109,7 +96,7 @@ impl PointCollection {
             Entry::Vacant(e) => {
                 let id = RouteId(self.routes.len());
                 self.routes
-                    .push(Route::new(e.key().clone(), id, width, styles, line_number));
+                    .push(Route::new(e.key().clone(), id, styles, line_number));
                 e.insert(id);
                 Ok(id)
             }
@@ -339,8 +326,7 @@ impl PointCollection {
         let p2 = self.get_point_info(end).ok_or(end)?.info;
         let line_id = self.get_or_insert_line(p1.id, p2.id);
         let route_segment = self[route].add_segment(p1.id, p2.id, offset);
-        let width = self[route].width;
-        self[line_id].add_segment(p1, p2, offset, width, route_segment);
+        self[line_id].add_segment(p1, p2, route_segment);
         Ok(())
     }
 
@@ -721,8 +707,6 @@ pub struct Route {
     name: Variable,
     /// The id of the route.
     id: RouteId,
-    /// The width of the route line.
-    width: f64,
     /// The style (if any) for the route.
     style: String,
     /// The segments making up the route.
@@ -732,17 +716,10 @@ pub struct Route {
 }
 
 impl Route {
-    fn new(
-        name: Variable,
-        id: RouteId,
-        width: f64,
-        style: Vec<Variable>,
-        line_number: usize,
-    ) -> Route {
+    fn new(name: Variable, id: RouteId, style: Vec<Variable>, line_number: usize) -> Route {
         Route {
             name,
             id,
-            width,
             style: style.join(" "),
             segments: Vec::new(),
             line_number,
@@ -822,7 +799,7 @@ mod tests {
 
     #[test]
     fn extend_line_in_order() {
-        let mut points = PointCollection::new();
+        let mut points = PointCollection::default();
         points
             .insert_point("A".into(), Point(0.0, 0.0), PointProvenance::None, 0)
             .unwrap();
@@ -849,7 +826,7 @@ mod tests {
 
     #[test]
     fn extend_line_in_reverse_order() {
-        let mut points = PointCollection::new();
+        let mut points = PointCollection::default();
         points
             .insert_point("A".into(), Point(0.0, 0.0), PointProvenance::None, 0)
             .unwrap();
@@ -876,7 +853,7 @@ mod tests {
 
     #[test]
     fn new_line() {
-        let mut points = PointCollection::new();
+        let mut points = PointCollection::default();
         points
             .insert_point("A".into(), Point(0.0, 0.0), PointProvenance::None, 0)
             .unwrap();
@@ -895,48 +872,6 @@ mod tests {
         assert_eq!(
             line.points().map(|p| p.distance).collect::<Vec<_>>(),
             &[0.0, 1.0, 1.5, 2.5]
-        );
-    }
-
-    #[test]
-    fn segments_containing_point() {
-        let mut points = PointCollection::new();
-        points
-            .insert_point("A".into(), Point(0.0, 0.0), PointProvenance::None, 0)
-            .unwrap();
-        points
-            .new_line(
-                "A".into(),
-                Point(2.0, 0.0),
-                vec![("B".into(), 1.0), ("C".into(), 0.5), ("D".into(), 1.0)],
-                2,
-            )
-            .unwrap();
-        let route = points
-            .insert_route_get_id("red".into(), 1.0, Vec::new(), 3)
-            .unwrap();
-        points.add_segment(route, "A", "B", 0.0).unwrap();
-        points.add_segment(route, "B", "D", 0.0).unwrap();
-        let a_id = points.point_ids["A"];
-        let b_id = points.point_ids["B"];
-        let c_id = points.point_ids["C"];
-        let d_id = points.point_ids["D"];
-        let line = &points[(a_id, b_id)];
-        assert_eq!(
-            line.get_segments_containing_point(points[a_id].info),
-            [None, line.get_segment_by_index(0)]
-        );
-        assert_eq!(
-            line.get_segments_containing_point(points[b_id].info),
-            [line.get_segment_by_index(0), line.get_segment_by_index(1)]
-        );
-        assert_eq!(
-            line.get_segments_containing_point(points[c_id].info),
-            [None, line.get_segment_by_index(1)]
-        );
-        assert_eq!(
-            line.get_segments_containing_point(points[d_id].info),
-            [line.get_segment_by_index(1), None]
         );
     }
 }

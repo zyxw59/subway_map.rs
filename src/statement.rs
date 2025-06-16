@@ -14,8 +14,6 @@ pub struct Statement {
 /// A statement.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StatementKind {
-    /// An empty statement.
-    Null,
     /// A function declaration.
     Function(Variable, Function),
     /// A variable assignment.

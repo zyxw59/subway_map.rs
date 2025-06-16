@@ -90,7 +90,6 @@ impl Evaluator {
 
     fn evaluate(&mut self, Statement { statement, line }: Statement) -> Result<()> {
         match statement {
-            StatementKind::Null => {}
             StatementKind::Variable(name, fields, expr) => {
                 let value =
                     evaluate_expression(self, expr).map_err(|err| Error::Math(err, line))?;
@@ -217,21 +216,7 @@ impl Evaluator {
                 styles,
                 segments,
             } => {
-                let width = styles
-                    .iter()
-                    // if a style has a distinct line_width, get the appropriate line_width
-                    // take the line_width of the first listed style with a defined line_width
-                    .find_map(|style| {
-                        self.get_variable(style)
-                            .and_then(|st| st.field_access(LINE_WIDTH).ok())
-                    })
-                    // otherwise, get the default line_width
-                    .or_else(|| self.get_variable(&LINE_WIDTH))
-                    // convert value to number
-                    .and_then(Value::into_number)
-                    // if it wasn't found, or wasn't a number, default to 1
-                    .unwrap_or(1.0);
-                let route = self.points.insert_route_get_id(name, width, styles, line)?;
+                let route = self.points.insert_route_get_id(name, styles, line)?;
                 for segment in segments {
                     let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)

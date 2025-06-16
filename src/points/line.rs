@@ -56,11 +56,6 @@ impl Line {
         self.points.iter()
     }
 
-    #[cfg(test)]
-    pub fn get_segment_by_index(&self, index: usize) -> Option<&Segment> {
-        self.segments.get(index)
-    }
-
     /// Calculate the distance along the line for the specified point.
     pub fn distance(&self, p: Point) -> f64 {
         self.relative_distance(self.origin, p)
@@ -93,8 +88,6 @@ impl Line {
         &mut self,
         p1: PointInfoLite,
         p2: PointInfoLite,
-        mut offset: f64,
-        width: f64,
         route_segment: RouteSegmentRef,
     ) {
         let mut p1 = self.line_point(p1);
@@ -106,10 +99,9 @@ impl Line {
         if p1 > p2 {
             // switch the order
             std::mem::swap(&mut p1, &mut p2);
-            offset = -offset;
         }
         // make immutable again
-        let (p1, p2, offset) = (p1, p2, offset);
+        let (p1, p2) = (p1, p2);
 
         // start_idx points to the segment which contains the start of the new segment, or the
         // segment after the start of the new segment
@@ -129,7 +121,7 @@ impl Line {
                 } else {
                     p2
                 };
-                Some(Segment::new(p1, end_point, offset, width, route_segment))
+                Some(Segment::new(p1, end_point, route_segment))
             }
         };
 
@@ -149,7 +141,7 @@ impl Line {
                 if start_point == p2 {
                     None
                 } else {
-                    Some(Segment::new(start_point, p2, offset, width, route_segment))
+                    Some(Segment::new(start_point, p2, route_segment))
                 }
             }
         };
@@ -246,12 +238,12 @@ impl Line {
         let mut idx = start;
         while idx < end {
             // update this segment
-            self.segments[idx].update(offset, width, route_segment);
+            self.segments[idx].update(route_segment);
             // add an intermediate segment if necessary
             let curr_end = self.segments[idx].end;
             let next_start = self.segments[idx + 1].start;
             if curr_end < next_start {
-                let new_seg = Segment::new(curr_end, next_start, offset, width, route_segment);
+                let new_seg = Segment::new(curr_end, next_start, route_segment);
                 self.segments.insert(idx + 1, new_seg);
                 idx += 1;
                 end += 1;
@@ -259,62 +251,7 @@ impl Line {
             idx += 1;
         }
         // update the end segment
-        self.segments[end].update(offset, width, route_segment);
-    }
-
-    pub fn segments_between(
-        &self,
-        start: PointInfoLite,
-        end: PointInfoLite,
-    ) -> (bool, Box<dyn Iterator<Item = &Segment> + '_>) {
-        let mut start = self.line_point(start);
-        let mut end = self.line_point(end);
-        let reverse = start > end;
-        if reverse {
-            std::mem::swap(&mut start, &mut end);
-        }
-        // make immutable again
-        let (start, end) = (start, end);
-        // this is only called with points forming a segment which has been added, so they must
-        // match some segment.
-        let mut start_seg = self
-            .segments
-            .binary_search_by(|seg| seg.cmp(&start))
-            .unwrap();
-        if self.segments[start_seg].end == start {
-            // we matched the end of the previous segment
-            start_seg += 1;
-        }
-        let end_seg = self
-            .segments
-            .binary_search_by(|seg| seg.cmp(&end))
-            .unwrap_or_else(|err| err)
-            - 1;
-        if reverse {
-            (
-                reverse,
-                Box::new(self.segments[start_seg..=end_seg].iter().rev()),
-            )
-        } else {
-            (reverse, Box::new(self.segments[start_seg..=end_seg].iter()))
-        }
-    }
-
-    /// Returns the segments on either side of `end`
-    pub fn segments_at(
-        &self,
-        start: PointInfoLite,
-        end: PointInfoLite,
-    ) -> (bool, &Segment, &Segment) {
-        let start = self.line_point(start);
-        let end = self.line_point(end);
-        let reverse = start > end;
-        let idx = self.segments.binary_search_by(|seg| seg.cmp(&end)).unwrap();
-        if reverse {
-            (reverse, &self.segments[idx], &self.segments[idx - 1])
-        } else {
-            (reverse, &self.segments[idx - 1], &self.segments[idx])
-        }
+        self.segments[end].update(route_segment);
     }
 
     /// Returns the segment ending at `end`
@@ -330,45 +267,6 @@ impl Line {
             idx -= 1
         };
         (reverse, &self.segments[idx])
-    }
-
-    /// Returns up to two segments. The first segment returned is the one ending at the given
-    /// point, if it exists. The second segment returned is the segment starting with or
-    /// encompassing the given point, if it exists.
-    pub fn get_segments_containing_point(&self, point: PointInfoLite) -> [Option<&Segment>; 2] {
-        let point = self.line_point(point);
-        let idx = self
-            .segments
-            .binary_search_by(|seg| seg.cmp(&point))
-            .unwrap_or_else(|idx| idx);
-        [
-            // the first segment returned is the segment ending at `point`, if it exists
-            if idx > 0 && self.segments[idx - 1].end == point {
-                Some(&self.segments[idx - 1])
-            } else {
-                None
-            },
-            // the second segment returned is the segment with
-            // `segment.start <= point < segment.end`, if it exists
-            if idx < self.segments.len() && self.segments[idx] == point {
-                Some(&self.segments[idx])
-            } else {
-                None
-            },
-        ]
-    }
-
-    /// Returns whether the points are in reversed order relative to the line.
-    pub fn are_reversed(&self, a: PointInfoLite, b: PointInfoLite) -> bool {
-        let a = self.line_point(a);
-        let b = self.line_point(b);
-        a > b
-    }
-
-    /// True if the line is to the right of the specified point (looking in the direction of
-    /// `line.direction`.
-    pub fn right_of(&self, point: Point) -> bool {
-        self.direction.cross(point - self.origin) < 0.0
     }
 
     /// Returns the id of the point at the intersection of the two lines, if such a point exists.
@@ -408,24 +306,15 @@ pub struct Segment {
     pub start: LinePoint,
     pub end: LinePoint,
     routes: HashSet<RouteSegmentRef>,
-    offset_range: Option<(f64, f64)>,
 }
 
 impl Segment {
-    pub fn new(
-        start: LinePoint,
-        end: LinePoint,
-        offset: f64,
-        width: f64,
-        route_segment: RouteSegmentRef,
-    ) -> Segment {
+    pub fn new(start: LinePoint, end: LinePoint, route_segment: RouteSegmentRef) -> Segment {
         Segment {
             start,
             end,
-            routes: HashSet::new(),
-            offset_range: None,
+            routes: [route_segment].into_iter().collect(),
         }
-        .update_new(offset, width, route_segment)
     }
 
     /// Returns the first and last points of the segment. If `reverse` is true, they will be
@@ -436,38 +325,6 @@ impl Segment {
         } else {
             (self.end, self.start)
         }
-    }
-
-    pub fn routes(&self) -> impl Iterator<Item = &RouteSegmentRef> + Clone + '_ {
-        self.routes.iter()
-    }
-
-    pub fn contains_route(&self, route_segment: &RouteSegmentRef) -> bool {
-        self.routes.contains(route_segment)
-    }
-
-    pub fn calculate_offset_radius(
-        &self,
-        offset: f64,
-        reverse: bool,
-        turn_dir: bool,
-    ) -> (f64, f64) {
-        // offset relative to the line
-        let abs_offset = if reverse { -offset } else { offset };
-        let radius = if turn_dir {
-            abs_offset - self.offset_min()
-        } else {
-            self.offset_max() - abs_offset
-        };
-        (offset, radius.abs())
-    }
-
-    fn offset_max(&self) -> f64 {
-        self.offset_range.map(|(_, max)| max).unwrap_or(0.0)
-    }
-
-    fn offset_min(&self) -> f64 {
-        self.offset_range.map(|(min, _)| min).unwrap_or(0.0)
     }
 
     /// Split `self`, leaving the post-split segment in `self`'s place, returning the segment to
@@ -485,17 +342,8 @@ impl Segment {
         }
     }
 
-    /// Update the segment with the given `offset` and `width`, returning the new segment
-    fn update_new(mut self, offset: f64, width: f64, route_segment: RouteSegmentRef) -> Segment {
-        self.update(offset, width, route_segment);
-        self
-    }
-
     /// Update the segment with the given `offset` and `width`.
-    fn update(&mut self, offset: f64, width: f64, route_segment: RouteSegmentRef) {
-        let (min, max) = self.offset_range.get_or_insert((offset, offset));
-        *min = min.min(offset - width / 2.0);
-        *max = max.max(offset + width / 2.0);
+    fn update(&mut self, route_segment: RouteSegmentRef) {
         self.routes.insert(route_segment);
     }
 

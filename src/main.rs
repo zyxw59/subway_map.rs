@@ -6,13 +6,13 @@ use clap::Parser;
 
 mod corner;
 mod error;
-pub mod evaluator;
+mod evaluator;
 mod expressions;
 mod intermediate_representation;
 mod operators;
-pub mod parser;
-pub mod points;
-pub mod statement;
+mod parser;
+mod points;
+mod statement;
 mod stops;
 mod svg;
 mod values;
