@@ -485,18 +485,12 @@ impl PointCollection {
         let end_id = segment_in.end;
         let start = self[start_id].info;
         let end = self[end_id].info;
-        let line = &self[(start_id, end_id)];
-        let (reverse, _, _) = line.segments_at(start, end);
         let offset_in = segment_in.offset;
         let offset_out = segment_out.offset;
         if crate::values::float_eq(offset_in, offset_out) {
             None
         } else {
-            let direction = if reverse {
-                -line.direction.unit()
-            } else {
-                line.direction.unit()
-            };
+            let direction = (end.value - start.value).unit();
             Some(Operation {
                 point: end.value,
                 kind: OperationKind::Shift {
@@ -520,13 +514,7 @@ impl PointCollection {
         let end_id = segment_in.end;
         let start = self[start_id].info;
         let end = self[end_id].info;
-        let line = &self[(start_id, end_id)];
-        let (reverse, _) = line.get_segment(start, end);
-        let direction = if reverse {
-            -line.direction.unit()
-        } else {
-            line.direction.unit()
-        };
+        let direction = (end.value - start.value).unit();
         let offset_in = segment_in.offset;
         let offset_out = segment_out.offset;
         Operation {
