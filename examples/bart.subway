@@ -2,13 +2,14 @@
 # As more features are added, this example will become more complex.
 
 # these variables have special meaning:
-# line_sep determines the separation between the centers of parallel lines
+# line_width determines the width of lines.
 # to define a style for thinner lines (e.g. for a different mode), use
-# `{style}.line_sep`, where `{style}` is the name of the style.
+# `{style}.line_width`, where `{style}` is the name of the style.
 # To access a style you've defined in this way, use `line.{style}` when
 # defining a line.
-line_sep = 10;
-# inner_radius determines the radius of the innermost curve in a rounded corner
+line_width = 10;
+# inner_radius (along with the line_width of that line) determines the radius
+# of the innermost curve in a rounded corner
 inner_radius = 20;
 
 title "Bay Area Rapid Transit";
@@ -16,7 +17,7 @@ title "Bay Area Rapid Transit";
 # stylesheet
 style "bart.css";
 
-ss = line_sep * 5;
+ss = line_width * 5;
 
 m = 1/2;
 
@@ -71,6 +72,7 @@ right = xpart (antc max dubl max s0) + 2 * ss;
 
 # segment offsets are positive to the right, travelling in the direction of the
 # segment as written, so `a --(1) b` is the same as `b --(-1) a`
+# segment values are multiplied by the default line_width value
 route red_limited:    daly --(1.5) w0 --( 1) mlbr;
 route yellow_limited: sfia --( 0) y0 --( 0) mlbr;
 route oac: cols --( 2) h15 --( 0) oakl;
@@ -82,19 +84,19 @@ route green:                        bery --(-1) s0 --(-1) wye --(-1.5) m15 --(-1
 route orange:                       rich --(-.5) c0 --( 0) wye --( 0) s0 --(0) bery;
 
 # offset by one line
-o_n   = line_sep * dir 0;
-o_ne  = line_sep * dir 60;
-o_se  = line_sep * dir 120;
-o_sse = line_sep * dir 150;
-o_s   = line_sep * dir 180;
-o_sw  = line_sep * dir 240;
-o_nw  = line_sep * dir 300;
-o_nnw = line_sep * dir 330;
+o_n   = line_width * dir 0;
+o_ne  = line_width * dir 60;
+o_se  = line_width * dir 120;
+o_sse = line_width * dir 150;
+o_s   = line_width * dir 180;
+o_sw  = line_width * dir 240;
+o_nw  = line_width * dir 300;
+o_nnw = line_width * dir 330;
 
 # stop marker radius
-stop_r = line_sep / 2 - 1;
-terminus_r = line_sep / 2;
-transfer_r = line_sep / 2;
+stop_r = line_width / 2 - 1;
+terminus_r = line_width / 2;
+transfer_r = line_width / 2;
 
 #    style           position          marker
 stop.yellow.terminus antc              marker circle r(terminus_r);

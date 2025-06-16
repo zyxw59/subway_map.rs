@@ -65,7 +65,7 @@ impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn Evalu
     }
 }
 
-const LINE_SEP: Variable = Variable::new_static("line_sep");
+const LINE_WIDTH: Variable = Variable::new_static("line_width");
 const INNER_RADIUS: Variable = Variable::new_static("inner_radius");
 
 #[derive(Default, Debug)]
@@ -95,7 +95,7 @@ impl Evaluator {
                 let value =
                     evaluate_expression(self, expr).map_err(|err| Error::Math(err, line))?;
                 if fields.is_empty() {
-                    if name == LINE_SEP {
+                    if name == LINE_WIDTH {
                         let value = f64::try_from(&value).map_err(|err| Error::Math(err, line))?;
                         self.points.set_default_width(value);
                     } else if name == INNER_RADIUS {
@@ -219,14 +219,14 @@ impl Evaluator {
             } => {
                 let width = styles
                     .iter()
-                    // if a style has a distinct line_sep, get the appropriate line_sep
-                    // take the line_sep of the first listed style with a defined line_sep
+                    // if a style has a distinct line_width, get the appropriate line_width
+                    // take the line_width of the first listed style with a defined line_width
                     .find_map(|style| {
                         self.get_variable(style)
-                            .and_then(|st| st.field_access(LINE_SEP).ok())
+                            .and_then(|st| st.field_access(LINE_WIDTH).ok())
                     })
-                    // otherwise, get the default line_sep
-                    .or_else(|| self.get_variable(&LINE_SEP))
+                    // otherwise, get the default line_width
+                    .or_else(|| self.get_variable(&LINE_WIDTH))
                     // convert value to number
                     .and_then(Value::into_number)
                     // if it wasn't found, or wasn't a number, default to 1
