@@ -1,7 +1,7 @@
 style "bart.css";
-line_sep = 20;
+line_width = 20;
 inner_radius = 10;
-ss = line_sep * 5;
+ss = line_width * 5;
 
 N = ss * dir 0;
 E = ss * dir 90;
