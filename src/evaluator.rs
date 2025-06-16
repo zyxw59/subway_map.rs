@@ -233,12 +233,9 @@ impl Evaluator {
                     .unwrap_or(1.0);
                 let route = self.points.insert_route_get_id(name, width, styles, line)?;
                 for segment in segments {
-                    // if offset evaluates to a number, coerce it to an integer
-                    // TODO: add warning if it's not an integer
                     let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)
-                        .map_err(|err| Error::Math(err, line))?
-                        as isize;
+                        .map_err(|err| Error::Math(err, line))?;
                     self.points
                         .add_segment(route, &segment.start, &segment.end, offset)
                         .map_err(|name| Error::Math(MathError::Variable(name.into()), line))?;

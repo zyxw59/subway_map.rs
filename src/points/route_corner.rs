@@ -76,7 +76,7 @@ impl fmt::Debug for RouteTurns {
 
 #[derive(Debug, Clone, Copy)]
 pub struct RouteTurn {
-    pub transverse: isize,
+    pub transverse: f64,
     pub longitudinal: f64,
 }
 
@@ -84,26 +84,26 @@ impl RouteTurn {
     /// Select the `RouteTurn` with the smaller `transverse`. If they are equal, select the *larger*
     /// `longitudinal`.
     fn min(self, other: Self) -> Self {
-        match self.transverse.cmp(&other.transverse) {
-            Ordering::Less => self,
-            Ordering::Equal => Self {
+        match self.transverse.partial_cmp(&other.transverse) {
+            Some(Ordering::Less) => self,
+            Some(Ordering::Equal) | None => Self {
                 transverse: self.transverse,
                 longitudinal: self.longitudinal.max(other.longitudinal),
             },
-            Ordering::Greater => other,
+            Some(Ordering::Greater) => other,
         }
     }
 
     /// Select the `RouteTurn` with the larger `transverse`. If they are equal, select the *larger*
     /// `longitudinal`.
     fn max(self, other: Self) -> Self {
-        match self.transverse.cmp(&other.transverse) {
-            Ordering::Less => other,
-            Ordering::Equal => Self {
+        match self.transverse.partial_cmp(&other.transverse) {
+            Some(Ordering::Less) => other,
+            Some(Ordering::Equal) | None => Self {
                 transverse: self.transverse,
                 longitudinal: self.longitudinal.max(other.longitudinal),
             },
-            Ordering::Greater => self,
+            Some(Ordering::Greater) => self,
         }
     }
 }

@@ -21,7 +21,7 @@ mod route_corner;
 use line::{Line, LineId};
 use route_corner::{RouteCorners, RouteTurn};
 
-#[derive(Default, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct PointCollection {
     points: Vec<PointInfo>,
     point_ids: BTreeMap<Variable, PointId>,
@@ -32,6 +32,21 @@ pub struct PointCollection {
     route_ids: BTreeMap<Variable, RouteId>,
     default_width: f64,
     inner_radius: f64,
+}
+
+impl Default for PointCollection {
+    fn default() -> Self {
+        Self {
+            points: Default::default(),
+            point_ids: Default::default(),
+            lines: Default::default(),
+            pairs: Default::default(),
+            routes: Default::default(),
+            route_ids: Default::default(),
+            default_width: 1.0,
+            inner_radius: 0.0,
+        }
+    }
 }
 
 impl PointCollection {
@@ -317,8 +332,9 @@ impl PointCollection {
         route: RouteId,
         start: &'a str,
         end: &'a str,
-        offset: isize,
+        offset: f64,
     ) -> Result<(), &'a str> {
+        let offset = offset * self.default_width;
         let p1 = self.get_point_info(start).ok_or(start)?.info;
         let p2 = self.get_point_info(end).ok_or(end)?.info;
         let line_id = self.get_or_insert_line(p1.id, p2.id);
@@ -355,8 +371,8 @@ impl PointCollection {
 
                 let (rev_in, seg_in) = line_in.get_segment(start_pt, corner_pt);
                 let (rev_out, seg_out) = line_out.get_segment(corner_pt, end_pt);
-                let off_in = seg_in.calculate_offset(current.offset, rev_in, self.default_width);
-                let off_out = seg_out.calculate_offset(next.offset, rev_out, self.default_width);
+                let off_in = current.offset;
+                let off_out = next.offset;
                 let (start_pt, _) = seg_in.endpoints(rev_in);
                 let (_, end_pt) = seg_out.endpoints(rev_out);
                 let start_pt = self[start_pt.id].info;
@@ -400,10 +416,6 @@ impl PointCollection {
             // the start of the route
             path.operations.push(self.segment_start(segment));
             for (current, next) in route.iter().tuple_windows() {
-                // process `current` in the loop; `next` will be handled on the next iteration, or
-                // after the loop, for the last segment.
-                path.operations
-                    .extend(self.parallel_shifts(current, route_corners));
                 if current.end == next.start {
                     let route_corner = route_corners.get(&current.end);
                     let in_pt = self.get_other_segment_endpoint(current.start, current.end);
@@ -450,8 +462,6 @@ impl PointCollection {
                 }
             }
             let current = route.last().unwrap();
-            path.operations
-                .extend(self.parallel_shifts(current, route_corners));
             path.operations.push(self.segment_end(current));
         }
         path
@@ -462,51 +472,6 @@ impl PointCollection {
     fn get_other_segment_endpoint(&self, far: PointId, near: PointId) -> PointId {
         let (rev, seg) = self[(far, near)].get_segment(self[far].info, self[near].info);
         seg.endpoints(rev).0.id
-    }
-
-    pub fn parallel_shifts<'a>(
-        &'a self,
-        segment: &'a RouteSegment,
-        route_corners: &'a RouteCorners,
-    ) -> impl Iterator<Item = Operation> + 'a {
-        // this is only called on segments which have already been added, so we can be sure that
-        // all the points mentioned are valid.
-        let start_id = segment.start;
-        let end_id = segment.end;
-        let start = self[start_id].info;
-        let end = self[end_id].info;
-        let line = &self[(start_id, end_id)];
-        let (reverse, segments) = line.segments_between(start, end);
-        let offset = segment.offset;
-        segments.tuple_windows().filter_map(move |(prev, next)| {
-            let offset_in = prev.calculate_offset(offset, reverse, self.default_width);
-            let offset_out = next.calculate_offset(offset, reverse, self.default_width);
-            if crate::values::float_eq(offset_in, offset_out) {
-                None
-            } else {
-                let (in_pt, at_pt) = prev.endpoints(reverse);
-                let (_, out_pt) = next.endpoints(reverse);
-                let direction = if reverse {
-                    -line.direction.unit()
-                } else {
-                    line.direction.unit()
-                };
-                let point = self[at_pt.id].info.value;
-                let route_corner = route_corners.get(&at_pt.id);
-                let longitudinal_in = route_corner.and_then(|rc| rc.get(in_pt.id)).unwrap_or(0.0);
-                let longitudinal_out = route_corner.and_then(|rc| rc.get(out_pt.id)).unwrap_or(0.0);
-                Some(Operation {
-                    point,
-                    kind: OperationKind::Shift {
-                        direction,
-                        offset_in,
-                        offset_out,
-                        longitudinal_in,
-                        longitudinal_out,
-                    },
-                })
-            }
-        })
     }
 
     pub fn parallel_shift(
@@ -521,9 +486,9 @@ impl PointCollection {
         let start = self[start_id].info;
         let end = self[end_id].info;
         let line = &self[(start_id, end_id)];
-        let (reverse, prev, next) = line.segments_at(start, end);
-        let offset_in = prev.calculate_offset(segment_in.offset, reverse, self.default_width);
-        let offset_out = next.calculate_offset(segment_out.offset, reverse, self.default_width);
+        let (reverse, _, _) = line.segments_at(start, end);
+        let offset_in = segment_in.offset;
+        let offset_out = segment_out.offset;
         if crate::values::float_eq(offset_in, offset_out) {
             None
         } else {
@@ -556,14 +521,14 @@ impl PointCollection {
         let start = self[start_id].info;
         let end = self[end_id].info;
         let line = &self[(start_id, end_id)];
-        let (reverse, seg) = line.get_segment(start, end);
+        let (reverse, _) = line.get_segment(start, end);
         let direction = if reverse {
             -line.direction.unit()
         } else {
             line.direction.unit()
         };
-        let offset_in = seg.calculate_offset(segment_in.offset, reverse, self.default_width);
-        let offset_out = seg.calculate_offset(segment_out.offset, !reverse, self.default_width);
+        let offset_in = segment_in.offset;
+        let offset_out = segment_out.offset;
         Operation {
             point: end.value,
             kind: OperationKind::UTurn {
@@ -588,15 +553,9 @@ impl PointCollection {
         let start = self[start_id].info;
         let corner = self[corner_id].info;
         let end = self[end_id].info;
-        let line_in = &self[(start_id, corner_id)];
-        let line_out = &self[(corner_id, end_id)];
-        let (reverse_in, seg_in) = line_in.get_segment(start, corner);
-        let (reverse_out, seg_out) = line_out.get_segment(end, corner);
 
-        let transverse_in =
-            seg_in.calculate_offset(segment_in.offset, reverse_in, self.default_width);
-        let transverse_out =
-            seg_out.calculate_offset(segment_out.offset, !reverse_out, self.default_width);
+        let transverse_in = segment_in.offset;
+        let transverse_out = segment_out.offset;
 
         let (long_in, long_out) = calculate_longitudinal_offsets(
             (start.value - corner.value).unit(),
@@ -631,10 +590,10 @@ impl PointCollection {
         let end = self[end_id].info;
         let line = &self[(start_id, end_id)];
         let (this, other) = if is_start { (start, end) } else { (end, start) };
-        let (reverse, seg) = line.get_segment(other, this);
+        let (reverse, _) = line.get_segment(other, this);
         // if `is_start`, we reversed the start and end points already, so flip `reverse`
         let reverse = reverse ^ is_start;
-        let offset = seg.calculate_offset(segment.offset, reverse, self.default_width);
+        let offset = segment.offset;
         let direction = if reverse {
             -line.direction.unit()
         } else {
@@ -802,7 +761,7 @@ impl Route {
         }
     }
 
-    fn add_segment(&mut self, start: PointId, end: PointId, offset: isize) -> RouteSegmentRef {
+    fn add_segment(&mut self, start: PointId, end: PointId, offset: f64) -> RouteSegmentRef {
         let index = self.len();
         self.segments.push(RouteSegment { start, end, offset });
         RouteSegmentRef {
@@ -858,7 +817,7 @@ impl fmt::Debug for RouteId {
 pub struct RouteSegment {
     pub start: PointId,
     pub end: PointId,
-    pub offset: isize,
+    pub offset: f64,
 }
 
 /// A reference to a segment of a route, referencing it by its `RouteId` and the index into that
@@ -968,8 +927,8 @@ mod tests {
         let route = points
             .insert_route_get_id("red".into(), 1.0, Vec::new(), 3)
             .unwrap();
-        points.add_segment(route, "A", "B", 0).unwrap();
-        points.add_segment(route, "B", "D", 0).unwrap();
+        points.add_segment(route, "A", "B", 0.0).unwrap();
+        points.add_segment(route, "B", "D", 0.0).unwrap();
         let a_id = points.point_ids["A"];
         let b_id = points.point_ids["B"];
         let c_id = points.point_ids["C"];

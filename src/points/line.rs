@@ -93,7 +93,7 @@ impl Line {
         &mut self,
         p1: PointInfoLite,
         p2: PointInfoLite,
-        mut offset: isize,
+        mut offset: f64,
         width: f64,
         route_segment: RouteSegmentRef,
     ) {
@@ -408,15 +408,14 @@ pub struct Segment {
     pub start: LinePoint,
     pub end: LinePoint,
     routes: HashSet<RouteSegmentRef>,
-    pos_offsets: Vec<Option<f64>>,
-    neg_offsets: Vec<Option<f64>>,
+    offset_range: Option<(f64, f64)>,
 }
 
 impl Segment {
     pub fn new(
         start: LinePoint,
         end: LinePoint,
-        offset: isize,
+        offset: f64,
         width: f64,
         route_segment: RouteSegmentRef,
     ) -> Segment {
@@ -424,8 +423,7 @@ impl Segment {
             start,
             end,
             routes: HashSet::new(),
-            pos_offsets: Vec::new(),
-            neg_offsets: Vec::new(),
+            offset_range: None,
         }
         .update_new(offset, width, route_segment)
     }
@@ -448,97 +446,28 @@ impl Segment {
         self.routes.contains(route_segment)
     }
 
-    /// Calculates the specified offset from the center of the line.
-    ///
-    /// If `reverse` is set, the offset is calculated as if the line ran in the opposite direction.
-    /// Regardless of whether `reverse` is set, the returned value will have the same sign as the
-    /// input offset.
-    pub fn calculate_offset(&self, offset: isize, reverse: bool, default_width: f64) -> f64 {
-        if offset == 0 {
-            0.0
-        } else {
-            let offset = if reverse { -offset } else { offset };
-            let zero_offset = self
-                .pos_offsets
-                .first()
-                .copied()
-                .flatten()
-                .unwrap_or(default_width);
-            let value: f64 = if offset >= 0 {
-                let offset = offset as usize;
-                zero_offset / 2.0
-                    + self.pos_offsets[1..offset]
-                        .iter()
-                        .map(|width| width.unwrap_or(default_width))
-                        .sum::<f64>()
-                    + self.pos_offsets[offset].unwrap_or(default_width) / 2.0
-            } else {
-                let offset = !offset as usize;
-                -zero_offset / 2.0
-                    - self.neg_offsets[..offset]
-                        .iter()
-                        .map(|width| width.unwrap_or(default_width))
-                        .sum::<f64>()
-                    - self.neg_offsets[offset].unwrap_or(default_width) / 2.0
-            };
-            if reverse {
-                -value
-            } else {
-                value
-            }
-        }
-    }
-
     pub fn calculate_offset_radius(
         &self,
-        offset: isize,
+        offset: f64,
         reverse: bool,
         turn_dir: bool,
-        default_width: f64,
     ) -> (f64, f64) {
-        let offset = self.calculate_offset(offset, reverse, default_width);
         // offset relative to the line
         let abs_offset = if reverse { -offset } else { offset };
         let radius = if turn_dir {
-            abs_offset - self.offset_min(default_width)
+            abs_offset - self.offset_min()
         } else {
-            self.offset_max(default_width) - abs_offset
+            self.offset_max() - abs_offset
         };
         (offset, radius.abs())
     }
 
-    fn offset_max(&self, default_width: f64) -> f64 {
-        if !self.pos_offsets.is_empty() {
-            self.calculate_offset((self.pos_offsets.len() - 1) as isize, false, default_width)
-        } else {
-            let mut n = 0;
-            for w in &self.neg_offsets {
-                if w.is_some() {
-                    break;
-                } else {
-                    n += 1;
-                }
-            }
-            f64::from(n) * default_width
-        }
+    fn offset_max(&self) -> f64 {
+        self.offset_range.map(|(_, max)| max).unwrap_or(0.0)
     }
 
-    fn offset_min(&self, default_width: f64) -> f64 {
-        if !self.neg_offsets.is_empty() {
-            self.calculate_offset(!(self.neg_offsets.len() - 1) as isize, false, default_width)
-        } else if self.pos_offsets[0].is_none() {
-            0.0
-        } else {
-            let mut n = 0;
-            for w in &self.pos_offsets {
-                if w.is_some() {
-                    break;
-                } else {
-                    n += 1;
-                }
-            }
-            f64::from(n) * default_width
-        }
+    fn offset_min(&self) -> f64 {
+        self.offset_range.map(|(min, _)| min).unwrap_or(0.0)
     }
 
     /// Split `self`, leaving the post-split segment in `self`'s place, returning the segment to
@@ -557,28 +486,16 @@ impl Segment {
     }
 
     /// Update the segment with the given `offset` and `width`, returning the new segment
-    fn update_new(mut self, offset: isize, width: f64, route_segment: RouteSegmentRef) -> Segment {
+    fn update_new(mut self, offset: f64, width: f64, route_segment: RouteSegmentRef) -> Segment {
         self.update(offset, width, route_segment);
         self
     }
 
     /// Update the segment with the given `offset` and `width`.
-    fn update(&mut self, offset: isize, width: f64, route_segment: RouteSegmentRef) {
-        if offset >= 0 {
-            let offset = offset as usize;
-            if offset >= self.pos_offsets.len() {
-                self.pos_offsets.resize_with(offset + 1, Default::default);
-            }
-            self.pos_offsets[offset] =
-                Some(self.pos_offsets[offset].map_or(width, |old| old.max(width)));
-        } else {
-            let offset = !offset as usize;
-            if offset >= self.neg_offsets.len() {
-                self.neg_offsets.resize_with(offset + 1, Default::default);
-            }
-            self.neg_offsets[offset] =
-                Some(self.neg_offsets[offset].map_or(width, |old| old.max(width)));
-        }
+    fn update(&mut self, offset: f64, width: f64, route_segment: RouteSegmentRef) {
+        let (min, max) = self.offset_range.get_or_insert((offset, offset));
+        *min = min.min(offset - width / 2.0);
+        *max = max.max(offset + width / 2.0);
         self.routes.insert(route_segment);
     }
 
