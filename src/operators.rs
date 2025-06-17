@@ -24,7 +24,7 @@ pub enum Precedence {
 
 macro_rules! as_binary_operator {
     ($fn:path) => {{
-        fn _f(a: Value, b: Value, _: &dyn EvaluationContext) -> Result {
+        fn _f(a: Value, b: Value, _: &mut dyn EvaluationContext) -> Result {
             $fn(a, b)
         }
         _f
@@ -33,7 +33,7 @@ macro_rules! as_binary_operator {
 
 macro_rules! as_unary_operator {
     ($fn:path) => {{
-        fn _f(a: Value, _: &dyn EvaluationContext) -> Result {
+        fn _f(a: Value, _: &mut dyn EvaluationContext) -> Result {
             $fn(a)
         }
         _f
@@ -101,7 +101,7 @@ impl<F> fmt::Debug for NamedFunction<F> {
     }
 }
 
-pub type BinaryOperator = NamedFunction<fn(Value, Value, &dyn EvaluationContext) -> Result>;
+pub type BinaryOperator = NamedFunction<fn(Value, Value, &mut dyn EvaluationContext) -> Result>;
 
 impl BinaryOperator {
     pub fn get(key: &str) -> Option<(expr_parser::operator::Fixity<Precedence>, Self)> {
@@ -133,12 +133,12 @@ impl BinaryOperator {
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum UnaryOperator {
-    Function(NamedFunction<fn(Value, &dyn EvaluationContext) -> Result>),
+    Function(NamedFunction<fn(Value, &mut dyn EvaluationContext) -> Result>),
     FieldAccess(Variable),
 }
 
 impl UnaryOperator {
-    pub fn call(&self, value: Value, ctx: &dyn EvaluationContext) -> Result {
+    pub fn call(&self, value: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match self {
             Self::Function(f) => (f.function)(value, ctx),
             Self::FieldAccess(field) => value.field_access(field.clone()),

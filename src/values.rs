@@ -611,7 +611,7 @@ impl Value {
         })
     }
 
-    pub fn fn_call(self, args: Self, ctx: &dyn EvaluationContext) -> Result {
+    pub fn fn_call(self, args: Self, ctx: &mut dyn EvaluationContext) -> Result {
         match (self, args) {
             (Self::Function(f), Self::List(args)) => f.apply(&args, ctx),
             (Self::Function(f), arg) => f.apply(&[arg], ctx),
@@ -619,7 +619,7 @@ impl Value {
         }
     }
 
-    pub fn fn_call_unary(self, ctx: &dyn EvaluationContext) -> Result {
+    pub fn fn_call_unary(self, ctx: &mut dyn EvaluationContext) -> Result {
         match self {
             Self::Function(f) => f.apply(&[], ctx),
             bad => Err(MathError::Type(Type::Function, bad.into())),
@@ -702,7 +702,7 @@ pub(crate) mod tests {
     use test_case::test_case;
 
     use crate::{
-        evaluator::evaluate_expression,
+        evaluator::{evaluate_expression, Evaluator},
         expressions::tests::{b, expression_full, t, u, Expr},
         operators::{COMMA, PAREN_UNARY},
         values::Value,
@@ -789,7 +789,7 @@ pub(crate) mod tests {
     #[test_case([t("a"), t("b"), b("max")], value!(@"b"); "string max")]
     fn eval<const N: usize>(expression: [Expr; N], expected: Value) {
         assert_eq!(
-            evaluate_expression(&(), expression_full(expression)).unwrap(),
+            evaluate_expression(&mut Evaluator::default(), expression_full(expression)).unwrap(),
             expected
         );
     }

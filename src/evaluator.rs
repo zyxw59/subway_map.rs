@@ -21,10 +21,12 @@ pub trait EvaluationContext {
     fn get_variable(&self, name: &str) -> Option<Value>;
 
     fn get_fn_arg(&self, idx: usize) -> Option<Value>;
+
+    fn point_collection(&mut self) -> &mut PointCollection;
 }
 
 pub fn evaluate_expression(
-    ctx: &dyn EvaluationContext,
+    ctx: &mut dyn EvaluationContext,
     expr: impl IntoIterator<Item = ExpressionBit>,
 ) -> Result<Value, MathError> {
     EvaluatorTrait::evaluate(ctx, expr)
@@ -35,7 +37,7 @@ impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn Evalu
     type Error = MathError;
 
     fn evaluate_binary_operator(
-        &self,
+        &mut self,
         _span: Span<Position>,
         operator: BinaryOperator,
         lhs: Value,
@@ -45,7 +47,7 @@ impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn Evalu
     }
 
     fn evaluate_unary_operator(
-        &self,
+        &mut self,
         _span: Span<Position>,
         operator: UnaryOperator,
         argument: Value,
@@ -53,7 +55,7 @@ impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn Evalu
         operator.call(argument, self)
     }
 
-    fn evaluate_term(&self, _span: Span<Position>, term: Term) -> Result<Value, MathError> {
+    fn evaluate_term(&mut self, _span: Span<Position>, term: Term) -> Result<Value, MathError> {
         match term {
             Term::Number(x) => Ok(Value::Number(x)),
             Term::String(s) => Ok(Value::String(Rc::new(s))),
@@ -297,15 +299,9 @@ impl EvaluationContext for Evaluator {
     fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
         None
     }
-}
 
-impl EvaluationContext for () {
-    fn get_variable(&self, _name: &str) -> Option<Value> {
-        None
-    }
-
-    fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
-        None
+    fn point_collection(&mut self) -> &mut PointCollection {
+        &mut self.points
     }
 }
 
