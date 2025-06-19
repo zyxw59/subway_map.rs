@@ -79,8 +79,8 @@ impl Line {
         }
     }
 
-    pub fn add_point(&mut self, id: PointId, distance: f64) {
-        self.points.insert(LinePoint { id, distance });
+    pub fn add_point(&mut self, point: PointInfoLite) {
+        self.points.insert(self.line_point(point));
     }
 
     /// Registers the given segment with the line.

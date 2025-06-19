@@ -12,7 +12,7 @@ use crate::{
     error::{MathError, Type},
     evaluator::EvaluationContext,
     expressions::Variable,
-    points::PointId,
+    points::{LineId, PointId},
 };
 
 pub type Result<T = Value, E = MathError> = result::Result<T, E>;
@@ -199,12 +199,12 @@ impl TryFrom<Value> for Point {
     }
 }
 
-impl TryFrom<Value> for (Point, PointProvenance) {
+impl TryFrom<Value> for (Point, PointId) {
     type Error = MathError;
 
-    fn try_from(value: Value) -> Result<(Point, PointProvenance)> {
+    fn try_from(value: Value) -> Result<(Point, PointId)> {
         match value {
-            Value::Point(point, provenance) => Ok((point, provenance)),
+            Value::Point(point, id) => Ok((point, id)),
             _ => Err(MathError::Type(Type::Point, value.into())),
         }
     }
@@ -243,58 +243,17 @@ impl<'a> TryFrom<&'a Value> for &'a str {
     }
 }
 
-impl From<Point> for Value {
-    fn from(point: Point) -> Value {
-        Value::Point(point, PointProvenance::None)
-    }
-}
-
 impl From<Point> for Parameters {
     fn from(point: Point) -> Parameters {
         Parameters::from((point.0, point.1))
     }
 }
 
-/// An enum representing the provenance of a point.
-#[derive(Clone, Copy, Debug)]
-pub enum PointProvenance {
-    /// The point is defined numerically.
-    None,
-    /// The point is a named point.
-    Named(PointId),
-    /// The point is the intersection  of two lines.
-    Intersection(Option<(PointId, PointId)>, Option<(PointId, PointId)>),
-}
-
-impl PointProvenance {
-    pub fn line(self, other: PointProvenance) -> Option<(PointId, PointId)> {
-        match (self, other) {
-            (PointProvenance::Named(id1), PointProvenance::Named(id2)) => Some((id1, id2)),
-            _ => None,
-        }
-    }
-}
-
-impl PartialEq for PointProvenance {
-    fn eq(&self, other: &Self) -> bool {
-        use self::PointProvenance::*;
-        match (*self, *other) {
-            (Named(id1), Named(id2)) => id1 == id2,
-            // we could check intersections for equality, but there's a lot of different
-            // combinations to check for, and even that would miss cases where points are defined
-            // as the same intersection but with the lines referred to by different points.
-            // this is probably a rare enough case that simply handling it with numerical
-            // comparison is fine.
-            _ => false,
-        }
-    }
-}
-
 #[derive(Clone, Debug, serde::Serialize)]
 pub enum Value {
     Number(f64),
-    Point(Point, #[serde(skip)] PointProvenance),
-    Line(Point, Point, Option<(PointId, PointId)>),
+    Point(Point, PointId),
+    Line(Point, Point, LineId),
     String(Rc<String>),
     List(Rc<Vec<Value>>),
     Struct(Rc<HashMap<Variable, Value>>),
@@ -320,8 +279,15 @@ impl Value {
         }
     }
 
-    pub fn point(x: Value, y: Value) -> Result {
-        numeric_fn!((x, y) => Ok(Value::Point(Point(x, y), PointProvenance::None)))
+    pub fn point(x: Value, y: Value, ctx: &mut dyn EvaluationContext) -> Result {
+        numeric_fn!((x, y) => {
+            Ok(Self::make_point(Point(x, y), ctx))
+        })
+    }
+
+    fn make_point(p: Point, ctx: &mut dyn EvaluationContext) -> Self {
+        let id = ctx.point_collection().insert_point_get_id(p);
+        Self::Point(p, id)
     }
 
     pub fn hypot(self, other: Value) -> Result {
@@ -356,8 +322,11 @@ impl Value {
 
     /// Unit vector in the given direction in degrees, with 0 being up the page, and increasing
     /// clockwise.
-    pub fn dir(self) -> Result {
-        numeric_fn!((self) as x => Ok(Value::Point(*UnitVector::dir(x), PointProvenance::None)))
+    pub fn dir(self, ctx: &mut dyn EvaluationContext) -> Result {
+        numeric_fn!((self) as x => {
+            let p = UnitVector::dir(x).0;
+            Ok(Self::make_point(p, ctx))
+        })
     }
 
     /// Angle of given vector in degrees
@@ -385,31 +354,35 @@ impl Value {
     }
 
     /// Line between two points
-    pub fn line_between(self, rhs: Value) -> Result {
+    pub fn line_between(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match (&self, rhs) {
             (&Value::Point(p1, id1), Value::Point(p2, id2)) => {
-                Ok(Value::Line(p1, p2 - p1, id1.line(id2)))
+                let line_id = ctx.point_collection().get_or_insert_line(id1, id2);
+                Ok(Value::Line(p1, p2 - p1, line_id))
             }
             _ => Err(MathError::Type(Type::Point, self.into())),
         }
     }
 
     /// Line from point and vector
-    pub fn line_vector(self, rhs: Value) -> Result {
+    pub fn line_vector(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match (&self, rhs) {
-            (&Value::Point(p1, _), Value::Point(p2, _)) => Ok(Value::Line(p1, p2, None)),
+            (&Value::Point(p1, id1), Value::Point(p2, _)) => {
+                let line_id = ctx.point_collection().new_line(id1, p2);
+                Ok(Value::Line(p1, p2, line_id))
+            }
             _ => Err(MathError::Type(Type::Point, self.into())),
         }
     }
 
-    pub fn intersect(self, rhs: Value) -> Result {
+    pub fn intersect(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match (&self, rhs) {
-            (&Value::Line(p1, d1, ids1), Value::Line(p2, d2, ids2)) => {
+            (&Value::Line(p1, d1, id1), Value::Line(p2, d2, id2)) => {
                 match intersect(p1, d1, p2, d2) {
-                    Some(intersection) => Ok(Value::Point(
-                        intersection,
-                        PointProvenance::Intersection(ids1, ids2),
-                    )),
+                    Some(intersection) => {
+                        let point_id = ctx.point_collection().intersect(id1, id2, intersection);
+                        Ok(Value::Point(intersection, point_id))
+                    }
                     None => Err(MathError::ParallelIntersection),
                 }
             }
@@ -417,10 +390,13 @@ impl Value {
         }
     }
 
-    pub fn line_offset(self, rhs: Value) -> Result {
+    pub fn line_offset(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match (self, rhs) {
             (Value::Line(p, d, _), Value::Number(dist)) => {
-                Ok(Value::Line(d.unit().perp().mul_add(dist, p), d, None))
+                let start_point = d.unit().perp().mul_add(dist, p);
+                let start_id = ctx.point_collection().insert_point_get_id(start_point);
+                let line_id = ctx.point_collection().new_line(start_id, d);
+                Ok(Value::Line(start_point, d, line_id))
             }
             (Value::Line(..), rhs) => Err(MathError::Type(Type::Number, rhs.into())),
             (lhs, _) => Err(MathError::Type(Type::Number, lhs.into())),
@@ -496,11 +472,11 @@ impl Value {
         }
     }
 
-    pub fn max(self, other: Value) -> Result {
+    pub fn max(self, other: Value, ctx: &mut dyn EvaluationContext) -> Result {
         use self::Value::*;
         match (self, other) {
             (Number(x), Number(y)) => Ok(Number(x.max(y))),
-            (Point(p1, _), Point(p2, _)) => Ok(Point(p1.max(p2), PointProvenance::None)),
+            (Point(p1, _), Point(p2, _)) => Ok(Self::make_point(p1.max(p2), ctx)),
             (String(x), String(y)) => Ok(String(x.max(y))),
             (bad, good @ (Number(..) | Point(..) | String(..)))
             | (good @ (Number(..) | Point(..) | String(..)), bad) => {
@@ -510,11 +486,11 @@ impl Value {
         }
     }
 
-    pub fn min(self, other: Value) -> Result {
+    pub fn min(self, other: Value, ctx: &mut dyn EvaluationContext) -> Result {
         use self::Value::*;
         match (self, other) {
             (Number(x), Number(y)) => Ok(Number(x.min(y))),
-            (Point(p1, _), Point(p2, _)) => Ok(Point(p1.min(p2), PointProvenance::None)),
+            (Point(p1, _), Point(p2, _)) => Ok(Self::make_point(p1.min(p2), ctx)),
             (String(x), String(y)) => Ok(String(x.min(y))),
             (bad, good @ (Number(..) | Point(..) | String(..)))
             | (good @ (Number(..) | Point(..) | String(..)), bad) => {
@@ -538,11 +514,11 @@ impl Value {
         Ok(self)
     }
 
-    pub fn paren_unary(self) -> Result {
+    pub fn paren_unary(self, ctx: &mut dyn EvaluationContext) -> Result {
         match self {
             Self::List(values) => match &**values {
                 [value] => Ok(value.clone()),
-                [x, y] => Self::point(x.clone(), y.clone()),
+                [x, y] => Self::point(x.clone(), y.clone(), ctx),
                 _ => Err(MathError::Arguments {
                     expected: 2,
                     actual: values.len(),
@@ -552,11 +528,11 @@ impl Value {
         }
     }
 
-    pub fn add(self, rhs: Value) -> Result {
+    pub fn add(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a + b),
-            (Point(p1, _), Point(p2, _)) => Point(p1 + p2, PointProvenance::None),
+            (Point(p1, _), Point(p2, _)) => Self::make_point(p1 + p2, ctx),
             (String(s1), String(s2)) => String(Rc::new(Rc::unwrap_or_clone(s1) + &s2)),
             (bad, good @ (Number(..) | Point(..) | String(..)))
             | (good @ (Number(..) | Point(..) | String(..)), bad) => {
@@ -566,11 +542,11 @@ impl Value {
         })
     }
 
-    pub fn sub(self, rhs: Value) -> Result {
+    pub fn sub(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a - b),
-            (Point(p1, _), Point(p2, _)) => Point(p1 - p2, PointProvenance::None),
+            (Point(p1, _), Point(p2, _)) => Self::make_point(p1 - p2, ctx),
             (bad, good @ (Number(..) | Point(..))) | (good @ (Number(..) | Point(..)), bad) => {
                 return Err(MathError::Type(good.into(), bad.into()))
             }
@@ -578,12 +554,12 @@ impl Value {
         })
     }
 
-    pub fn mul(self, rhs: Value) -> Result {
+    pub fn mul(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (Number(a), Number(b)) => Number(a * b),
-            (Number(a), Point(p, _)) => Point(a * p, PointProvenance::None),
-            (Point(p, _), Number(a)) => Point(p * a, PointProvenance::None),
+            (Number(a), Point(p, _)) => Self::make_point(a * p, ctx),
+            (Point(p, _), Number(a)) => Self::make_point(p * a, ctx),
             (Point(p1, _), Point(p2, _)) => Number(p1 * p2),
             (bad, good @ (Number(..) | Point(..))) | (good @ (Number(..) | Point(..)), bad) => {
                 return Err(MathError::Type(good.into(), bad.into()))
@@ -592,21 +568,21 @@ impl Value {
         })
     }
 
-    pub fn div(self, rhs: Value) -> Result {
+    pub fn div(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         use self::Value::*;
         Ok(match (self, rhs) {
             (_, Number(0.0)) => return Err(MathError::DivisionByZero),
             (Number(a), Number(b)) => Number(a / b),
-            (Point(p, _), Number(a)) => Point(p / a, PointProvenance::None),
+            (Point(p, _), Number(a)) => Self::make_point(p / a, ctx),
             (bad, Number(..)) | (_, bad) => return Err(MathError::Type(Type::Number, bad.into())),
         })
     }
 
-    pub fn neg(self) -> Result {
+    pub fn neg(self, ctx: &mut dyn EvaluationContext) -> Result {
         use self::Value::*;
         Ok(match self {
             Number(x) => Number(-x),
-            Point(p, _) => Point(-p, PointProvenance::None),
+            Point(p, _) => Self::make_point(-p, ctx),
             _ => return Err(MathError::Type(Type::Number, self.into())),
         })
     }
@@ -719,22 +695,22 @@ pub(crate) mod tests {
             $crate::values::Value::Number($x as f64)
         };
         ($x:expr, $y:expr) => {
+            #[expect(unreachable_code)]
             $crate::values::Value::Point(
                 $crate::values::Point($x as f64, $y as f64),
-                $crate::values::PointProvenance::None,
+                // $crate::values::PointProvenance::None,
+                todo!(),
             )
         };
         ($x:expr, $y:expr, $id:expr) => {
-            $crate::values::Value::Point(
-                $crate::values::Point($x as f64, $y as f64),
-                $crate::values::PointProvenance::Named($id),
-            )
+            $crate::values::Value::Point($crate::values::Point($x as f64, $y as f64), $id)
         };
         (($x1:expr, $y1:expr) -> ($x2:expr, $y2:expr)) => {
             $crate::values::Value::Line(
                 $crate::values::Point($x1 as f64, $y1 as f64),
                 $crate::values::Point(($x2 - $x1) as f64, ($y2 - $y1) as f64),
-                None,
+                // None,
+                todo!(),
             )
         };
         (@$s:expr) => {

@@ -61,15 +61,15 @@ pub const FN_CALL_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
 });
 
 pub const PAREN_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
-    function: as_unary_operator!(Value::paren_unary),
+    function: Value::paren_unary,
     name: Variable::new_static("()"),
 });
 
 macro_rules! get_binary_builtin {
-    (match $key:ident { $($name:literal => ($fixity:expr, $fn:ident)),* $(,)? }) => {
+    (match $key:ident { $($name:literal => ($fixity:expr, $fn:expr)),* $(,)? }) => {
         match $key {
             $($name => Some(($fixity, BinaryOperator {
-                function: as_binary_operator!(Value::$fn),
+                function: $fn,
                 name: $name.into(),
             })),)*
             _ => None,
@@ -78,10 +78,10 @@ macro_rules! get_binary_builtin {
 }
 
 macro_rules! get_unary_builtin {
-    (match $key:ident { $($name:literal => ($prec:ident, $fn:ident)),* $(,)? }) => {
+    (match $key:ident { $($name:literal => ($prec:ident, $fn:expr)),* $(,)? }) => {
         match $key {
             $($name => Some((Precedence::$prec, UnaryOperator::Function(NamedFunction {
-                function: as_unary_operator!(Value::$fn),
+                function: $fn,
                 name: $name.into(),
             }))),)*
             _ => None,
@@ -108,25 +108,25 @@ impl BinaryOperator {
         use self::Precedence::*;
         use expr_parser::operator::Fixity::*;
         get_binary_builtin!(match key {
-            "==" => (Left(Comparison), eq),
-            "!=" => (Left(Comparison), ne),
-            "<" => (Left(Comparison), lt),
-            "<=" => (Left(Comparison), le),
-            ">" => (Left(Comparison), gt),
-            ">=" => (Left(Comparison), ge),
-            "max" => (Left(Comparison), max),
-            "min" => (Left(Comparison), min),
-            "+" => (Left(Additive), add),
-            "-" => (Left(Additive), sub),
-            "++" => (Left(Additive), hypot),
-            "+-+" => (Left(Additive), hypot_sub),
-            "*" => (Left(Multiplicative), mul),
-            "/" => (Left(Multiplicative), div),
-            "&" => (Left(Multiplicative), intersect),
-            "^" => (Right(Exponential), pow),
-            "<>" => (Left(Exponential), line_between),
-            ">>" => (Left(Exponential), line_vector),
-            "^^" => (Left(Exponential), line_offset),
+            "==" => (Left(Comparison), as_binary_operator!(Value::eq)),
+            "!=" => (Left(Comparison), as_binary_operator!(Value::ne)),
+            "<" => (Left(Comparison), as_binary_operator!(Value::lt)),
+            "<=" => (Left(Comparison), as_binary_operator!(Value::le)),
+            ">" => (Left(Comparison), as_binary_operator!(Value::gt)),
+            ">=" => (Left(Comparison), as_binary_operator!(Value::ge)),
+            "max" => (Left(Comparison), Value::max),
+            "min" => (Left(Comparison), Value::min),
+            "+" => (Left(Additive), Value::add),
+            "-" => (Left(Additive), Value::sub),
+            "++" => (Left(Additive), as_binary_operator!(Value::hypot)),
+            "+-+" => (Left(Additive), as_binary_operator!(Value::hypot_sub)),
+            "*" => (Left(Multiplicative), Value::mul),
+            "/" => (Left(Multiplicative), Value::div),
+            "&" => (Left(Multiplicative), Value::intersect),
+            "^" => (Right(Exponential), as_binary_operator!(Value::pow)),
+            "<>" => (Left(Exponential), Value::line_between),
+            ">>" => (Left(Exponential), Value::line_vector),
+            "^^" => (Left(Exponential), Value::line_offset),
         })
     }
 }
@@ -147,13 +147,13 @@ impl UnaryOperator {
 
     pub fn get(key: &str) -> Option<(Precedence, Self)> {
         get_unary_builtin!(match key {
-            "-" => (Multiplicative, neg),
-            "xpart" => (Multiplicative, xpart),
-            "ypart" => (Multiplicative, ypart),
-            "cos" => (Exponential, cos),
-            "sin" => (Exponential, sin),
-            "dir" => (Exponential, dir),
-            "angle" => (Exponential, angle),
+            "-" => (Multiplicative, Value::neg),
+            "xpart" => (Multiplicative, as_unary_operator!(Value::xpart)),
+            "ypart" => (Multiplicative, as_unary_operator!(Value::ypart)),
+            "cos" => (Exponential, as_unary_operator!(Value::cos)),
+            "sin" => (Exponential, as_unary_operator!(Value::sin)),
+            "dir" => (Exponential, Value::dir),
+            "angle" => (Exponential, as_unary_operator!(Value::angle)),
         })
     }
 }

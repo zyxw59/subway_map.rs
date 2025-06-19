@@ -11,10 +11,10 @@ use crate::{
     intermediate_representation::Document,
     operators::{BinaryOperator, UnaryOperator},
     parser::Position,
-    points::PointCollection,
+    points::{PointCollection, PointId},
     statement::{Statement, StatementKind},
     stops::Stop,
-    values::{Point, PointProvenance, Value},
+    values::{Point, Value},
 };
 
 pub trait EvaluationContext {
@@ -103,14 +103,7 @@ impl Evaluator {
                         let value = f64::try_from(&value).map_err(|err| Error::Math(err, line))?;
                         self.points.set_inner_radius(value);
                     }
-                    // named points can't be redefined, since lines are defined in terms of them
-                    if let Some(original_line) = self.points.get_point_line_number(&name) {
-                        return Err(Error::PointRedefinition {
-                            name,
-                            line,
-                            original_line,
-                        });
-                    }
+                    // TODO: handle redefinition of points
                 }
                 let mut slot = self.variables.entry(name.clone());
                 for field in fields {
@@ -132,18 +125,11 @@ impl Evaluator {
                 self.variables.insert(name, Value::Function(function));
             }
             StatementKind::PointSingle(name, expr) => {
-                // named points can't be redefined, since lines are defined in terms of them
-                if let Some(original_line) = self.points.get_point_line_number(&name) {
-                    return Err(Error::PointRedefinition {
-                        name,
-                        line,
-                        original_line,
-                    });
-                }
-                let (point, provenance) = evaluate_expression(self, expr)
-                    .and_then(<(Point, PointProvenance)>::try_from)
-                    .map_err(|err| Error::Math(err, line))?;
-                self.points.insert_point(name, point, provenance, line)?;
+                // TODO: handle redefinition of points
+                // TODO: this is now completeley redundant with normal variable statements
+                let value =
+                    evaluate_expression(self, expr).map_err(|err| Error::Math(err, line))?;
+                self.variables.insert(name, value);
             }
             StatementKind::PointSpaced {
                 from,
@@ -153,20 +139,19 @@ impl Evaluator {
                 let spacing = evaluate_expression(self, spaced)
                     .and_then(Point::try_from)
                     .map_err(|err| Error::Math(err, line))?;
-                if !self.points.contains(&from) {
-                    return Err(Error::Math(MathError::Variable(from), line));
+                let (from_point, from_id) = self.get_point(from, line)?;
+                let line_id = self.points.new_line(from_id, spacing);
+                let mut distance = 0.0;
+                for (multiplier, name) in points {
+                    let multiplier = multiplier
+                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
+                        .unwrap_or(Ok(1.0))
+                        .map_err(|err| Error::Math(err, line))?;
+                    distance += multiplier;
+                    let point = spacing.mul_add(distance, from_point);
+                    let id = self.points.add_point_on_line(point, line_id);
+                    self.variables.insert(name, Value::Point(point, id));
                 }
-                let points = points
-                    .into_iter()
-                    .map(|(multiplier, name)| {
-                        multiplier
-                            .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
-                            .unwrap_or(Ok(1.0))
-                            .map_err(|err| Error::Math(err, line))
-                            .map(|distance| (name, distance))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                self.points.new_line(from, spacing, points, line)?;
             }
             StatementKind::PointExtend {
                 from,
@@ -174,7 +159,16 @@ impl Evaluator {
                 points,
                 is_past,
             } => {
+                let (from_point, from_id) = self.get_point(from, line)?;
+                let (to_point, to_id) = self.get_point(to, line)?;
+                let to_multiplier = to_multiplier
+                    .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
+                    .unwrap_or(Ok(1.0))
+                    .map_err(|err| Error::Math(err, line))?;
                 let mut total_distance = 0.0;
+                if is_past {
+                    total_distance += to_multiplier;
+                }
                 let points = points
                     .into_iter()
                     .map(|(multiplier, name)| {
@@ -185,32 +179,17 @@ impl Evaluator {
                         Ok((name, total_distance))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                if is_past {
-                    let past_multiplier = to_multiplier
-                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
-                        .unwrap_or(Ok(1.0))
-                        .map_err(|err| Error::Math(err, line))?;
-                    self.points.extend_line(
-                        from,
-                        to,
-                        points
-                            .into_iter()
-                            .map(|(name, distance)| (name, distance / past_multiplier + 1.0)),
-                        line,
-                    )?;
+                let line_id = self.points.get_or_insert_line(from_id, to_id);
+                let distance_quotient = if is_past {
+                    to_multiplier
                 } else {
-                    total_distance += to_multiplier
-                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
-                        .unwrap_or(Ok(1.0))
-                        .map_err(|err| Error::Math(err, line))?;
-                    self.points.extend_line(
-                        from,
-                        to,
-                        points
-                            .into_iter()
-                            .map(|(name, distance)| (name, distance / total_distance)),
-                        line,
-                    )?;
+                    total_distance + to_multiplier
+                };
+                let spacing = (to_point - from_point) / distance_quotient;
+                for (name, distance) in points {
+                    let point = spacing.mul_add(distance, from_point);
+                    let id = self.points.add_point_on_line(point, line_id);
+                    self.variables.insert(name, Value::Point(point, id));
                 }
             }
             StatementKind::Route {
@@ -220,11 +199,13 @@ impl Evaluator {
             } => {
                 let route = self.points.insert_route_get_id(name, styles, line)?;
                 for segment in segments {
+                    let (_, start_id) = self.get_point(segment.start, line)?;
+                    let (_, end_id) = self.get_point(segment.end, line)?;
                     let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)
                         .map_err(|err| Error::Math(err, line))?;
                     self.points
-                        .add_segment(route, &segment.start, &segment.end, offset)
+                        .add_segment(route, start_id, end_id, offset)
                         .map_err(|name| Error::Math(MathError::Variable(name.into()), line))?;
                 }
             }
@@ -285,15 +266,18 @@ impl Evaluator {
             .unwrap_or(0.0);
         (top, left, bottom, right)
     }
+
+    fn get_point(&self, name: Variable, line_no: usize) -> Result<(Point, PointId)> {
+        self.get_variable(&name)
+            .ok_or(MathError::Variable(name))
+            .and_then(TryFrom::try_from)
+            .map_err(|err| Error::Math(err, line_no))
+    }
 }
 
 impl EvaluationContext for Evaluator {
     fn get_variable(&self, name: &str) -> Option<Value> {
-        if let Some((point, id)) = self.points.get_point_and_id(name) {
-            Some(Value::Point(point, PointProvenance::Named(id)))
-        } else {
-            self.variables.get(name).cloned()
-        }
+        self.variables.get(name).cloned()
     }
 
     fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
@@ -365,8 +349,10 @@ mod tests {
          $last:ident: ($last_x:expr, $last_y:expr)) => {
             let mut evaluator = Evaluator::new();
             evaluator.evaluate_all(parse($str).unwrap()).unwrap();
+            let (_, start_id) = evaluator.get_point(stringify!($first).into(), 0).unwrap();
+            let (_, end_id) = evaluator.get_point(stringify!($last).into(), 0).unwrap();
             assert_eq!(
-                evaluator.points.get_points_of_line(stringify!($first), stringify!($last)),
+                evaluator.points.get_points_of_line(start_id, end_id),
                 Some(vec![
                      Point($first_x as f64, $first_y as f64),
                      $(Point($x as f64, $y as f64)),*,
