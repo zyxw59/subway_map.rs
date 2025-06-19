@@ -124,9 +124,17 @@ impl Evaluator {
                 self.variables.insert(name, Value::Function(function));
             }
             StatementKind::PointSingle(name, expr) => {
-                // TODO: this is now completeley redundant with normal variable statements
-                let value =
-                    evaluate_expression(self, expr).map_err(|err| Error::Math(err, line))?;
+                // NOTE: this statement is almost identical to a normal variable assignment, except
+                // that it type-checks that the expression evaluates to a point.
+                let value = evaluate_expression(self, expr)
+                    .and_then(|value| {
+                        if !matches!(value, Value::Point(..)) {
+                            Err(MathError::Type(crate::error::Type::Point, value.into()))
+                        } else {
+                            Ok(value)
+                        }
+                    })
+                    .map_err(|err| Error::Math(err, line))?;
                 self.variables.insert(name, value);
             }
             StatementKind::PointSpaced {
