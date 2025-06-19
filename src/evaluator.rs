@@ -103,7 +103,6 @@ impl Evaluator {
                         let value = f64::try_from(&value).map_err(|err| Error::Math(err, line))?;
                         self.points.set_inner_radius(value);
                     }
-                    // TODO: handle redefinition of points
                 }
                 let mut slot = self.variables.entry(name.clone());
                 for field in fields {
@@ -125,7 +124,6 @@ impl Evaluator {
                 self.variables.insert(name, Value::Function(function));
             }
             StatementKind::PointSingle(name, expr) => {
-                // TODO: handle redefinition of points
                 // TODO: this is now completeley redundant with normal variable statements
                 let value =
                     evaluate_expression(self, expr).map_err(|err| Error::Math(err, line))?;
