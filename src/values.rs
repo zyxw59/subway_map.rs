@@ -392,7 +392,7 @@ impl Value {
         match (&self, rhs) {
             (&Value::Point(p1, id1), Value::Point(p2, id2)) => {
                 let line_id = ctx.point_collection().get_or_insert_line(id1, id2);
-                Ok(Value::Line(Line::between(p1, p2 - p1), line_id))
+                Ok(Value::Line(Line::between(p1, p2), line_id))
             }
             _ => Err(MathError::Type(Type::Point, self.into())),
         }
@@ -781,7 +781,10 @@ pub(crate) mod tests {
         t(1), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(2), b(COMMA), u(PAREN_UNARY), b("<>"), b("&")
     ], Point(2.0, 3.0); "intersect")]
     // (0, 0) <> (3, 4) ^^ 5 == (4, -3) -> (7, 1)
-    #[test_case([t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"), t(5), b("^^")], Line::between(Point(4.0, -3.0), Point(7.0, 1.0)); "offset")]
+    #[test_case([
+        t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
+        t(5), b("^^")
+    ], Line::between(Point(-4.0, 3.0), Point(-1.0, 7.0)); "offset")]
     // (2, 4) min (3, 1) == (2, 1)
     #[test_case([t(2), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(1), b(COMMA), u(PAREN_UNARY), b("min")], Point(2.0, 1.0); "min")]
     // "foo" + "bar" == "foobar"
