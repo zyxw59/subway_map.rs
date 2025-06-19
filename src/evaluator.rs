@@ -293,7 +293,7 @@ impl EvaluationContext for Evaluator {
 mod tests {
     use crate::{
         parser::parse,
-        values::{tests::value, Point, Value},
+        values::{Point, Value},
     };
 
     use super::{EvaluationContext, Evaluator};
@@ -339,7 +339,7 @@ mod tests {
         evaluator
             .evaluate_all(parse("point a = (1, 1);").unwrap())
             .unwrap();
-        assert_eq!(evaluator.get_variable("a"), Some(value!(1, 1)));
+        assert_eq!(evaluator.get_variable("a").unwrap(), Point(1.0, 1.0));
     }
 
     macro_rules! points_multiple {
@@ -352,19 +352,19 @@ mod tests {
             let (_, start_id) = evaluator.get_point(stringify!($first).into(), 0).unwrap();
             let (_, end_id) = evaluator.get_point(stringify!($last).into(), 0).unwrap();
             assert_eq!(
-                evaluator.points.get_points_of_line(start_id, end_id),
-                Some(vec![
+                evaluator.points.get_points_of_line(start_id, end_id).unwrap(),
+                [
                      Point($first_x as f64, $first_y as f64),
                      $(Point($x as f64, $y as f64)),*,
                      Point($last_x as f64, $last_y as f64)
-                ]),
+                ],
             );
             for (name, value) in [
-                 (stringify!($first), value!($first_x, $first_y)),
-                 $((stringify!($name), value!($x, $y))),*,
-                 (stringify!($last), value!($last_x, $last_y)),
+                 (stringify!($first), Point($first_x as f64, $first_y as f64)),
+                 $((stringify!($name), Point($x as f64, $y as f64))),*,
+                 (stringify!($last), Point($last_x as f64, $last_y as f64)),
             ] {
-                assert_eq!(evaluator.get_variable(name), Some(value));
+                assert_eq!(evaluator.get_variable(name).unwrap(), value);
             }
         }
     }

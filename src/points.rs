@@ -18,13 +18,13 @@ use crate::{
 mod line;
 mod route_corner;
 
-pub use line::{Line, LineId};
+pub use line::{LineId, LineInfo};
 use route_corner::{RouteCorners, RouteTurn};
 
 #[derive(Debug, Serialize)]
 pub struct PointCollection {
     points: Vec<PointInfo>,
-    lines: Vec<Line>,
+    lines: Vec<LineInfo>,
     #[serde(skip)]
     pairs: HashMap<(PointId, PointId), LineId>,
     routes: Vec<Route>,
@@ -103,7 +103,7 @@ impl PointCollection {
             Self::add_pair(&mut self.pairs, &mut self.points, p1, p2, line_id);
             let p1 = &self[p1];
             let p2 = &self[p2];
-            let new_line = Line::from_pair(p1.info, p2.info);
+            let new_line = LineInfo::from_pair(p1.info, p2.info);
             self.lines.push(new_line);
             line_id
         }
@@ -175,7 +175,7 @@ impl PointCollection {
         let line_id = LineId(self.lines.len());
         let origin = self[start_id].info;
         self.lines
-            .push(Line::from_origin_direction(origin, direction));
+            .push(LineInfo::from_origin_direction(origin, direction));
         line_id
     }
 
@@ -435,9 +435,9 @@ impl PointCollection {
         let reverse = reverse ^ is_start;
         let offset = segment.offset;
         let direction = if reverse {
-            -line.direction.unit()
+            -line.value.direction.unit()
         } else {
-            line.direction.unit()
+            line.value.direction.unit()
         };
         Operation {
             point: this.value,
@@ -483,23 +483,23 @@ impl IndexMut<PointId> for PointCollection {
 }
 
 impl Index<LineId> for PointCollection {
-    type Output = Line;
+    type Output = LineInfo;
 
-    fn index(&self, LineId(idx): LineId) -> &Line {
+    fn index(&self, LineId(idx): LineId) -> &LineInfo {
         &self.lines[idx]
     }
 }
 
 impl IndexMut<LineId> for PointCollection {
-    fn index_mut(&mut self, LineId(idx): LineId) -> &mut Line {
+    fn index_mut(&mut self, LineId(idx): LineId) -> &mut LineInfo {
         &mut self.lines[idx]
     }
 }
 
 impl Index<(PointId, PointId)> for PointCollection {
-    type Output = Line;
+    type Output = LineInfo;
 
-    fn index(&self, (p1, p2): (PointId, PointId)) -> &Line {
+    fn index(&self, (p1, p2): (PointId, PointId)) -> &LineInfo {
         &self[self.pairs[&(p1, p2)]]
     }
 }

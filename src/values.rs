@@ -188,6 +188,40 @@ impl ops::Neg for UnitVector {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct Line {
+    pub origin: Point,
+    pub direction: Point,
+}
+
+impl Line {
+    pub fn between(p1: Point, p2: Point) -> Self {
+        Self {
+            origin: p1,
+            direction: p2 - p1,
+        }
+    }
+
+    pub fn intersect(self, other: Self) -> Option<Point> {
+        let cross = self.direction.cross(other.direction);
+        // if `cross ~= 0`, the lines are (approximately) parallel; in this case there is no
+        // intersection.
+        if cross.abs() < f64::EPSILON {
+            None
+        } else {
+            Some(self.direction.mul_add(
+                (other.origin - self.origin).cross(other.direction) / cross,
+                self.origin,
+            ))
+        }
+    }
+
+    fn float_eq(self, other: Self) -> bool {
+        vector_parallel_float_eq(self.direction, other.direction)
+            && vector_parallel_float_eq(other.origin - self.origin, self.direction)
+    }
+}
+
 impl TryFrom<Value> for Point {
     type Error = MathError;
 
@@ -253,7 +287,7 @@ impl From<Point> for Parameters {
 pub enum Value {
     Number(f64),
     Point(Point, PointId),
-    Line(Point, Point, LineId),
+    Line(Line, LineId),
     String(Rc<String>),
     List(Rc<Vec<Value>>),
     Struct(Rc<HashMap<Variable, Value>>),
@@ -358,7 +392,7 @@ impl Value {
         match (&self, rhs) {
             (&Value::Point(p1, id1), Value::Point(p2, id2)) => {
                 let line_id = ctx.point_collection().get_or_insert_line(id1, id2);
-                Ok(Value::Line(p1, p2 - p1, line_id))
+                Ok(Value::Line(Line::between(p1, p2 - p1), line_id))
             }
             _ => Err(MathError::Type(Type::Point, self.into())),
         }
@@ -367,9 +401,9 @@ impl Value {
     /// Line from point and vector
     pub fn line_vector(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match (&self, rhs) {
-            (&Value::Point(p1, id1), Value::Point(p2, _)) => {
-                let line_id = ctx.point_collection().new_line(id1, p2);
-                Ok(Value::Line(p1, p2, line_id))
+            (&Value::Point(origin, origin_id), Value::Point(direction, _)) => {
+                let line_id = ctx.point_collection().new_line(origin_id, direction);
+                Ok(Value::Line(Line { origin, direction }, line_id))
             }
             _ => Err(MathError::Type(Type::Point, self.into())),
         }
@@ -377,26 +411,25 @@ impl Value {
 
     pub fn intersect(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match (&self, rhs) {
-            (&Value::Line(p1, d1, id1), Value::Line(p2, d2, id2)) => {
-                match intersect(p1, d1, p2, d2) {
-                    Some(intersection) => {
-                        let point_id = ctx.point_collection().intersect(id1, id2, intersection);
-                        Ok(Value::Point(intersection, point_id))
-                    }
-                    None => Err(MathError::ParallelIntersection),
+            (&Value::Line(l1, id1), Value::Line(l2, id2)) => match l1.intersect(l2) {
+                Some(intersection) => {
+                    let point_id = ctx.point_collection().intersect(id1, id2, intersection);
+                    Ok(Value::Point(intersection, point_id))
                 }
-            }
+                None => Err(MathError::ParallelIntersection),
+            },
             _ => Err(MathError::Type(Type::Line, self.into())),
         }
     }
 
     pub fn line_offset(self, rhs: Value, ctx: &mut dyn EvaluationContext) -> Result {
         match (self, rhs) {
-            (Value::Line(p, d, _), Value::Number(dist)) => {
-                let start_point = d.unit().perp().mul_add(dist, p);
-                let start_id = ctx.point_collection().insert_point_get_id(start_point);
-                let line_id = ctx.point_collection().new_line(start_id, d);
-                Ok(Value::Line(start_point, d, line_id))
+            (Value::Line(line, _), Value::Number(dist)) => {
+                let direction = line.direction;
+                let origin = direction.unit().perp().mul_add(dist, line.origin);
+                let origin_id = ctx.point_collection().insert_point_get_id(origin);
+                let line_id = ctx.point_collection().new_line(origin_id, direction);
+                Ok(Value::Line(Line { origin, direction }, line_id))
             }
             (Value::Line(..), rhs) => Err(MathError::Type(Type::Number, rhs.into())),
             (lhs, _) => Err(MathError::Type(Type::Number, lhs.into())),
@@ -409,8 +442,7 @@ impl Value {
             (&Value::Point(p1, id1), &Value::Point(p2, id2)) => {
                 Ok(id1 == id2 || point_float_eq(p1, p2))
             }
-            (&Value::Line(p1, d1, ids1), &Value::Line(p2, d2, ids2)) => Ok(ids1 == ids2
-                || vector_parallel_float_eq(d1, d2) && vector_parallel_float_eq(p2 - p1, d1)),
+            (&Value::Line(l1, id1), &Value::Line(l2, id2)) => Ok(id1 == id2 || l1.float_eq(l2)),
             (Value::String(s1), Value::String(s2)) => Ok(s1 == s2),
             _ => Err(MathError::Type(self.into(), other.into())),
         }
@@ -616,6 +648,46 @@ impl PartialEq for Value {
     }
 }
 
+impl PartialEq<f64> for Value {
+    fn eq(&self, other: &f64) -> bool {
+        if let Self::Number(this) = self {
+            float_eq(*this, *other)
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<Point> for Value {
+    fn eq(&self, other: &Point) -> bool {
+        if let Self::Point(this, _) = self {
+            point_float_eq(*this, *other)
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<&str> for Value {
+    fn eq(&self, other: &&str) -> bool {
+        if let Self::String(this) = self {
+            **this == *other
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<Line> for Value {
+    fn eq(&self, other: &Line) -> bool {
+        if let Self::Line(this, _) = self {
+            this.float_eq(*other)
+        } else {
+            false
+        }
+    }
+}
+
 impl From<bool> for Value {
     fn from(b: bool) -> Value {
         Value::Number(f64::from(b as u8))
@@ -649,17 +721,6 @@ fn sin_deg(x: f64) -> f64 {
     }
 }
 
-pub fn intersect(p1: Point, d1: Point, p2: Point, d2: Point) -> Option<Point> {
-    let cross = d1.cross(d2);
-    // if `cross ~= 0`, the lines are (approximately) parallel; in this case there is no
-    // intersection.
-    if cross.abs() < f64::EPSILON {
-        None
-    } else {
-        Some(d1.mul_add((p2 - p1).cross(d2) / cross, p1))
-    }
-}
-
 pub fn float_eq(x: f64, y: f64) -> bool {
     float_eq::float_eq!(x, y, rmax <= f64::EPSILON)
 }
@@ -681,89 +742,56 @@ pub(crate) mod tests {
         evaluator::{evaluate_expression, Evaluator},
         expressions::tests::{b, expression_full, t, u, Expr},
         operators::{COMMA, PAREN_UNARY},
-        values::Value,
+        values::{Line, Point, Value},
     };
 
-    macro_rules! value {
-        (($x:expr, $y:expr)) => {
-            value!($x, $y)
-        };
-        (($x:expr, $y:expr, $id:expr)) => {
-            value!($x, $y, $id)
-        };
-        ($x:expr) => {
-            $crate::values::Value::Number($x as f64)
-        };
-        ($x:expr, $y:expr) => {
-            #[expect(unreachable_code)]
-            $crate::values::Value::Point(
-                $crate::values::Point($x as f64, $y as f64),
-                // $crate::values::PointProvenance::None,
-                todo!(),
-            )
-        };
-        ($x:expr, $y:expr, $id:expr) => {
-            $crate::values::Value::Point($crate::values::Point($x as f64, $y as f64), $id)
-        };
-        (($x1:expr, $y1:expr) -> ($x2:expr, $y2:expr)) => {
-            $crate::values::Value::Line(
-                $crate::values::Point($x1 as f64, $y1 as f64),
-                $crate::values::Point(($x2 - $x1) as f64, ($y2 - $y1) as f64),
-                // None,
-                todo!(),
-            )
-        };
-        (@$s:expr) => {
-            $crate::values::Value::String(std::rc::Rc::new($s.into()))
-        };
-    }
-
-    pub(crate) use value;
-
     // 1 + 2 * 3 + 4 == 11
-    #[test_case([t(1), t(2), t(3), b("*"), b("+"), t(4), b("+")], value!(11); "basic arithmetic")]
+    #[test_case([t(1), t(2), t(3), b("*"), b("+"), t(4), b("+")], 11.0; "basic arithmetic")]
     // 1 - 2 * 3 + 4 == -1
-    #[test_case([t(1), t(2), t(3), b("*"), b("-"), t(4), b("+")], value!(-1); "basic arithmetic 2")]
+    #[test_case([t(1), t(2), t(3), b("*"), b("-"), t(4), b("+")], -1.0; "basic arithmetic 2")]
     // 1 - 3 / 2 * 5 == -6.5
-    #[test_case([t(1), t(3), t(2), b("/"), t(5), b("*"), b("-")], value!(-6.5); "basic arithmetic 3")]
+    #[test_case([t(1), t(3), t(2), b("/"), t(5), b("*"), b("-")], -6.5; "basic arithmetic 3")]
     // 3 ++ 4 == 5
-    #[test_case([t(3), t(4), b("++")], value!(5); "hypot")]
+    #[test_case([t(3), t(4), b("++")], 5.0; "hypot")]
     // 5 +-+ 3 == 4
-    #[test_case([t(5), t(3), b("+-+")], value!(4); "hypot sub")]
+    #[test_case([t(5), t(3), b("+-+")], 4.0; "hypot sub")]
     // 3 ^ 4 == 81
-    #[test_case([t(3), t(4), b("^")], value!(81); "pow")]
+    #[test_case([t(3), t(4), b("^")], 81.0; "pow")]
     // (1, 2) + (3, 4) == (4, 6)
-    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("+")], value!(4, 6); "vector addition")]
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("+")], Point(4.0, 6.0); "vector addition")]
     // (1, 2) * (3, 4) == 11
-    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], value!(11); "dot product")]
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], 11.0; "dot product")]
     // 3 * (1, 2) == (3, 6)
-    #[test_case([t(3), t(1), t(2), b(COMMA), u(PAREN_UNARY), b("*")], value!(3, 6); "scalar product")]
+    #[test_case([t(3), t(1), t(2), b(COMMA), u(PAREN_UNARY), b("*")], Point(3.0, 6.0); "scalar product")]
     // angle (3, 3) == 45
-    #[test_case([t(3), t(3), b(COMMA), u(PAREN_UNARY), u("angle")], value!(45); "angle")]
+    #[test_case([t(3), t(3), b(COMMA), u(PAREN_UNARY), u("angle")], 45.0; "angle")]
     // 3 * - 2 == -6
-    #[test_case([t(3), t(2), u("-"), b("*")], value!(-6); "unary minus")]
+    #[test_case([t(3), t(2), u("-"), b("*")], -6.0; "unary minus")]
     // - 2 * 3 == -6
-    #[test_case([t(2), u("-"), t(3), b("*")], value!(-6); "unary minus 2")]
+    #[test_case([t(2), u("-"), t(3), b("*")], -6.0; "unary minus 2")]
     // -(1, 2) * (3, 4) == -11
-    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), u("-"), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], value!(-11); "unary minus 3")]
+    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), u("-"), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], -11.0; "unary minus 3")]
     // cos 90 == 0
-    #[test_case([t(90), u("cos")], value!(0); "unary cos")]
+    #[test_case([t(90), u("cos")], 0.0; "unary cos")]
     // sin 90 == 1
-    #[test_case([t(90), u("sin")], value!(1); "unary sin")]
+    #[test_case([t(90), u("sin")], 1.0; "unary sin")]
     // (1, 2) <> (3, 4) & (1, 4) <> (3, 2) == (2, 3)
     #[test_case([
         t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
         t(1), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(2), b(COMMA), u(PAREN_UNARY), b("<>"), b("&")
-    ], value!(2, 3); "intersect")]
+    ], Point(2.0, 3.0); "intersect")]
     // (0, 0) <> (3, 4) ^^ 5 == (4, -3) -> (7, 1)
-    #[test_case([t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"), t(5), b("^^")], value!((4, -3) -> (7, 1)); "offset")]
+    #[test_case([t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"), t(5), b("^^")], Line::between(Point(4.0, -3.0), Point(7.0, 1.0)); "offset")]
     // (2, 4) min (3, 1) == (2, 1)
-    #[test_case([t(2), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(1), b(COMMA), u(PAREN_UNARY), b("min")], value!(2, 1); "min")]
+    #[test_case([t(2), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(1), b(COMMA), u(PAREN_UNARY), b("min")], Point(2.0, 1.0); "min")]
     // "foo" + "bar" == "foobar"
-    #[test_case([t("foo"), t("bar"), b("+")], value!(@"foobar"); "string concat")]
+    #[test_case([t("foo"), t("bar"), b("+")], "foobar"; "string concat")]
     // "a" max "b" == "b"
-    #[test_case([t("a"), t("b"), b("max")], value!(@"b"); "string max")]
-    fn eval<const N: usize>(expression: [Expr; N], expected: Value) {
+    #[test_case([t("a"), t("b"), b("max")], "b"; "string max")]
+    fn eval<T: std::fmt::Debug, const N: usize>(expression: [Expr; N], expected: T)
+    where
+        Value: PartialEq<T>,
+    {
         assert_eq!(
             evaluate_expression(&mut Evaluator::default(), expression_full(expression)).unwrap(),
             expected
