@@ -244,6 +244,17 @@ impl TryFrom<Value> for (Point, PointId) {
     }
 }
 
+impl TryFrom<Value> for (Line, LineId) {
+    type Error = MathError;
+
+    fn try_from(value: Value) -> Result<(Line, LineId)> {
+        match value {
+            Value::Line(line, id) => Ok((line, id)),
+            _ => Err(MathError::Type(Type::Line, value.into())),
+        }
+    }
+}
+
 impl TryFrom<Value> for f64 {
     type Error = MathError;
 

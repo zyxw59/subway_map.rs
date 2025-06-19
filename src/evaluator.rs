@@ -293,6 +293,7 @@ impl EvaluationContext for Evaluator {
 mod tests {
     use crate::{
         parser::parse,
+        points::{LineId, PointId},
         values::{Point, Value},
     };
 
@@ -340,6 +341,32 @@ mod tests {
             .evaluate_all(parse("point a = (1, 1);").unwrap())
             .unwrap();
         assert_eq!(evaluator.get_variable("a").unwrap(), Point(1.0, 1.0));
+    }
+
+    #[test]
+    fn grid() {
+        let mut evaluator = Evaluator::new();
+        let input = "
+N = dir 0;
+E = dir 90;
+
+n0 = (0 * N) >> E;
+e0 = (0 * E) >> N;
+e1 = (1 * E) >> N;
+e2 = (2 * E) >> N;
+
+point n0e0 = n0 & e0;
+point n0e1 = n0 & e1;
+point n0e2 = n0 & e2;
+";
+        evaluator.evaluate_all(parse(input).unwrap()).unwrap();
+        let (_, n0e0): (_, PointId) = evaluator.variables["n0e0"].clone().try_into().unwrap();
+        let (_, n0e1): (_, PointId) = evaluator.variables["n0e1"].clone().try_into().unwrap();
+        let (_, n0e2): (_, PointId) = evaluator.variables["n0e2"].clone().try_into().unwrap();
+        let (_, n0): (_, LineId) = evaluator.variables["n0"].clone().try_into().unwrap();
+        assert_eq!(evaluator.points.get_or_insert_line(n0e0, n0e1), n0);
+        assert_eq!(evaluator.points.get_or_insert_line(n0e0, n0e2), n0);
+        assert_eq!(evaluator.points.get_or_insert_line(n0e1, n0e2), n0);
     }
 
     macro_rules! points_multiple {
