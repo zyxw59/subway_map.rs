@@ -39,7 +39,8 @@ macro_rules! numeric_fn {
     };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Point(pub f64, pub f64);
 
 impl Point {
@@ -188,7 +189,7 @@ impl ops::Neg for UnitVector {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub struct Line {
     pub origin: Point,
     pub direction: Point,
@@ -653,6 +654,7 @@ impl Value {
     }
 }
 
+#[cfg(test)]
 impl PartialEq<f64> for Value {
     fn eq(&self, other: &f64) -> bool {
         if let Self::Number(this) = self {
@@ -663,6 +665,7 @@ impl PartialEq<f64> for Value {
     }
 }
 
+#[cfg(test)]
 impl PartialEq<Point> for Value {
     fn eq(&self, other: &Point) -> bool {
         if let Self::Point(this, _) = self {
@@ -673,6 +676,7 @@ impl PartialEq<Point> for Value {
     }
 }
 
+#[cfg(test)]
 impl PartialEq<&str> for Value {
     fn eq(&self, other: &&str) -> bool {
         if let Self::String(this) = self {
@@ -683,6 +687,7 @@ impl PartialEq<&str> for Value {
     }
 }
 
+#[cfg(test)]
 impl PartialEq<Line> for Value {
     fn eq(&self, other: &Line) -> bool {
         if let Self::Line(this, _) = self {
