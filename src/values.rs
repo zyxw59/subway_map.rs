@@ -791,7 +791,7 @@ pub(crate) mod tests {
         t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
         t(1), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(2), b(COMMA), u(PAREN_UNARY), b("<>"), b("&")
     ], Point(2.0, 3.0); "intersect")]
-    // (0, 0) <> (3, 4) ^^ 5 == (4, -3) -> (7, 1)
+    // (0, 0) <> (3, 4) ^^ 5 == (-4, 3) <> (-1, 7)
     #[test_case([
         t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
         t(5), b("^^")
