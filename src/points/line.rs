@@ -7,19 +7,18 @@ use std::{
 use serde::Serialize;
 
 use super::{PointId, PointInfoLite, RouteSegmentRef};
-use crate::values::{intersect, Point};
+use crate::values::{Line, Point};
 
 #[derive(Clone, Debug, Serialize)]
-pub struct Line {
-    pub direction: Point,
-    pub origin: Point,
+pub struct LineInfo {
+    pub value: Line,
     points: BTreeSet<LinePoint>,
     segments: Vec<Segment>,
 }
 
-impl Line {
+impl LineInfo {
     /// Create a new line between the two points.
-    pub fn from_pair(p1: PointInfoLite, p2: PointInfoLite) -> Line {
+    pub fn from_pair(p1: PointInfoLite, p2: PointInfoLite) -> Self {
         let mut points = BTreeSet::new();
         points.insert(LinePoint {
             distance: 0.0,
@@ -29,24 +28,25 @@ impl Line {
             distance: 1.0,
             id: p2.id,
         });
-        Line {
-            direction: p2.value - p1.value,
-            origin: p1.value,
+        Self {
+            value: Line::between(p1.value, p2.value),
             points,
             segments: Vec::new(),
         }
     }
 
     /// Create a new line with the given origin and direction.
-    pub fn from_origin_direction(origin: PointInfoLite, direction: Point) -> Line {
+    pub fn from_origin_direction(origin: PointInfoLite, direction: Point) -> Self {
         let mut points = BTreeSet::new();
         points.insert(LinePoint {
             distance: 0.0,
             id: origin.id,
         });
-        Line {
-            origin: origin.value,
-            direction,
+        Self {
+            value: Line {
+                origin: origin.value,
+                direction,
+            },
             points,
             segments: Vec::new(),
         }
@@ -58,17 +58,17 @@ impl Line {
 
     /// Calculate the distance along the line for the specified point.
     pub fn distance(&self, p: Point) -> f64 {
-        self.relative_distance(self.origin, p)
+        self.relative_distance(self.value.origin, p)
     }
 
     /// Calculate the distance between the two points along the line.
     pub fn relative_distance(&self, p1: Point, p2: Point) -> f64 {
-        (p2 - p1) * self.direction / self.direction.norm2()
+        (p2 - p1) * self.value.direction / self.value.direction.norm2()
     }
 
     /// Calculate the location of a point a given distance along the line.
     pub fn point(&self, distance: f64) -> Point {
-        distance * self.direction + self.origin
+        self.value.direction.mul_add(distance, self.value.origin)
     }
 
     /// Returns a `LinePoint` corresponding to the given `PointInfoLite`.
@@ -79,8 +79,8 @@ impl Line {
         }
     }
 
-    pub fn add_point(&mut self, id: PointId, distance: f64) {
-        self.points.insert(LinePoint { id, distance });
+    pub fn add_point(&mut self, point: PointInfoLite) {
+        self.points.insert(self.line_point(point));
     }
 
     /// Registers the given segment with the line.
@@ -270,14 +270,9 @@ impl Line {
     }
 
     /// Returns the id of the point at the intersection of the two lines, if such a point exists.
-    pub fn intersect(&self, other: &Line) -> Option<PointId> {
+    pub fn intersect(&self, other: &Self) -> Option<PointId> {
         // get the distance of the intersection point along this line.
-        let distance = self.distance(intersect(
-            self.origin,
-            self.direction,
-            other.origin,
-            other.direction,
-        )?);
+        let distance = self.distance(self.value.intersect(other.value)?);
         // points to construct a range to search in. the `id` values are bogus, but we won't
         // actually be needing to do any equality comparisons.
         let start = LinePoint {

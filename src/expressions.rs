@@ -8,6 +8,7 @@ use crate::{
     evaluator::{evaluate_expression, EvaluationContext},
     operators::{BinaryOperator, UnaryOperator},
     parser::Position,
+    points::PointCollection,
     values::{Result, Value},
 };
 
@@ -18,22 +19,22 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn apply(&self, args: &[Value], context: &dyn EvaluationContext) -> Result<Value> {
+    pub fn apply(&self, args: &[Value], context: &mut dyn EvaluationContext) -> Result<Value> {
         let expected = self.num_args;
         let actual = args.len();
         if expected != actual {
             return Err(MathError::Arguments { expected, actual });
         }
-        let locals = FunctionEvaluator {
+        let mut locals = FunctionEvaluator {
             parent: context,
             args,
         };
-        evaluate_expression(&locals, self.expression.iter().cloned())
+        evaluate_expression(&mut locals, self.expression.iter().cloned())
     }
 }
 
 pub struct FunctionEvaluator<'a> {
-    parent: &'a dyn EvaluationContext,
+    parent: &'a mut dyn EvaluationContext,
     args: &'a [Value],
 }
 
@@ -44,6 +45,10 @@ impl EvaluationContext for FunctionEvaluator<'_> {
 
     fn get_fn_arg(&self, idx: usize) -> Option<Value> {
         self.args.get(idx).cloned()
+    }
+
+    fn point_collection(&mut self) -> &mut PointCollection {
+        self.parent.point_collection()
     }
 }
 

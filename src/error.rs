@@ -9,14 +9,6 @@ pub enum Error {
     #[error("Math error on line {1}: {0}")]
     Math(#[source] MathError, usize),
     #[error(
-        "Point ({name}) redefined on line {line} (originally defined on line {original_line})"
-    )]
-    PointRedefinition {
-        name: Variable,
-        line: usize,
-        original_line: usize,
-    },
-    #[error(
         "Route ({name}) redefined on line {line} (originally defined on line {original_line})"
     )]
     RouteRedefinition {
