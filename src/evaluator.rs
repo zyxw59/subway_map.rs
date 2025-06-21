@@ -300,7 +300,7 @@ mod tests {
     use crate::{
         parser::parse,
         points::{LineId, PointId},
-        values::{Point, Value},
+        values::Point,
     };
 
     use super::{EvaluationContext, Evaluator};
@@ -309,7 +309,7 @@ mod tests {
     fn variables_set() {
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parse("x = 1;").unwrap()).unwrap();
-        assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
+        assert_eq!(*evaluator.variables.get("x").unwrap(), 1.0);
     }
 
     #[test]
@@ -318,8 +318,8 @@ mod tests {
         evaluator
             .evaluate_all(parse("x = 1; z = x * 2;").unwrap())
             .unwrap();
-        assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
-        assert_eq!(evaluator.variables.get("z"), Some(&Value::Number(2.0)));
+        assert_eq!(*evaluator.variables.get("x").unwrap(), 1.0);
+        assert_eq!(*evaluator.variables.get("z").unwrap(), 2.0);
     }
 
     #[test]
@@ -328,7 +328,7 @@ mod tests {
         evaluator
             .evaluate_all(parse("fn f(x) = x + 1; y = f(3);").unwrap())
             .unwrap();
-        assert_eq!(evaluator.variables.get("y"), Some(&Value::Number(4.0)));
+        assert_eq!(*evaluator.variables.get("y").unwrap(), 4.0);
     }
 
     #[test]
@@ -337,7 +337,7 @@ mod tests {
         evaluator
             .evaluate_all(parse("fn f(x, y) = x * y; z = f(3, 2);").unwrap())
             .unwrap();
-        assert_eq!(evaluator.variables.get("z"), Some(&Value::Number(6.0)));
+        assert_eq!(*evaluator.variables.get("z").unwrap(), 6.0);
     }
 
     #[test]

@@ -653,12 +653,6 @@ impl Value {
     }
 }
 
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
-        self.eq_bool(other).unwrap_or(false)
-    }
-}
-
 impl PartialEq<f64> for Value {
     fn eq(&self, other: &f64) -> bool {
         if let Self::Number(this) = self {
