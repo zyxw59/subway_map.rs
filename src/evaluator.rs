@@ -11,20 +11,22 @@ use crate::{
     intermediate_representation::Document,
     operators::{BinaryOperator, UnaryOperator},
     parser::Position,
-    points::PointCollection,
+    points::{PointCollection, PointId},
     statement::{Statement, StatementKind},
     stops::Stop,
-    values::{Point, PointProvenance, Value},
+    values::{Point, Value},
 };
 
 pub trait EvaluationContext {
     fn get_variable(&self, name: &str) -> Option<Value>;
 
     fn get_fn_arg(&self, idx: usize) -> Option<Value>;
+
+    fn point_collection(&mut self) -> &mut PointCollection;
 }
 
 pub fn evaluate_expression(
-    ctx: &dyn EvaluationContext,
+    ctx: &mut dyn EvaluationContext,
     expr: impl IntoIterator<Item = ExpressionBit>,
 ) -> Result<Value, MathError> {
     EvaluatorTrait::evaluate(ctx, expr)
@@ -35,7 +37,7 @@ impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn Evalu
     type Error = MathError;
 
     fn evaluate_binary_operator(
-        &self,
+        &mut self,
         _span: Span<Position>,
         operator: BinaryOperator,
         lhs: Value,
@@ -45,7 +47,7 @@ impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn Evalu
     }
 
     fn evaluate_unary_operator(
-        &self,
+        &mut self,
         _span: Span<Position>,
         operator: UnaryOperator,
         argument: Value,
@@ -53,7 +55,7 @@ impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn Evalu
         operator.call(argument, self)
     }
 
-    fn evaluate_term(&self, _span: Span<Position>, term: Term) -> Result<Value, MathError> {
+    fn evaluate_term(&mut self, _span: Span<Position>, term: Term) -> Result<Value, MathError> {
         match term {
             Term::Number(x) => Ok(Value::Number(x)),
             Term::String(s) => Ok(Value::String(Rc::new(s))),
@@ -101,14 +103,6 @@ impl Evaluator {
                         let value = f64::try_from(&value).map_err(|err| Error::Math(err, line))?;
                         self.points.set_inner_radius(value);
                     }
-                    // named points can't be redefined, since lines are defined in terms of them
-                    if let Some(original_line) = self.points.get_point_line_number(&name) {
-                        return Err(Error::PointRedefinition {
-                            name,
-                            line,
-                            original_line,
-                        });
-                    }
                 }
                 let mut slot = self.variables.entry(name.clone());
                 for field in fields {
@@ -130,18 +124,18 @@ impl Evaluator {
                 self.variables.insert(name, Value::Function(function));
             }
             StatementKind::PointSingle(name, expr) => {
-                // named points can't be redefined, since lines are defined in terms of them
-                if let Some(original_line) = self.points.get_point_line_number(&name) {
-                    return Err(Error::PointRedefinition {
-                        name,
-                        line,
-                        original_line,
-                    });
-                }
-                let (point, provenance) = evaluate_expression(self, expr)
-                    .and_then(<(Point, PointProvenance)>::try_from)
+                // NOTE: this statement is almost identical to a normal variable assignment, except
+                // that it type-checks that the expression evaluates to a point.
+                let value = evaluate_expression(self, expr)
+                    .and_then(|value| {
+                        if !matches!(value, Value::Point(..)) {
+                            Err(MathError::Type(crate::error::Type::Point, value.into()))
+                        } else {
+                            Ok(value)
+                        }
+                    })
                     .map_err(|err| Error::Math(err, line))?;
-                self.points.insert_point(name, point, provenance, line)?;
+                self.variables.insert(name, value);
             }
             StatementKind::PointSpaced {
                 from,
@@ -151,20 +145,19 @@ impl Evaluator {
                 let spacing = evaluate_expression(self, spaced)
                     .and_then(Point::try_from)
                     .map_err(|err| Error::Math(err, line))?;
-                if !self.points.contains(&from) {
-                    return Err(Error::Math(MathError::Variable(from), line));
+                let (from_point, from_id) = self.get_point(from, line)?;
+                let line_id = self.points.new_line(from_id, spacing);
+                let mut distance = 0.0;
+                for (multiplier, name) in points {
+                    let multiplier = multiplier
+                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
+                        .unwrap_or(Ok(1.0))
+                        .map_err(|err| Error::Math(err, line))?;
+                    distance += multiplier;
+                    let point = spacing.mul_add(distance, from_point);
+                    let id = self.points.add_point_on_line(point, line_id);
+                    self.variables.insert(name, Value::Point(point, id));
                 }
-                let points = points
-                    .into_iter()
-                    .map(|(multiplier, name)| {
-                        multiplier
-                            .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
-                            .unwrap_or(Ok(1.0))
-                            .map_err(|err| Error::Math(err, line))
-                            .map(|distance| (name, distance))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                self.points.new_line(from, spacing, points, line)?;
             }
             StatementKind::PointExtend {
                 from,
@@ -172,7 +165,16 @@ impl Evaluator {
                 points,
                 is_past,
             } => {
+                let (from_point, from_id) = self.get_point(from, line)?;
+                let (to_point, to_id) = self.get_point(to, line)?;
+                let to_multiplier = to_multiplier
+                    .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
+                    .unwrap_or(Ok(1.0))
+                    .map_err(|err| Error::Math(err, line))?;
                 let mut total_distance = 0.0;
+                if is_past {
+                    total_distance += to_multiplier;
+                }
                 let points = points
                     .into_iter()
                     .map(|(multiplier, name)| {
@@ -183,32 +185,17 @@ impl Evaluator {
                         Ok((name, total_distance))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                if is_past {
-                    let past_multiplier = to_multiplier
-                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
-                        .unwrap_or(Ok(1.0))
-                        .map_err(|err| Error::Math(err, line))?;
-                    self.points.extend_line(
-                        from,
-                        to,
-                        points
-                            .into_iter()
-                            .map(|(name, distance)| (name, distance / past_multiplier + 1.0)),
-                        line,
-                    )?;
+                let line_id = self.points.get_or_insert_line(from_id, to_id);
+                let distance_quotient = if is_past {
+                    to_multiplier
                 } else {
-                    total_distance += to_multiplier
-                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
-                        .unwrap_or(Ok(1.0))
-                        .map_err(|err| Error::Math(err, line))?;
-                    self.points.extend_line(
-                        from,
-                        to,
-                        points
-                            .into_iter()
-                            .map(|(name, distance)| (name, distance / total_distance)),
-                        line,
-                    )?;
+                    total_distance + to_multiplier
+                };
+                let spacing = (to_point - from_point) / distance_quotient;
+                for (name, distance) in points {
+                    let point = spacing.mul_add(distance, from_point);
+                    let id = self.points.add_point_on_line(point, line_id);
+                    self.variables.insert(name, Value::Point(point, id));
                 }
             }
             StatementKind::Route {
@@ -218,11 +205,13 @@ impl Evaluator {
             } => {
                 let route = self.points.insert_route_get_id(name, styles, line)?;
                 for segment in segments {
+                    let (_, start_id) = self.get_point(segment.start, line)?;
+                    let (_, end_id) = self.get_point(segment.end, line)?;
                     let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)
                         .map_err(|err| Error::Math(err, line))?;
                     self.points
-                        .add_segment(route, &segment.start, &segment.end, offset)
+                        .add_segment(route, start_id, end_id, offset)
                         .map_err(|name| Error::Math(MathError::Variable(name.into()), line))?;
                 }
             }
@@ -283,29 +272,26 @@ impl Evaluator {
             .unwrap_or(0.0);
         (top, left, bottom, right)
     }
+
+    fn get_point(&self, name: Variable, line_no: usize) -> Result<(Point, PointId)> {
+        self.get_variable(&name)
+            .ok_or(MathError::Variable(name))
+            .and_then(TryFrom::try_from)
+            .map_err(|err| Error::Math(err, line_no))
+    }
 }
 
 impl EvaluationContext for Evaluator {
     fn get_variable(&self, name: &str) -> Option<Value> {
-        if let Some((point, id)) = self.points.get_point_and_id(name) {
-            Some(Value::Point(point, PointProvenance::Named(id)))
-        } else {
-            self.variables.get(name).cloned()
-        }
+        self.variables.get(name).cloned()
     }
 
     fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
         None
     }
-}
 
-impl EvaluationContext for () {
-    fn get_variable(&self, _name: &str) -> Option<Value> {
-        None
-    }
-
-    fn get_fn_arg(&self, _idx: usize) -> Option<Value> {
-        None
+    fn point_collection(&mut self) -> &mut PointCollection {
+        &mut self.points
     }
 }
 
@@ -313,7 +299,8 @@ impl EvaluationContext for () {
 mod tests {
     use crate::{
         parser::parse,
-        values::{tests::value, Point, Value},
+        points::{LineId, PointId},
+        values::Point,
     };
 
     use super::{EvaluationContext, Evaluator};
@@ -322,7 +309,7 @@ mod tests {
     fn variables_set() {
         let mut evaluator = Evaluator::new();
         evaluator.evaluate_all(parse("x = 1;").unwrap()).unwrap();
-        assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
+        assert_eq!(*evaluator.variables.get("x").unwrap(), 1.0);
     }
 
     #[test]
@@ -331,8 +318,8 @@ mod tests {
         evaluator
             .evaluate_all(parse("x = 1; z = x * 2;").unwrap())
             .unwrap();
-        assert_eq!(evaluator.variables.get("x"), Some(&Value::Number(1.0)));
-        assert_eq!(evaluator.variables.get("z"), Some(&Value::Number(2.0)));
+        assert_eq!(*evaluator.variables.get("x").unwrap(), 1.0);
+        assert_eq!(*evaluator.variables.get("z").unwrap(), 2.0);
     }
 
     #[test]
@@ -341,7 +328,7 @@ mod tests {
         evaluator
             .evaluate_all(parse("fn f(x) = x + 1; y = f(3);").unwrap())
             .unwrap();
-        assert_eq!(evaluator.variables.get("y"), Some(&Value::Number(4.0)));
+        assert_eq!(*evaluator.variables.get("y").unwrap(), 4.0);
     }
 
     #[test]
@@ -350,7 +337,7 @@ mod tests {
         evaluator
             .evaluate_all(parse("fn f(x, y) = x * y; z = f(3, 2);").unwrap())
             .unwrap();
-        assert_eq!(evaluator.variables.get("z"), Some(&Value::Number(6.0)));
+        assert_eq!(*evaluator.variables.get("z").unwrap(), 6.0);
     }
 
     #[test]
@@ -359,7 +346,33 @@ mod tests {
         evaluator
             .evaluate_all(parse("point a = (1, 1);").unwrap())
             .unwrap();
-        assert_eq!(evaluator.get_variable("a"), Some(value!(1, 1)));
+        assert_eq!(evaluator.get_variable("a").unwrap(), Point(1.0, 1.0));
+    }
+
+    #[test]
+    fn grid() {
+        let mut evaluator = Evaluator::new();
+        let input = "
+N = dir 0;
+E = dir 90;
+
+n0 = (0 * N) >> E;
+e0 = (0 * E) >> N;
+e1 = (1 * E) >> N;
+e2 = (2 * E) >> N;
+
+point n0e0 = n0 & e0;
+point n0e1 = n0 & e1;
+point n0e2 = n0 & e2;
+";
+        evaluator.evaluate_all(parse(input).unwrap()).unwrap();
+        let (_, n0e0): (_, PointId) = evaluator.variables["n0e0"].clone().try_into().unwrap();
+        let (_, n0e1): (_, PointId) = evaluator.variables["n0e1"].clone().try_into().unwrap();
+        let (_, n0e2): (_, PointId) = evaluator.variables["n0e2"].clone().try_into().unwrap();
+        let (_, n0): (_, LineId) = evaluator.variables["n0"].clone().try_into().unwrap();
+        assert_eq!(evaluator.points.get_or_insert_line(n0e0, n0e1), n0);
+        assert_eq!(evaluator.points.get_or_insert_line(n0e0, n0e2), n0);
+        assert_eq!(evaluator.points.get_or_insert_line(n0e1, n0e2), n0);
     }
 
     macro_rules! points_multiple {
@@ -369,20 +382,22 @@ mod tests {
          $last:ident: ($last_x:expr, $last_y:expr)) => {
             let mut evaluator = Evaluator::new();
             evaluator.evaluate_all(parse($str).unwrap()).unwrap();
+            let (_, start_id) = evaluator.get_point(stringify!($first).into(), 0).unwrap();
+            let (_, end_id) = evaluator.get_point(stringify!($last).into(), 0).unwrap();
             assert_eq!(
-                evaluator.points.get_points_of_line(stringify!($first), stringify!($last)),
-                Some(vec![
+                evaluator.points.get_points_of_line(start_id, end_id).unwrap(),
+                [
                      Point($first_x as f64, $first_y as f64),
                      $(Point($x as f64, $y as f64)),*,
                      Point($last_x as f64, $last_y as f64)
-                ]),
+                ],
             );
             for (name, value) in [
-                 (stringify!($first), value!($first_x, $first_y)),
-                 $((stringify!($name), value!($x, $y))),*,
-                 (stringify!($last), value!($last_x, $last_y)),
+                 (stringify!($first), Point($first_x as f64, $first_y as f64)),
+                 $((stringify!($name), Point($x as f64, $y as f64))),*,
+                 (stringify!($last), Point($last_x as f64, $last_y as f64)),
             ] {
-                assert_eq!(evaluator.get_variable(name), Some(value));
+                assert_eq!(evaluator.get_variable(name).unwrap(), value);
             }
         }
     }
