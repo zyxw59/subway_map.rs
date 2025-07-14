@@ -66,7 +66,7 @@ impl Document {
             .into_iter()
             .fold(String::new(), |mut output, s| {
                 use std::fmt::Write;
-                let _ = write!(output, "@import url({})\n;", s);
+                let _ = write!(output, "@import url({s})\n;");
                 output
             });
         SVG::new()
