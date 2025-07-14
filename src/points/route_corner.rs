@@ -1,25 +1,31 @@
 use std::{cmp::Ordering, collections::HashMap, fmt};
 
-use super::PointId;
+use super::{line::LineDirection, LineId, PointId};
 
 pub type RouteCorners = HashMap<PointId, RouteCorner>;
 
 #[derive(Default)]
 pub struct RouteCorner {
-    turns: HashMap<PointId, RouteTurns>,
+    turns: HashMap<(LineId, LineDirection), RouteTurns>,
 }
 
 impl RouteCorner {
-    pub fn insert_left(&mut self, point: PointId, turn: RouteTurn) {
-        self.turns.entry(point).or_default().insert_left(turn)
+    pub fn insert_left(&mut self, line: LineId, direction: LineDirection, turn: RouteTurn) {
+        self.turns
+            .entry((line, direction))
+            .or_default()
+            .insert_left(turn)
     }
 
-    pub fn insert_right(&mut self, point: PointId, turn: RouteTurn) {
-        self.turns.entry(point).or_default().insert_right(turn)
+    pub fn insert_right(&mut self, line: LineId, direction: LineDirection, turn: RouteTurn) {
+        self.turns
+            .entry((line, direction))
+            .or_default()
+            .insert_right(turn)
     }
 
-    pub fn get(&self, point: PointId) -> Option<f64> {
-        self.turns.get(&point).and_then(RouteTurns::get)
+    pub fn get(&self, line: LineId, direction: LineDirection) -> Option<f64> {
+        self.turns.get(&(line, direction)).and_then(RouteTurns::get)
     }
 }
 
