@@ -190,9 +190,8 @@ impl PointCollection {
         let offset = offset * self.default_width;
         let p1 = self[start_id].info;
         let p2 = self[end_id].info;
-        let line_id = self.get_or_insert_line(p1.id, p2.id);
+        self.get_or_insert_line(p1.id, p2.id);
         self[route].add_segment(p1.id, p2.id, offset);
-        self[line_id].add_segment(p1, p2);
         Ok(())
     }
 

@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, collections::BTreeSet, fmt};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeSet, HashSet},
+    fmt,
+};
 
 use serde::Serialize;
 
@@ -77,16 +81,6 @@ impl LineInfo {
 
     pub fn add_point(&mut self, point: PointInfoLite) {
         self.points.insert(self.line_point(point));
-    }
-
-    /// Registers the given segment with the line.
-    pub fn add_segment(
-        &mut self,
-        p1: PointInfoLite,
-        p2: PointInfoLite,
-    ) {
-        self.points.insert(self.line_point(p1));
-        self.points.insert(self.line_point(p2));
     }
 
     pub fn get_direction(&self, start: PointInfoLite, end: PointInfoLite) -> Option<LineDirection> {
