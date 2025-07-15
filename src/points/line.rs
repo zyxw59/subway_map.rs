@@ -13,47 +13,41 @@ use crate::values::{Line, Point};
 pub struct LineInfo {
     pub value: Line,
     pub id: LineId,
-    points: BTreeSet<LinePoint>,
+    point_ids: HashSet<PointId>,
+    line_points: BTreeSet<LinePoint>,
 }
 
 impl LineInfo {
     /// Create a new line between the two points.
     pub fn from_pair(id: LineId, p1: PointInfoLite, p2: PointInfoLite) -> Self {
-        let mut points = BTreeSet::new();
-        points.insert(LinePoint {
-            distance: 0.0,
-            id: p1.id,
-        });
-        points.insert(LinePoint {
-            distance: 1.0,
-            id: p2.id,
-        });
-        Self {
+        let mut this = Self {
             id,
             value: Line::between(p1.value, p2.value),
-            points,
-        }
+            point_ids: Default::default(),
+            line_points: Default::default(),
+        };
+        this.add_point(p1);
+        this.add_point(p2);
+        this
     }
 
     /// Create a new line with the given origin and direction.
     pub fn from_origin_direction(id: LineId, origin: PointInfoLite, direction: Point) -> Self {
-        let mut points = BTreeSet::new();
-        points.insert(LinePoint {
-            distance: 0.0,
-            id: origin.id,
-        });
-        Self {
+        let mut this = Self {
             id,
             value: Line {
                 origin: origin.value,
                 direction,
             },
-            points,
-        }
+            point_ids: Default::default(),
+            line_points: Default::default(),
+        };
+        this.add_point(origin);
+        this
     }
 
     pub fn points(&self) -> impl DoubleEndedIterator<Item = &LinePoint> + Clone + '_ {
-        self.points.iter()
+        self.line_points.iter()
     }
 
     /// Calculate the distance along the line for the specified point.
@@ -80,7 +74,8 @@ impl LineInfo {
     }
 
     pub fn add_point(&mut self, point: PointInfoLite) {
-        self.points.insert(self.line_point(point));
+        self.point_ids.insert(point.id);
+        self.line_points.insert(self.line_point(point));
     }
 
     pub fn get_direction(&self, start: PointInfoLite, end: PointInfoLite) -> Option<LineDirection> {
@@ -105,13 +100,9 @@ impl LineInfo {
             distance: distance + 1.0,
             id: PointId(0),
         };
-        for line_point in self.points.range(start..end) {
-            let point = self.point(line_point.distance);
-            let id = line_point.id;
-            let distance = other.distance(point);
-            let line_point = LinePoint { distance, id };
-            if other.points.contains(&line_point) {
-                return Some(id);
+        for line_point in self.line_points.range(start..end) {
+            if other.point_ids.contains(&line_point.id) {
+                return Some(line_point.id);
             }
         }
         None
