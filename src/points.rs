@@ -180,18 +180,18 @@ impl PointCollection {
     }
 
     /// Appends a given segment to the given route.
-    pub fn add_segment<'a>(
+    pub fn add_segment(
         &mut self,
         route: RouteId,
         start_id: PointId,
         end_id: PointId,
         offset: f64,
-    ) -> Result<(), &'a str> {
+    ) -> Result<(), ()> {
         let offset = offset * self.default_width;
         let p1 = self[start_id].info;
         let p2 = self[end_id].info;
         self.get_or_insert_line(p1.id, p2.id);
-        self[route].add_segment(p1.id, p2.id, offset);
+        self[route].add_segment(p1.id, p2.id, offset)?;
         Ok(())
     }
 
@@ -582,12 +582,12 @@ impl Route {
         }
     }
 
-    fn add_segment(&mut self, start: PointId, end: PointId, offset: f64) -> RouteSegmentRef {
-        let index = self.len();
-        self.segments.push(RouteSegment { start, end, offset });
-        RouteSegmentRef {
-            route: self.id,
-            index,
+    fn add_segment(&mut self, start: PointId, end: PointId, offset: f64) -> Result<(), ()> {
+        if start != end {
+            self.segments.push(RouteSegment { start, end, offset });
+            Ok(())
+        } else {
+            Err(())
         }
     }
 
@@ -599,11 +599,7 @@ impl Route {
         self.segments.last()
     }
 
-    fn len(&self) -> usize {
-        self.segments.len()
-    }
-
-    fn iter(&self) -> ::std::slice::Iter<RouteSegment> {
+    fn iter(&self) -> ::std::slice::Iter<'_, RouteSegment> {
         self.segments.iter()
     }
 }
@@ -639,12 +635,4 @@ pub struct RouteSegment {
     pub start: PointId,
     pub end: PointId,
     pub offset: f64,
-}
-
-/// A reference to a segment of a route, referencing it by its `RouteId` and the index into that
-/// route's list of segments.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
-pub struct RouteSegmentRef {
-    pub route: RouteId,
-    pub index: usize,
 }

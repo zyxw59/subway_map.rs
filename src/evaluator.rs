@@ -203,16 +203,23 @@ impl Evaluator {
                 styles,
                 segments,
             } => {
-                let route = self.points.insert_route_get_id(name, styles, line)?;
+                let route = self
+                    .points
+                    .insert_route_get_id(name.clone(), styles, line)?;
                 for segment in segments {
-                    let (_, start_id) = self.get_point(segment.start, line)?;
-                    let (_, end_id) = self.get_point(segment.end, line)?;
+                    let (_, start_id) = self.get_point(segment.start.clone(), line)?;
+                    let (_, end_id) = self.get_point(segment.end.clone(), line)?;
                     let offset = evaluate_expression(self, segment.offset)
                         .and_then(f64::try_from)
                         .map_err(|err| Error::Math(err, line))?;
                     self.points
                         .add_segment(route, start_id, end_id, offset)
-                        .map_err(|name| Error::Math(MathError::Variable(name.into()), line))?;
+                        .map_err(|()| Error::DuplicatePointInRoute {
+                            route: name.clone(),
+                            start: segment.start,
+                            end: segment.end,
+                            line,
+                        })?;
                 }
             }
             StatementKind::Stop(stop) => {
