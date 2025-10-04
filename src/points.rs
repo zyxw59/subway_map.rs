@@ -103,7 +103,7 @@ impl PointCollection {
             Self::add_pair(&mut self.pairs, &mut self.points, p1, p2, line_id);
             let p1 = &self[p1];
             let p2 = &self[p2];
-            let new_line = LineInfo::from_pair(p1.info, p2.info);
+            let new_line = LineInfo::from_pair(line_id, p1.info, p2.info);
             self.lines.push(new_line);
             line_id
         }
@@ -175,24 +175,23 @@ impl PointCollection {
         let line_id = LineId(self.lines.len());
         let origin = self[start_id].info;
         self.lines
-            .push(LineInfo::from_origin_direction(origin, direction));
+            .push(LineInfo::from_origin_direction(line_id, origin, direction));
         line_id
     }
 
     /// Appends a given segment to the given route.
-    pub fn add_segment<'a>(
+    pub fn add_segment(
         &mut self,
         route: RouteId,
         start_id: PointId,
         end_id: PointId,
         offset: f64,
-    ) -> Result<(), &'a str> {
+    ) -> Result<(), ()> {
         let offset = offset * self.default_width;
         let p1 = self[start_id].info;
         let p2 = self[end_id].info;
-        let line_id = self.get_or_insert_line(p1.id, p2.id);
-        let route_segment = self[route].add_segment(p1.id, p2.id, offset);
-        self[line_id].add_segment(p1, p2, route_segment);
+        self.get_or_insert_line(p1.id, p2.id);
+        self[route].add_segment(p1.id, p2.id, offset)?;
         Ok(())
     }
 
@@ -220,15 +219,15 @@ impl PointCollection {
                 let start_pt = self[current.start].info;
                 let corner_pt = self[current.end].info;
                 let end_pt = self[next.end].info;
+                let line_dir_in = line_in
+                    .get_direction(start_pt, corner_pt)
+                    .expect("duplicate point in route");
+                let line_dir_out = line_out
+                    .get_direction(end_pt, corner_pt)
+                    .expect("duplicate point in route");
 
-                let (rev_in, seg_in) = line_in.get_segment(start_pt, corner_pt);
-                let (rev_out, seg_out) = line_out.get_segment(corner_pt, end_pt);
                 let off_in = current.offset;
                 let off_out = next.offset;
-                let (start_pt, _) = seg_in.endpoints(rev_in);
-                let (_, end_pt) = seg_out.endpoints(rev_out);
-                let start_pt = self[start_pt.id].info;
-                let end_pt = self[end_pt.id].info;
                 let in_dir = (start_pt.value - corner_pt.value).unit();
                 let out_dir = (end_pt.value - corner_pt.value).unit();
                 let arc_width =
@@ -252,11 +251,11 @@ impl PointCollection {
                 // positive if out_dir is clockwise of in_dir
                 // => positive == turning left
                 if out_dir.cross(*in_dir) > 0.0 {
-                    corner.insert_left(start_pt.id, turn_in);
-                    corner.insert_right(end_pt.id, turn_out);
+                    corner.insert_left(line_in.id, line_dir_in, turn_in);
+                    corner.insert_right(line_out.id, line_dir_out, turn_out);
                 } else {
-                    corner.insert_right(start_pt.id, turn_in);
-                    corner.insert_left(end_pt.id, turn_out);
+                    corner.insert_right(line_in.id, line_dir_in, turn_in);
+                    corner.insert_left(line_out.id, line_dir_out, turn_out);
                 }
             }
         }
@@ -270,11 +269,23 @@ impl PointCollection {
             for (current, next) in route.iter().tuple_windows() {
                 if current.end == next.start {
                     let route_corner = route_corners.get(&current.end);
-                    let in_pt = self.get_other_segment_endpoint(current.start, current.end);
-                    let out_pt = self.get_other_segment_endpoint(next.end, next.start);
-                    let longitudinal_in = route_corner.and_then(|rc| rc.get(in_pt)).unwrap_or(0.0);
-                    let longitudinal_out =
-                        route_corner.and_then(|rc| rc.get(out_pt)).unwrap_or(0.0);
+                    let line_in = &self[(current.start, current.end)];
+                    let line_out = &self[(next.start, next.end)];
+                    let start_pt = self[current.start].info;
+                    let corner_pt = self[current.end].info;
+                    let end_pt = self[next.end].info;
+                    let line_dir_in = line_in
+                        .get_direction(start_pt, corner_pt)
+                        .expect("duplicate point in route");
+                    let line_dir_out = line_out
+                        .get_direction(end_pt, corner_pt)
+                        .expect("duplicate point in route");
+                    let longitudinal_in = route_corner
+                        .and_then(|rc| rc.get(line_in.id, line_dir_in))
+                        .unwrap_or(0.0);
+                    let longitudinal_out = route_corner
+                        .and_then(|rc| rc.get(line_out.id, line_dir_out))
+                        .unwrap_or(0.0);
                     match self.are_collinear(current.start, current.end, next.end) {
                         Collinearity::Sequential => {
                             // parallel shift
@@ -317,13 +328,6 @@ impl PointCollection {
             path.operations.push(self.segment_end(current));
         }
         path
-    }
-
-    /// Finds the segment along the line from `far` to `near` which contains `near`, and returns
-    /// the endpoint of that segment closest to `far`.
-    fn get_other_segment_endpoint(&self, far: PointId, near: PointId) -> PointId {
-        let (rev, seg) = self[(far, near)].get_segment(self[far].info, self[near].info);
-        seg.endpoints(rev).0.id
     }
 
     pub fn parallel_shift(
@@ -428,19 +432,10 @@ impl PointCollection {
         let end_id = segment.end;
         let start = self[start_id].info;
         let end = self[end_id].info;
-        let line = &self[(start_id, end_id)];
-        let (this, other) = if is_start { (start, end) } else { (end, start) };
-        let (reverse, _) = line.get_segment(other, this);
-        // if `is_start`, we reversed the start and end points already, so flip `reverse`
-        let reverse = reverse ^ is_start;
         let offset = segment.offset;
-        let direction = if reverse {
-            -line.value.direction.unit()
-        } else {
-            line.value.direction.unit()
-        };
+        let direction = (end.value - start.value).unit();
         Operation {
-            point: this.value,
+            point: if is_start { start } else { end }.value,
             kind: if is_start {
                 OperationKind::Start { offset, direction }
             } else {
@@ -587,12 +582,12 @@ impl Route {
         }
     }
 
-    fn add_segment(&mut self, start: PointId, end: PointId, offset: f64) -> RouteSegmentRef {
-        let index = self.len();
-        self.segments.push(RouteSegment { start, end, offset });
-        RouteSegmentRef {
-            route: self.id,
-            index,
+    fn add_segment(&mut self, start: PointId, end: PointId, offset: f64) -> Result<(), ()> {
+        if start != end {
+            self.segments.push(RouteSegment { start, end, offset });
+            Ok(())
+        } else {
+            Err(())
         }
     }
 
@@ -604,11 +599,7 @@ impl Route {
         self.segments.last()
     }
 
-    fn len(&self) -> usize {
-        self.segments.len()
-    }
-
-    fn iter(&self) -> ::std::slice::Iter<RouteSegment> {
+    fn iter(&self) -> ::std::slice::Iter<'_, RouteSegment> {
         self.segments.iter()
     }
 }
@@ -644,12 +635,4 @@ pub struct RouteSegment {
     pub start: PointId,
     pub end: PointId,
     pub offset: f64,
-}
-
-/// A reference to a segment of a route, referencing it by its `RouteId` and the index into that
-/// route's list of segments.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
-pub struct RouteSegmentRef {
-    pub route: RouteId,
-    pub index: usize,
 }

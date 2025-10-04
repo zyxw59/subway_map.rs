@@ -16,6 +16,13 @@ pub enum Error {
         line: usize,
         original_line: usize,
     },
+    #[error("Segment endpoints {start} and {end} are identical in route {route} on line {line}")]
+    DuplicatePointInRoute {
+        start: Variable,
+        end: Variable,
+        route: Variable,
+        line: usize,
+    },
     #[error("Undefined stop marker {name} on line {line}")]
     UndefinedStopMarker { name: Variable, line: usize },
     #[error("Invalid argument {arg} to stop marker of type {marker} on line {line}: {error}")]
