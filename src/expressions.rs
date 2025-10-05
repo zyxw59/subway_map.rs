@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-pub use expr_parser::expression;
 use smol_str::SmolStr;
 
 use crate::{
@@ -54,8 +53,6 @@ impl EvaluationContext for FunctionEvaluator<'_> {
 
 pub type Variable = SmolStr;
 
-pub type ExpressionBit = expression::Expression<Position, BinaryOperator, UnaryOperator, Term>;
-
 pub fn zero_expression(span: crate::parser::Span) -> Expression {
     use expr_parser::evaluate::ExpressionTree;
     Expression::from_node(
@@ -66,11 +63,46 @@ pub fn zero_expression(span: crate::parser::Span) -> Expression {
     )
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct Expression {
     pub inner_span: Span,
     pub outer_span: Span,
     pub node: Rc<ExpressionNode>,
+}
+
+/// Equality ignores spans
+impl PartialEq for Expression {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node
+    }
+}
+
+impl std::fmt::Debug for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match &*self.node {
+            ExpressionNode::Binary {
+                operator,
+                left,
+                right,
+            } => {
+                f.write_str("'")?;
+                operator.fmt(f)?;
+                f.write_str("'(")?;
+                left.fmt(f)?;
+                f.write_str(", ")?;
+                right.fmt(f)?;
+                f.write_str(")")
+            }
+            ExpressionNode::Unary { operator, argument } => {
+                f.write_str("'")?;
+                operator.fmt(f)?;
+                f.write_str("'(")?;
+                argument.fmt(f)?;
+                f.write_str(")")
+            }
+            ExpressionNode::Term { value } => value.fmt(f),
+        }
+    }
 }
 
 impl expr_parser::evaluate::ExpressionTree<Position, BinaryOperator, UnaryOperator, Term>
@@ -105,20 +137,18 @@ pub enum Term {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use expr_parser::evaluate::ExpressionTree;
+
     use crate::{
-        expressions::{ExpressionBit, Term},
+        expressions::{Expression, ExpressionNode, Term},
         operators::{BinaryOperator, UnaryOperator},
+        parser::{Position, Span},
     };
 
-    pub type Expr = expr_parser::expression::ExpressionKind<BinaryOperator, UnaryOperator, Term>;
-
-    pub fn expression_full<const N: usize>(expr: [Expr; N]) -> [ExpressionBit; N] {
-        use crate::parser::{Position, Span};
-        expr.map(|kind| ExpressionBit {
-            kind,
-            span: Span::new(Position::default()..Position::default()),
-        })
-    }
+    const EMPTY_SPAN: Span = Span {
+        start: Position::ZERO,
+        end: Position::ZERO,
+    };
 
     impl From<f64> for Term {
         fn from(x: f64) -> Self {
@@ -150,23 +180,47 @@ pub(crate) mod tests {
         }
     }
 
-    pub fn var(s: &str) -> Expr {
-        Expr::Term(Term::Variable(s.into()))
+    pub fn var(s: &str) -> Expression {
+        Expression::from_node(
+            EMPTY_SPAN,
+            ExpressionNode::Term {
+                value: Term::Variable(s.into()),
+            },
+        )
     }
 
-    pub fn t(t: impl Into<Term>) -> Expr {
-        Expr::Term(t.into())
+    pub fn t(t: impl Into<Term>) -> Expression {
+        Expression::from_node(EMPTY_SPAN, ExpressionNode::Term { value: t.into() })
     }
 
-    pub fn u(u: impl Into<UnaryOperator>) -> Expr {
-        Expr::UnaryOperator(u.into())
+    pub fn u(u: impl Into<UnaryOperator>, argument: Expression) -> Expression {
+        Expression::from_node(
+            EMPTY_SPAN,
+            ExpressionNode::Unary {
+                operator: u.into(),
+                argument,
+            },
+        )
     }
 
-    pub fn dot(s: &str) -> Expr {
-        Expr::UnaryOperator(UnaryOperator::FieldAccess(s.into()))
+    pub fn dot(s: &str, argument: Expression) -> Expression {
+        Expression::from_node(
+            EMPTY_SPAN,
+            ExpressionNode::Unary {
+                operator: UnaryOperator::FieldAccess(s.into()),
+                argument,
+            },
+        )
     }
 
-    pub fn b(b: impl Into<BinaryOperator>) -> Expr {
-        Expr::BinaryOperator(b.into())
+    pub fn b(b: impl Into<BinaryOperator>, left: Expression, right: Expression) -> Expression {
+        Expression::from_node(
+            EMPTY_SPAN,
+            ExpressionNode::Binary {
+                operator: b.into(),
+                left,
+                right,
+            },
+        )
     }
 }

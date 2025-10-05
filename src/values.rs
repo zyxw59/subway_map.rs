@@ -750,63 +750,74 @@ pub(crate) mod tests {
 
     use crate::{
         evaluator::{evaluate_expression, Evaluator},
-        expressions::tests::{b, expression_full, t, u, Expr},
+        expressions::{
+            tests::{b, t, u},
+            Expression,
+        },
         operators::{COMMA, PAREN_UNARY},
         values::{Line, Point, Value},
     };
 
     // 1 + 2 * 3 + 4 == 11
-    #[test_case([t(1), t(2), t(3), b("*"), b("+"), t(4), b("+")], 11.0; "basic arithmetic")]
+    #[test_case(b("+", b("+", t(1), b("*", t(2), t(3))), t(4)), 11.0; "basic arithmetic")]
     // 1 - 2 * 3 + 4 == -1
-    #[test_case([t(1), t(2), t(3), b("*"), b("-"), t(4), b("+")], -1.0; "basic arithmetic 2")]
+    #[test_case(b("+", b("-", t(1), b("*", t(2), t(3))), t(4)), -1.0; "basic arithmetic 2")]
     // 1 - 3 / 2 * 5 == -6.5
-    #[test_case([t(1), t(3), t(2), b("/"), t(5), b("*"), b("-")], -6.5; "basic arithmetic 3")]
+    #[test_case(b("-", t(1), b("*", b("/", t(3), t(2)), t(5))), -6.5; "basic arithmetic 3")]
     // 3 ++ 4 == 5
-    #[test_case([t(3), t(4), b("++")], 5.0; "hypot")]
+    #[test_case(b("++", t(3), t(4)), 5.0; "hypot")]
     // 5 +-+ 3 == 4
-    #[test_case([t(5), t(3), b("+-+")], 4.0; "hypot sub")]
+    #[test_case(b("+-+", t(5), t(3)), 4.0; "hypot sub")]
     // 3 ^ 4 == 81
-    #[test_case([t(3), t(4), b("^")], 81.0; "pow")]
+    #[test_case(b("^", t(3), t(4)), 81.0; "pow")]
     // (1, 2) + (3, 4) == (4, 6)
-    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("+")], Point(4.0, 6.0); "vector addition")]
+    #[test_case(
+        b("+", u(PAREN_UNARY, b(COMMA, t(1), t(2))), u(PAREN_UNARY, b(COMMA, t(3), t(4)))),
+        Point(4.0, 6.0); "vector addition")]
     // (1, 2) * (3, 4) == 11
-    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], 11.0; "dot product")]
+    #[test_case(
+        b("*", u(PAREN_UNARY, b(COMMA, t(1), t(2))), u(PAREN_UNARY, b(COMMA, t(3), t(4)))),
+        11.0; "dot product")]
     // 3 * (1, 2) == (3, 6)
-    #[test_case([t(3), t(1), t(2), b(COMMA), u(PAREN_UNARY), b("*")], Point(3.0, 6.0); "scalar product")]
+    #[test_case(b("*", t(3), u(PAREN_UNARY, b(COMMA, t(1), t(2)))), Point(3.0, 6.0); "scalar product")]
     // angle (3, 3) == 45
-    #[test_case([t(3), t(3), b(COMMA), u(PAREN_UNARY), u("angle")], 45.0; "angle")]
+    #[test_case(u("angle", u(PAREN_UNARY, b(COMMA, t(3), t(3)))), 45.0; "angle")]
     // 3 * - 2 == -6
-    #[test_case([t(3), t(2), u("-"), b("*")], -6.0; "unary minus")]
+    #[test_case(b("*", t(3), u("-", t(2))), -6.0; "unary minus")]
     // - 2 * 3 == -6
-    #[test_case([t(2), u("-"), t(3), b("*")], -6.0; "unary minus 2")]
+    #[test_case(b("*", u("-", t(2)), t(3)), -6.0; "unary minus 2")]
     // -(1, 2) * (3, 4) == -11
-    #[test_case([t(1), t(2), b(COMMA), u(PAREN_UNARY), u("-"), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("*")], -11.0; "unary minus 3")]
+    #[test_case(
+        b("*", u("-", u(PAREN_UNARY, b(COMMA, t(1), t(2)))), u(PAREN_UNARY, b(COMMA, t(3), t(4)))),
+        -11.0; "unary minus 3")]
     // cos 90 == 0
-    #[test_case([t(90), u("cos")], 0.0; "unary cos")]
+    #[test_case(u("cos", t(90)), 0.0; "unary cos")]
     // sin 90 == 1
-    #[test_case([t(90), u("sin")], 1.0; "unary sin")]
+    #[test_case(u("sin", t(90)), 1.0; "unary sin")]
     // (1, 2) <> (3, 4) & (1, 4) <> (3, 2) == (2, 3)
-    #[test_case([
-        t(1), t(2), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
-        t(1), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(2), b(COMMA), u(PAREN_UNARY), b("<>"), b("&")
-    ], Point(2.0, 3.0); "intersect")]
+    #[test_case(
+        b("&", b("<>", u(PAREN_UNARY, b(COMMA, t(1), t(2))), u(PAREN_UNARY, b(COMMA, t(3), t(4)))),
+               b("<>", u(PAREN_UNARY, b(COMMA, t(1), t(4))), u(PAREN_UNARY, b(COMMA, t(3), t(2)))),
+        ),
+        Point(2.0, 3.0); "intersect")]
     // (0, 0) <> (3, 4) ^^ 5 == (-4, 3) <> (-1, 7)
-    #[test_case([
-        t(0), t(0), b(COMMA), u(PAREN_UNARY), t(3), t(4), b(COMMA), u(PAREN_UNARY), b("<>"),
-        t(5), b("^^")
-    ], Line::between(Point(-4.0, 3.0), Point(-1.0, 7.0)); "offset")]
+    #[test_case(
+        b("^^", b("<>", u(PAREN_UNARY, b(COMMA, t(0), t(0))), u(PAREN_UNARY, b(COMMA, t(3), t(4)))), t(5)),
+        Line::between(Point(-4.0, 3.0), Point(-1.0, 7.0)); "offset")]
     // (2, 4) min (3, 1) == (2, 1)
-    #[test_case([t(2), t(4), b(COMMA), u(PAREN_UNARY), t(3), t(1), b(COMMA), u(PAREN_UNARY), b("min")], Point(2.0, 1.0); "min")]
+    #[test_case(
+        b("min", u(PAREN_UNARY, b(COMMA, t(2), t(4))), u(PAREN_UNARY, b(COMMA, t(3), t(1)))),
+        Point(2.0, 1.0); "min")]
     // "foo" + "bar" == "foobar"
-    #[test_case([t("foo"), t("bar"), b("+")], "foobar"; "string concat")]
+    #[test_case(b("+", t("foo"), t("bar")), "foobar"; "string concat")]
     // "a" max "b" == "b"
-    #[test_case([t("a"), t("b"), b("max")], "b"; "string max")]
-    fn eval<T: std::fmt::Debug, const N: usize>(expression: [Expr; N], expected: T)
+    #[test_case(b("max", t("a"), t("b")), "b"; "string max")]
+    fn eval<T: std::fmt::Debug>(expression: Expression, expected: T)
     where
         Value: PartialEq<T>,
     {
         assert_eq!(
-            evaluate_expression(&mut Evaluator::default(), expression_full(expression)).unwrap(),
+            evaluate_expression(&mut Evaluator::default(), &expression).unwrap(),
             expected
         );
     }
