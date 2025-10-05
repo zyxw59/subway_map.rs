@@ -7,7 +7,7 @@ use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
 
 use crate::{
     error::{Error, MathError, Result},
-    expressions::{ExpressionBit, Term, Variable},
+    expressions::{ExpressionBit, ExpressionNode, ExpressionTree, Term, Variable},
     intermediate_representation::Document,
     operators::{BinaryOperator, UnaryOperator},
     parser::Position,
@@ -30,6 +30,35 @@ pub fn evaluate_expression(
     expr: impl IntoIterator<Item = ExpressionBit>,
 ) -> Result<Value, MathError> {
     expr_parser::evaluate::evaluate(ctx, expr)
+}
+
+pub fn evaluate_tree(
+    ctx: &mut dyn EvaluationContext,
+    expr: &ExpressionTree,
+) -> Result<Value, MathError> {
+    match &*expr.node {
+        ExpressionNode::Binary {
+            operator,
+            left,
+            right,
+        } => {
+            let left = evaluate_tree(ctx, left)?;
+            let right = evaluate_tree(ctx, right)?;
+            (operator.function)(left, right, ctx)
+        }
+        ExpressionNode::Unary { operator, argument } => {
+            let argument = evaluate_tree(ctx, argument)?;
+            operator.call(argument, ctx)
+        }
+        ExpressionNode::Term { value } => match value {
+            Term::Number(x) => Ok(Value::Number(*x)),
+            Term::String(s) => Ok(Value::String(Rc::new(s.clone()))),
+            Term::Variable(v) => ctx.get_variable(v).ok_or(MathError::Variable(v.clone())),
+            Term::FnArg(idx) => Ok(ctx
+                .get_fn_arg(*idx)
+                .expect("invalid function argument index")),
+        },
+    }
 }
 
 impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + '_ {

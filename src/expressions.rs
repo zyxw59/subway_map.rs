@@ -65,9 +65,9 @@ pub fn zero_expression(span: crate::parser::Span) -> Expression {
 }
 
 pub struct ExpressionTree {
-    inner_span: Span,
-    outer_span: Span,
-    node: Rc<ExpressionNode>,
+    pub inner_span: Span,
+    pub outer_span: Span,
+    pub node: Rc<ExpressionNode>,
 }
 
 impl expr_parser::evaluate::ExpressionTree<Position, BinaryOperator, UnaryOperator, Term>
