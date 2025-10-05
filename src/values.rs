@@ -318,7 +318,7 @@ impl Value {
         Self::Struct(Default::default())
     }
 
-    pub fn slot(&mut self, field: Variable) -> Result<Entry<Variable, Value>> {
+    pub fn slot(&mut self, field: Variable) -> Result<Entry<'_, Variable, Value>> {
         match self {
             Self::Struct(fields) => Ok(Rc::make_mut(fields).entry(field)),
             bad => Err(MathError::Type(Type::Struct, (&*bad).into())),
