@@ -3,7 +3,10 @@ use std::{
     fmt, iter,
 };
 
-use expr_parser::parser::ParseState;
+use expr_parser::{
+    evaluate::{ImmediateEvaluator, TreeEvaluator},
+    parser::ParseState,
+};
 
 use crate::{
     expressions::{zero_expression, Expression, Function, Variable},
@@ -163,10 +166,11 @@ pub fn parse_expression(
 ) -> Option<Expression> {
     let mut state = ParseState::new(expression::Parser::new(args));
     state.extend(tokens);
-    state
+    let intermediate: ImmediateEvaluator<TreeEvaluator<_>, _, _> = state
         .finish()
         .map_err(|es| errors.extend(es.errors.into_iter().map(Error::from)))
-        .ok()
+        .ok()?;
+    intermediate.finish().ok()
 }
 
 fn parse_expression_until(
@@ -194,10 +198,11 @@ fn parse_delimited_expression(
             break;
         }
     }
-    state
+    let intermediate: ImmediateEvaluator<TreeEvaluator<_>, _, _> = state
         .finish()
         .map_err(|es| errors.extend(es.errors.into_iter().map(Error::from)))
-        .ok()
+        .ok()?;
+    intermediate.finish().ok()
 }
 
 /// Parses a function definition.

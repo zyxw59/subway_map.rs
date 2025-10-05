@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub expression: Rc<[ExpressionBit]>,
+    pub expression: Expression,
     pub num_args: usize,
 }
 
@@ -29,7 +29,7 @@ impl Function {
             parent: context,
             args,
         };
-        evaluate_expression(&mut locals, self.expression.iter().cloned())
+        evaluate_expression(&mut locals, &self.expression)
     }
 }
 
@@ -55,23 +55,26 @@ impl EvaluationContext for FunctionEvaluator<'_> {
 pub type Variable = SmolStr;
 
 pub type ExpressionBit = expression::Expression<Position, BinaryOperator, UnaryOperator, Term>;
-pub type Expression = Vec<ExpressionBit>;
 
 pub fn zero_expression(span: crate::parser::Span) -> Expression {
-    vec![ExpressionBit {
+    use expr_parser::evaluate::ExpressionTree;
+    Expression::from_node(
         span,
-        kind: expression::ExpressionKind::Term(Term::Number(0.0)),
-    }]
+        ExpressionNode::Term {
+            value: Term::Number(0.0),
+        },
+    )
 }
 
-pub struct ExpressionTree {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Expression {
     pub inner_span: Span,
     pub outer_span: Span,
     pub node: Rc<ExpressionNode>,
 }
 
 impl expr_parser::evaluate::ExpressionTree<Position, BinaryOperator, UnaryOperator, Term>
-    for ExpressionTree
+    for Expression
 {
     fn from_node(inner_span: Span, node: ExpressionNode) -> Self {
         let outer_span = match &node {
@@ -90,7 +93,7 @@ impl expr_parser::evaluate::ExpressionTree<Position, BinaryOperator, UnaryOperat
 }
 
 pub type ExpressionNode =
-    expr_parser::evaluate::ExpressionNode<ExpressionTree, BinaryOperator, UnaryOperator, Term>;
+    expr_parser::evaluate::ExpressionNode<Expression, BinaryOperator, UnaryOperator, Term>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {

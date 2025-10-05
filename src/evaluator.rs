@@ -7,7 +7,7 @@ use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
 
 use crate::{
     error::{Error, MathError, Result},
-    expressions::{ExpressionBit, ExpressionNode, ExpressionTree, Term, Variable},
+    expressions::{Expression, ExpressionNode, Term, Variable},
     intermediate_representation::Document,
     operators::{BinaryOperator, UnaryOperator},
     parser::Position,
@@ -27,14 +27,7 @@ pub trait EvaluationContext {
 
 pub fn evaluate_expression(
     ctx: &mut dyn EvaluationContext,
-    expr: impl IntoIterator<Item = ExpressionBit>,
-) -> Result<Value, MathError> {
-    expr_parser::evaluate::evaluate(ctx, expr)
-}
-
-pub fn evaluate_tree(
-    ctx: &mut dyn EvaluationContext,
-    expr: &ExpressionTree,
+    expr: &Expression,
 ) -> Result<Value, MathError> {
     match &*expr.node {
         ExpressionNode::Binary {
@@ -42,12 +35,12 @@ pub fn evaluate_tree(
             left,
             right,
         } => {
-            let left = evaluate_tree(ctx, left)?;
-            let right = evaluate_tree(ctx, right)?;
+            let left = evaluate_expression(ctx, left)?;
+            let right = evaluate_expression(ctx, right)?;
             (operator.function)(left, right, ctx)
         }
         ExpressionNode::Unary { operator, argument } => {
-            let argument = evaluate_tree(ctx, argument)?;
+            let argument = evaluate_expression(ctx, argument)?;
             operator.call(argument, ctx)
         }
         ExpressionNode::Term { value } => match value {
@@ -123,7 +116,7 @@ impl Evaluator {
         match statement {
             StatementKind::Variable(name, fields, expr) => {
                 let value =
-                    evaluate_expression(self, expr).map_err(|err| Error::Math(err, line))?;
+                    evaluate_expression(self, &expr).map_err(|err| Error::Math(err, line))?;
                 if fields.is_empty() {
                     if name == LINE_WIDTH {
                         let value = f64::try_from(&value).map_err(|err| Error::Math(err, line))?;
@@ -155,7 +148,7 @@ impl Evaluator {
             StatementKind::PointSingle(name, expr) => {
                 // NOTE: this statement is almost identical to a normal variable assignment, except
                 // that it type-checks that the expression evaluates to a point.
-                let value = evaluate_expression(self, expr)
+                let value = evaluate_expression(self, &expr)
                     .and_then(|value| {
                         if !matches!(value, Value::Point(..)) {
                             Err(MathError::Type(crate::error::Type::Point, value.into()))
@@ -171,7 +164,7 @@ impl Evaluator {
                 spaced,
                 points,
             } => {
-                let spacing = evaluate_expression(self, spaced)
+                let spacing = evaluate_expression(self, &spaced)
                     .and_then(Point::try_from)
                     .map_err(|err| Error::Math(err, line))?;
                 let (from_point, from_id) = self.get_point(from, line)?;
@@ -179,7 +172,7 @@ impl Evaluator {
                 let mut distance = 0.0;
                 for (multiplier, name) in points {
                     let multiplier = multiplier
-                        .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
+                        .map(|expr| evaluate_expression(self, &expr).and_then(f64::try_from))
                         .unwrap_or(Ok(1.0))
                         .map_err(|err| Error::Math(err, line))?;
                     distance += multiplier;
@@ -197,7 +190,7 @@ impl Evaluator {
                 let (from_point, from_id) = self.get_point(from, line)?;
                 let (to_point, to_id) = self.get_point(to, line)?;
                 let to_multiplier = to_multiplier
-                    .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
+                    .map(|expr| evaluate_expression(self, &expr).and_then(f64::try_from))
                     .unwrap_or(Ok(1.0))
                     .map_err(|err| Error::Math(err, line))?;
                 let mut total_distance = 0.0;
@@ -208,7 +201,7 @@ impl Evaluator {
                     .into_iter()
                     .map(|(multiplier, name)| {
                         total_distance += multiplier
-                            .map(|expr| evaluate_expression(self, expr).and_then(f64::try_from))
+                            .map(|expr| evaluate_expression(self, &expr).and_then(f64::try_from))
                             .unwrap_or(Ok(1.0))
                             .map_err(|err| Error::Math(err, line))?;
                         Ok((name, total_distance))
@@ -238,7 +231,7 @@ impl Evaluator {
                 for segment in segments {
                     let (_, start_id) = self.get_point(segment.start.clone(), line)?;
                     let (_, end_id) = self.get_point(segment.end.clone(), line)?;
-                    let offset = evaluate_expression(self, segment.offset)
+                    let offset = evaluate_expression(self, &segment.offset)
                         .and_then(f64::try_from)
                         .map_err(|err| Error::Math(err, line))?;
                     self.points
@@ -252,13 +245,13 @@ impl Evaluator {
                 }
             }
             StatementKind::Stop(stop) => {
-                let point = evaluate_expression(self, stop.point)
+                let point = evaluate_expression(self, &stop.point)
                     .and_then(Point::try_from)
                     .map_err(|err| Error::Math(err, line))?;
                 let marker_parameters = stop
                     .marker_parameters
                     .into_iter()
-                    .map(|(key, expr)| Ok((key, evaluate_expression(self, expr)?)))
+                    .map(|(key, expr)| Ok((key, evaluate_expression(self, &expr)?)))
                     .collect::<Result<_, _>>()
                     .map_err(|err| Error::Math(err, line))?;
                 self.stops.push(Stop {
