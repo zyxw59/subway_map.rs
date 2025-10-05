@@ -29,7 +29,7 @@ pub fn evaluate_expression(
     ctx: &mut dyn EvaluationContext,
     expr: impl IntoIterator<Item = ExpressionBit>,
 ) -> Result<Value, MathError> {
-    EvaluatorTrait::evaluate(ctx, expr)
+    expr_parser::evaluate::evaluate(ctx, expr)
 }
 
 impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + '_ {
