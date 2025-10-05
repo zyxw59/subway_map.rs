@@ -7,7 +7,7 @@ use crate::{
     error::MathError,
     evaluator::{evaluate_expression, EvaluationContext},
     operators::{BinaryOperator, UnaryOperator},
-    parser::Position,
+    parser::{Position, Span},
     points::PointCollection,
     values::{Result, Value},
 };
@@ -63,6 +63,34 @@ pub fn zero_expression(span: crate::parser::Span) -> Expression {
         kind: expression::ExpressionKind::Term(Term::Number(0.0)),
     }]
 }
+
+pub struct ExpressionTree {
+    inner_span: Span,
+    outer_span: Span,
+    node: Rc<ExpressionNode>,
+}
+
+impl expr_parser::evaluate::ExpressionTree<Position, BinaryOperator, UnaryOperator, Term>
+    for ExpressionTree
+{
+    fn from_node(inner_span: Span, node: ExpressionNode) -> Self {
+        let outer_span = match &node {
+            ExpressionNode::Binary { left, right, .. } => {
+                left.outer_span.join(right.outer_span).join(inner_span)
+            }
+            ExpressionNode::Unary { argument, .. } => argument.outer_span.join(inner_span),
+            ExpressionNode::Term { .. } => inner_span,
+        };
+        Self {
+            inner_span,
+            outer_span,
+            node: Rc::new(node),
+        }
+    }
+}
+
+pub type ExpressionNode =
+    expr_parser::evaluate::ExpressionNode<ExpressionTree, BinaryOperator, UnaryOperator, Term>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {
