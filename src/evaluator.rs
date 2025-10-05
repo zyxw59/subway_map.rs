@@ -3,14 +3,10 @@ use std::{
     rc::Rc,
 };
 
-use expr_parser::{evaluate::Evaluator as EvaluatorTrait, Span};
-
 use crate::{
     error::{Error, MathError, Result},
     expressions::{Expression, ExpressionNode, Term, Variable},
     intermediate_representation::Document,
-    operators::{BinaryOperator, UnaryOperator},
-    parser::Position,
     points::{PointCollection, PointId},
     statement::{Statement, StatementKind},
     stops::Stop,
@@ -51,41 +47,6 @@ pub fn evaluate_expression(
                 .get_fn_arg(*idx)
                 .expect("invalid function argument index")),
         },
-    }
-}
-
-impl EvaluatorTrait<Position, BinaryOperator, UnaryOperator, Term> for dyn EvaluationContext + '_ {
-    type Value = Value;
-    type Error = MathError;
-
-    fn evaluate_binary_operator(
-        &mut self,
-        _span: Span<Position>,
-        operator: BinaryOperator,
-        lhs: Value,
-        rhs: Value,
-    ) -> Result<Value, MathError> {
-        (operator.function)(lhs, rhs, self)
-    }
-
-    fn evaluate_unary_operator(
-        &mut self,
-        _span: Span<Position>,
-        operator: UnaryOperator,
-        argument: Value,
-    ) -> Result<Value, MathError> {
-        operator.call(argument, self)
-    }
-
-    fn evaluate_term(&mut self, _span: Span<Position>, term: Term) -> Result<Value, MathError> {
-        match term {
-            Term::Number(x) => Ok(Value::Number(x)),
-            Term::String(s) => Ok(Value::String(Rc::new(s))),
-            Term::Variable(v) => self.get_variable(&v).ok_or(MathError::Variable(v)),
-            Term::FnArg(idx) => Ok(self
-                .get_fn_arg(idx)
-                .expect("invalid function argument index")),
-        }
     }
 }
 
