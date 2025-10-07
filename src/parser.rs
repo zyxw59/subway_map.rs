@@ -560,6 +560,11 @@ mod tests {
         b("+", b("+", u(FN_CALL_UNARY, var("a")), b(FN_CALL, var("b"), t(1))),
                b(FN_CALL, var("c"), b(COMMA, t(2), t(3))));
         "function call")]
+    #[test_case(
+        "1 < x and x < 5 or x >= 100",
+        b("or", b("and", b("<", t(1), var("x")), b("<", var("x"), t(5))), b(">=", var("x"), t(100)));
+        "boolean operators")]
+    #[test_case("false == true", b("==", t(false), t(true)); "boolean literals")]
     fn expression(input: &str, expected: Expression) {
         let mut errors = Vec::new();
         let result = parse_expression(Lexer::new(input), HashMap::new(), &mut errors)
