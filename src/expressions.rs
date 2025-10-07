@@ -129,10 +129,21 @@ pub type ExpressionNode =
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {
+    Boolean(bool),
     Number(f64),
     String(String),
     Variable(Variable),
     FnArg(usize),
+}
+
+impl Term {
+    pub fn get_primitive(tag: &str) -> Option<Self> {
+        match tag {
+            "true" => Some(Term::Boolean(true)),
+            "false" => Some(Term::Boolean(false)),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -149,6 +160,12 @@ pub(crate) mod tests {
         start: Position::ZERO,
         end: Position::ZERO,
     };
+
+    impl From<bool> for Term {
+        fn from(x: bool) -> Self {
+            Term::Boolean(x)
+        }
+    }
 
     impl From<f64> for Term {
         fn from(x: f64) -> Self {

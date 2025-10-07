@@ -10,6 +10,10 @@ use crate::{
 pub enum Precedence {
     /// The `,` operator
     Comma,
+    /// Short-circuiting `or`
+    Or,
+    /// Short-circuiting `and`
+    And,
     /// Comparison operators, such as `==`, `>`, `<>`, etc.
     Comparison,
     /// Additive operators, such as `+`, `-`, `++`, etc.
@@ -148,6 +152,22 @@ impl BinaryOperator {
             "<>" => (Left(Exponential), strict!(Value::line_between)),
             ">>" => (Left(Exponential), strict!(Value::line_vector)),
             "^^" => (Left(Exponential), strict!(Value::line_offset)),
+            "and" => (
+                Left(And),
+                LazyOrStrict::Strict(|a, _| if a.is_truthy()? {
+                    Ok(LazyOrStrict::Strict(Box::new(|b, _| Ok(b))))
+                } else {
+                    Ok(LazyOrStrict::Lazy(Box::new(|_, _| Ok(a))))
+                })
+            ),
+            "or" => (
+                Left(Or),
+                LazyOrStrict::Strict(|a, _| if !a.is_truthy()? {
+                    Ok(LazyOrStrict::Strict(Box::new(|b, _| Ok(b))))
+                } else {
+                    Ok(LazyOrStrict::Lazy(Box::new(|_, _| Ok(a))))
+                })
+            ),
         })
     }
 }

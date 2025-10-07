@@ -66,6 +66,7 @@ pub enum MathError {
 #[derive(Debug)]
 pub enum Type {
     Number,
+    Boolean,
     Point,
     Line,
     String,
@@ -84,6 +85,7 @@ impl From<&'_ Value> for Type {
     fn from(expr: &Value) -> Type {
         match expr {
             Value::Number(_) => Type::Number,
+            Value::Boolean(_) => Type::Boolean,
             Value::Point(..) => Type::Point,
             Value::Line(..) => Type::Line,
             Value::String(..) => Type::String,

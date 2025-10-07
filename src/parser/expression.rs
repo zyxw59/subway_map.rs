@@ -59,7 +59,9 @@ impl parser::Parser<TokenKind> for Parser {
                 } else {
                     Postfix::None
                 };
-                let prefix = if let Some((precedence, op)) = UnaryOperator::get(&tag) {
+                let prefix = if let Some(term) = Term::get_primitive(&tag) {
+                    Prefix::Term { term }
+                } else if let Some((precedence, op)) = UnaryOperator::get(&tag) {
                     Prefix::UnaryOperator {
                         precedence,
                         operator: op,

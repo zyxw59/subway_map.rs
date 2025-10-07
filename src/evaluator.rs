@@ -36,6 +36,7 @@ pub fn evaluate_expression(
             operator.call(argument, ctx)
         }
         ExpressionNode::Term { value } => match value {
+            Term::Boolean(b) => Ok(Value::Boolean(*b)),
             Term::Number(x) => Ok(Value::Number(*x)),
             Term::String(s) => Ok(Value::String(Rc::new(s.clone()))),
             Term::Variable(v) => ctx.get_variable(v).ok_or(MathError::Variable(v.clone())),

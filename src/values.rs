@@ -298,6 +298,7 @@ impl From<Point> for Parameters {
 #[derive(Clone, Debug, serde::Serialize)]
 pub enum Value {
     Number(f64),
+    Boolean(bool),
     Point(Point, PointId),
     Line(Line, LineId),
     String(Rc<String>),
@@ -461,17 +462,17 @@ impl Value {
     }
 
     pub fn eq(self, other: Value) -> Result {
-        self.eq_bool(&other).map(Value::from)
+        self.eq_bool(&other).map(Value::Boolean)
     }
 
     pub fn ne(self, other: Value) -> Result {
-        self.eq_bool(&other).map(|x| Value::from(!x))
+        self.eq_bool(&other).map(|x| Value::Boolean(!x))
     }
 
     pub fn lt(self, other: Value) -> Result {
         match (self, other) {
-            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x < y)),
-            (Value::String(x), Value::String(y)) => Ok(Value::from(x < y)),
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Boolean(x < y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::Boolean(x < y)),
             (bad, good @ (Value::Number(..) | Value::String(..)))
             | (good @ (Value::Number(..) | Value::String(..)), bad) => {
                 Err(MathError::Type(good.into(), bad.into()))
@@ -482,8 +483,8 @@ impl Value {
 
     pub fn le(self, other: Value) -> Result {
         match (self, other) {
-            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x <= y)),
-            (Value::String(x), Value::String(y)) => Ok(Value::from(x <= y)),
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Boolean(x <= y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::Boolean(x <= y)),
             (bad, good @ (Value::Number(..) | Value::String(..)))
             | (good @ (Value::Number(..) | Value::String(..)), bad) => {
                 Err(MathError::Type(good.into(), bad.into()))
@@ -494,8 +495,8 @@ impl Value {
 
     pub fn gt(self, other: Value) -> Result {
         match (self, other) {
-            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x > y)),
-            (Value::String(x), Value::String(y)) => Ok(Value::from(x > y)),
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Boolean(x > y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::Boolean(x > y)),
             (bad, good @ (Value::Number(..) | Value::String(..)))
             | (good @ (Value::Number(..) | Value::String(..)), bad) => {
                 Err(MathError::Type(good.into(), bad.into()))
@@ -506,8 +507,8 @@ impl Value {
 
     pub fn ge(self, other: Value) -> Result {
         match (self, other) {
-            (Value::Number(x), Value::Number(y)) => Ok(Value::from(x >= y)),
-            (Value::String(x), Value::String(y)) => Ok(Value::from(x >= y)),
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Boolean(x >= y)),
+            (Value::String(x), Value::String(y)) => Ok(Value::Boolean(x >= y)),
             (bad, good @ (Value::Number(..) | Value::String(..)))
             | (good @ (Value::Number(..) | Value::String(..)), bad) => {
                 Err(MathError::Type(good.into(), bad.into()))
@@ -541,6 +542,14 @@ impl Value {
                 Err(MathError::Type(good.into(), bad.into()))
             }
             (bad, _) => Err(MathError::Type(Type::Number, bad.into())),
+        }
+    }
+
+    pub fn is_truthy(&self) -> Result<bool> {
+        // TODO: do we want to allow short-circuiting boolean ops on non-boolean values?
+        match self {
+            Self::Boolean(b) => Ok(*b),
+            _ => Err(MathError::Type(Type::Boolean, self.into())),
         }
     }
 
@@ -666,6 +675,17 @@ impl PartialEq<f64> for Value {
 }
 
 #[cfg(test)]
+impl PartialEq<bool> for Value {
+    fn eq(&self, other: &bool) -> bool {
+        if let Self::Boolean(this) = self {
+            this == other
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(test)]
 impl PartialEq<Point> for Value {
     fn eq(&self, other: &Point) -> bool {
         if let Self::Point(this, _) = self {
@@ -695,12 +715,6 @@ impl PartialEq<Line> for Value {
         } else {
             false
         }
-    }
-}
-
-impl From<bool> for Value {
-    fn from(b: bool) -> Value {
-        Value::Number(f64::from(b as u8))
     }
 }
 
@@ -751,7 +765,7 @@ pub(crate) mod tests {
     use crate::{
         evaluator::{evaluate_expression, Evaluator},
         expressions::{
-            tests::{b, t, u},
+            tests::{b, t, u, var},
             Expression,
         },
         operators::{COMMA, PAREN_UNARY},
@@ -812,6 +826,20 @@ pub(crate) mod tests {
     #[test_case(b("+", t("foo"), t("bar")), "foobar"; "string concat")]
     // "a" max "b" == "b"
     #[test_case(b("max", t("a"), t("b")), "b"; "string max")]
+    // false and anything == false
+    // using variables (which are undefined) to check lazy evaluation
+    #[test_case(b("and", t(false), var("anything")), false; "false and anything")]
+    // true and "anything" == "anything"
+    #[test_case(b("and", t(true), t("anything")), "anything"; "true and anything")]
+    // true and true == true
+    #[test_case(b("and", t(true), t(true)), true; "true and true")]
+    // false or "anything" == "anything"
+    #[test_case(b("or", t(false), t("anything")), "anything"; "false or anything")]
+    // true or anything == true
+    // using variables (which are undefined) to check lazy evaluation
+    #[test_case(b("or", t(true), var("anything")), true; "true or anything")]
+    // true or true == true
+    #[test_case(b("or", t(true), t(true)), true; "true or true")]
     fn eval<T: std::fmt::Debug>(expression: Expression, expected: T)
     where
         Value: PartialEq<T>,
