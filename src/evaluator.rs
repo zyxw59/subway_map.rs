@@ -30,11 +30,7 @@ pub fn evaluate_expression(
             operator,
             left,
             right,
-        } => {
-            let left = evaluate_expression(ctx, left)?;
-            let right = evaluate_expression(ctx, right)?;
-            (operator.function)(left, right, ctx)
-        }
+        } => operator.function.call(left, ctx)?.call(right, ctx),
         ExpressionNode::Unary { operator, argument } => {
             let argument = evaluate_expression(ctx, argument)?;
             operator.call(argument, ctx)

@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{
     evaluator::EvaluationContext,
-    expressions::Variable,
+    expressions::{Expression, Variable},
     values::{Result, Value},
 };
 
@@ -22,8 +22,61 @@ pub enum Precedence {
     Field,
 }
 
+#[derive(Clone, Eq, PartialEq)]
+pub struct NamedFunction<F> {
+    pub function: F,
+    pub name: Variable,
+}
+
+impl<F> fmt::Debug for NamedFunction<F> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
+type EvalCtx<'a> = &'a mut dyn EvaluationContext;
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum LazyOrStrict<L, S> {
+    Lazy(L),
+    Strict(S),
+}
+
+impl<L, S> LazyOrStrict<L, S> {
+    pub fn call<T>(self, expr: &Expression, ctx: EvalCtx) -> Result<T>
+    where
+        L: FnOnce(Expression, EvalCtx) -> Result<T>,
+        S: FnOnce(Value, EvalCtx) -> Result<T>,
+    {
+        match self {
+            Self::Lazy(function) => function(expr.clone(), ctx),
+            Self::Strict(function) => {
+                let val = crate::evaluator::evaluate_expression(ctx, expr)?;
+                function(val, ctx)
+            }
+        }
+    }
+}
+
+macro_rules! strict {
+    ($body:expr) => {
+        LazyOrStrict::Strict(|a, _ctx| {
+            Ok(LazyOrStrict::Strict(Box::new(move |b, ctx| {
+                let f: fn(Value, Value, EvalCtx) -> Result = $body;
+                f(a, b, ctx)
+            })))
+        })
+    };
+}
+
+pub type BinaryOperator = NamedFunction<LazyOrStrict<BinaryFn<Expression>, BinaryFn<Value>>>;
+pub type BinaryFn<T> = fn(T, EvalCtx) -> Result<CurriedBinaryOperator>;
+
+pub type CurriedBinaryOperator = LazyOrStrict<StackUnaryFn<Expression>, StackUnaryFn<Value>>;
+pub type StackUnaryFn<T> = Box<dyn FnOnce(T, EvalCtx) -> Result>;
+
 pub const COMMA: BinaryOperator = BinaryOperator {
-    function: |a, b, _| a.comma(b),
+    function: strict!(|a, b, _| a.comma(b)),
     name: Variable::new_static(","),
 };
 
@@ -33,7 +86,7 @@ pub const COMMA_UNARY: UnaryOperator = UnaryOperator::Function(NamedFunction {
 });
 
 pub const FN_CALL: BinaryOperator = BinaryOperator {
-    function: Value::fn_call,
+    function: strict!(Value::fn_call),
     name: Variable::new_static("()"),
 };
 
@@ -71,44 +124,30 @@ macro_rules! get_unary_builtin {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
-pub struct NamedFunction<F> {
-    pub function: F,
-    pub name: Variable,
-}
-
-impl<F> fmt::Debug for NamedFunction<F> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.name)
-    }
-}
-
-pub type BinaryOperator = NamedFunction<fn(Value, Value, &mut dyn EvaluationContext) -> Result>;
-
 impl BinaryOperator {
     pub fn get(key: &str) -> Option<(expr_parser::operator::Fixity<Precedence>, Self)> {
         use self::Precedence::*;
         use expr_parser::operator::Fixity::*;
         get_binary_builtin!(match key {
-            "==" => (Left(Comparison), |a, b, _| a.eq(b)),
-            "!=" => (Left(Comparison), |a, b, _| a.ne(b)),
-            "<" => (Left(Comparison), |a, b, _| a.lt(b)),
-            "<=" => (Left(Comparison), |a, b, _| a.le(b)),
-            ">" => (Left(Comparison), |a, b, _| a.gt(b)),
-            ">=" => (Left(Comparison), |a, b, _| a.ge(b)),
-            "max" => (Left(Comparison), Value::max),
-            "min" => (Left(Comparison), Value::min),
-            "+" => (Left(Additive), Value::add),
-            "-" => (Left(Additive), Value::sub),
-            "++" => (Left(Additive), |a, b, _| a.hypot(b)),
-            "+-+" => (Left(Additive), |a, b, _| a.hypot_sub(b)),
-            "*" => (Left(Multiplicative), Value::mul),
-            "/" => (Left(Multiplicative), Value::div),
-            "&" => (Left(Multiplicative), Value::intersect),
-            "^" => (Right(Exponential), |a, b, _| a.pow(b)),
-            "<>" => (Left(Exponential), Value::line_between),
-            ">>" => (Left(Exponential), Value::line_vector),
-            "^^" => (Left(Exponential), Value::line_offset),
+            "==" => (Left(Comparison), strict!(|a, b, _| a.eq(b))),
+            "!=" => (Left(Comparison), strict!(|a, b, _| a.ne(b))),
+            "<" => (Left(Comparison), strict!(|a, b, _| a.lt(b))),
+            "<=" => (Left(Comparison), strict!(|a, b, _| a.le(b))),
+            ">" => (Left(Comparison), strict!(|a, b, _| a.gt(b))),
+            ">=" => (Left(Comparison), strict!(|a, b, _| a.ge(b))),
+            "max" => (Left(Comparison), strict!(Value::max)),
+            "min" => (Left(Comparison), strict!(Value::min)),
+            "+" => (Left(Additive), strict!(Value::add)),
+            "-" => (Left(Additive), strict!(Value::sub)),
+            "++" => (Left(Additive), strict!(|a, b, _| a.hypot(b))),
+            "+-+" => (Left(Additive), strict!(|a, b, _| a.hypot_sub(b))),
+            "*" => (Left(Multiplicative), strict!(Value::mul)),
+            "/" => (Left(Multiplicative), strict!(Value::div)),
+            "&" => (Left(Multiplicative), strict!(Value::intersect)),
+            "^" => (Right(Exponential), strict!(|a, b, _| a.pow(b))),
+            "<>" => (Left(Exponential), strict!(Value::line_between)),
+            ">>" => (Left(Exponential), strict!(Value::line_vector)),
+            "^^" => (Left(Exponential), strict!(Value::line_offset)),
         })
     }
 }
