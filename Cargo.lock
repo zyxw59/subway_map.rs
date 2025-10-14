@@ -119,7 +119,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 [[package]]
 name = "expr-parser"
 version = "0.1.0"
-source = "git+https://github.com/zyxw59/expr-parser?branch=other-expression-formats#7c83d8bbd7b7607e7b9270ab7d637cd7df972b8c"
+source = "git+https://github.com/zyxw59/expr-parser#b1bd56e02019ce9798441aeb2b9c2f13098c080e"
 
 [[package]]
 name = "float_eq"
