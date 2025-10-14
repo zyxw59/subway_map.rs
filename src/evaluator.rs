@@ -25,26 +25,99 @@ pub fn evaluate_expression(
     ctx: &mut dyn EvaluationContext,
     expr: &Expression,
 ) -> Result<Value, MathError> {
-    match &*expr.node {
-        ExpressionNode::Binary {
-            operator,
-            left,
-            right,
-        } => operator.function.call(left, ctx)?.call(right, ctx),
-        ExpressionNode::Unary { operator, argument } => {
-            let argument = evaluate_expression(ctx, argument)?;
-            operator.call(argument, ctx)
-        }
-        ExpressionNode::Term { value } => match value {
-            Term::Boolean(b) => Ok(Value::Boolean(*b)),
-            Term::Number(x) => Ok(Value::Number(*x)),
-            Term::String(s) => Ok(Value::String(Rc::new(s.clone()))),
-            Term::Variable(v) => ctx.get_variable(v).ok_or(MathError::Variable(v.clone())),
-            Term::FnArg(idx) => Ok(ctx
-                .get_fn_arg(*idx)
-                .expect("invalid function argument index")),
-        },
+    use crate::operators::{
+        BinaryFn,
+        LazyOrStrict::{Lazy, Strict},
+        StackUnaryFn,
+    };
+
+    enum StackEl {
+        Unary(StackUnaryFn<Value>),
+        Binary(BinaryFn<Value>),
     }
+
+    fn process_expr<'e>(
+        ctx: &mut dyn EvaluationContext,
+        expr: &'e Expression,
+        op_stack: &mut Vec<StackEl>,
+        expr_stack: &mut Vec<&'e Expression>,
+    ) -> Result<Option<Value>, MathError> {
+        match &*expr.node {
+            ExpressionNode::Binary {
+                operator,
+                left,
+                right,
+            } => match operator.function {
+                Lazy(f) => match f(left.clone(), ctx)? {
+                    Lazy(f) => f(right.clone(), ctx).map(Some),
+                    Strict(op) => {
+                        op_stack.push(StackEl::Unary(op));
+                        expr_stack.push(right);
+                        Ok(None)
+                    }
+                },
+                Strict(op) => {
+                    op_stack.push(StackEl::Binary(op));
+                    expr_stack.push(right);
+                    expr_stack.push(left);
+                    Ok(None)
+                }
+            },
+            ExpressionNode::Unary { operator, argument } => {
+                let op = operator.clone();
+                op_stack.push(StackEl::Unary(Box::new(move |arg, ctx| op.call(arg, ctx))));
+                expr_stack.push(argument);
+                Ok(None)
+            }
+            ExpressionNode::Term { value } => match value {
+                Term::Boolean(b) => Ok(Value::Boolean(*b)),
+                Term::Number(x) => Ok(Value::Number(*x)),
+                Term::String(s) => Ok(Value::String(Rc::new(s.clone()))),
+                Term::Variable(v) => ctx.get_variable(v).ok_or(MathError::Variable(v.clone())),
+                Term::FnArg(idx) => Ok(ctx
+                    .get_fn_arg(*idx)
+                    .expect("invalid function argument index")),
+            }
+            .map(Some),
+        }
+    }
+
+    fn process_value(
+        ctx: &mut dyn EvaluationContext,
+        mut value: Value,
+        op_stack: &mut Vec<StackEl>,
+        expr_stack: &mut Vec<&Expression>,
+    ) -> Result<Option<Value>, MathError> {
+        while let Some(op) = op_stack.pop() {
+            match op {
+                StackEl::Unary(f) => value = f(value, ctx)?,
+                StackEl::Binary(f) => match f(value, ctx)? {
+                    Lazy(f) => {
+                        let arg = expr_stack
+                            .pop()
+                            .expect("binary operator missing second argument");
+                        value = f(arg.clone(), ctx)?;
+                    }
+                    Strict(f) => {
+                        op_stack.push(StackEl::Unary(f));
+                        return Ok(None);
+                    }
+                },
+            }
+        }
+        Ok(Some(value))
+    }
+
+    let mut op_stack = Vec::new();
+    let mut expr_stack = vec![expr];
+    while let Some(expr) = expr_stack.pop() {
+        if let Some(value) = process_expr(ctx, expr, &mut op_stack, &mut expr_stack)? {
+            if let Some(value) = process_value(ctx, value, &mut op_stack, &mut expr_stack)? {
+                return Ok(value);
+            }
+        }
+    }
+    unreachable!("expression stack exhausted without producing a final value");
 }
 
 const LINE_WIDTH: Variable = Variable::new_static("line_width");

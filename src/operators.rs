@@ -46,22 +46,6 @@ pub enum LazyOrStrict<L, S> {
     Strict(S),
 }
 
-impl<L, S> LazyOrStrict<L, S> {
-    pub fn call<T>(self, expr: &Expression, ctx: EvalCtx) -> Result<T>
-    where
-        L: FnOnce(Expression, EvalCtx) -> Result<T>,
-        S: FnOnce(Value, EvalCtx) -> Result<T>,
-    {
-        match self {
-            Self::Lazy(function) => function(expr.clone(), ctx),
-            Self::Strict(function) => {
-                let val = crate::evaluator::evaluate_expression(ctx, expr)?;
-                function(val, ctx)
-            }
-        }
-    }
-}
-
 macro_rules! strict {
     ($body:expr) => {
         LazyOrStrict::Strict(|a, _ctx| {
